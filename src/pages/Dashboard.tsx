@@ -63,6 +63,22 @@ import { LiveDayOverlay } from "@/components/LiveDayOverlay";
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { useHaptic } from "@/hooks/useHaptic";
 import confetti from "canvas-confetti";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { SortableTodoItem } from "@/components/SortableTodoItem";
 
 const SessionActiveButton = React.memo(function SessionActiveButton({
  sessionStartTime,
@@ -211,6 +227,29 @@ export default function Dashboard() {
 } = useAppContext();
 
  const { activeStep, setActiveStep, hasCompleted } = useTour();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSortByPriority(false);
+      setTodos((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
  const auraStyles: Record<string, string> = {
  aura_flame:
@@ -2926,143 +2965,27 @@ export default function Dashboard() {
  NO ACTIVE TASKS. ADD A GOAL TO BEGIN.
  </motion.div>
  ) : (
- displayedTodos.map((todo) => (
- <motion.div
- key={`todo-${todo.id}`}
- initial={{ opacity: 0, x: -20, scale: 0.95 }}
- animate={{ opacity: 1, x: 0, scale: 1 }}
- exit={{ opacity: 0, scale: 0.8, x: 20 }}
- transition={{
- type: "spring",
- stiffness: 300,
- damping: 25,
- }}
- className={`group flex items-center justify-between p-3 md:p-4 rounded-xl border transition-all duration-300 relative overflow-hidden ${
- todo.completed
- ? "dark:bg-slate-900 bg-white dark:border-slate-800 border-slate-200/50 opacity-60"
- : "dark:bg-black bg-slate-50 dark:border-cyan-500/30 border-cyan-300/40 shadow-md hover:border-cyan-400/60 hover:shadow-md hover:bg-cyan-950/20"
- }`}
- >
- {/* Ambient hover glow line */}
- {!todo.completed && (
- <>
- <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500 shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
- <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
- </>
- )}
-
- {/* Completion Flash Animation */}
- <AnimatePresence>
- {todo.completed && (
- <motion.div
- key="completion-flash"
- className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 to-transparent z-0"
- initial={{ opacity: 1, scaleX: 0, originX: 0 }}
- animate={{ opacity: 0, scaleX: 1 }}
- exit={{ opacity: 0 }}
- transition={{ duration: 0.8, ease: "easeOut" }}
- />
- )}
- </AnimatePresence>
-
- <button
- onClick={() => toggleTodo(todo.id)}
- className="flex items-center gap-4 flex-1 text-left relative z-10"
- >
- <motion.div
- key={todo.completed ? "checked" : "unchecked"}
- initial={{
- scale: todo.completed ? 1.5 : 0.8,
- rotate: todo.completed ? -15 : -10,
- opacity: 0,
- }}
- animate={{ scale: 1, rotate: 0, opacity: 1 }}
- transition={{
- type: "spring",
- stiffness: 400,
- damping: 15,
- bounce: 0.6,
- }}
- className={
- todo.completed
- ? "dark:text-emerald-400 text-emerald-700"
- : "dark:text-cyan-400 text-cyan-700 group-hover:dark:text-cyan-400 text-cyan-700 transition-colors"
- }
- >
- {todo.completed ? (
- <CheckCircle2 className="w-6 h-6 drop-shadow-md" />
- ) : (
- <Circle className="w-6 h-6" />
- )}
- </motion.div>
- <div className="flex flex-col min-w-0 flex-1">
- <span
- className={`text-[11px] md:text-base font-bold tracking-wide transition-all duration-300 ${todo.completed ? "dark:text-slate-500 text-slate-600 line-through decoration-slate-500/50" : "dark:text-slate-100 text-slate-900 group-hover:text-cyan-50"}`}
- >
- {todo.text}
- </span>
- <div className="flex flex-wrap gap-2 items-center mt-1.5">
- {todo.priority && (
- <span
- className={`text-[10px] font-mono px-2 py-0.5 rounded border uppercase tracking-wider transition-colors ${
- todo.completed
- ? "dark:text-slate-500 text-slate-600 dark:bg-slate-800 bg-slate-100/50 dark:border-slate-700 border-slate-300/50"
- : todo.priority === "High"
- ? "dark:text-rose-400 text-rose-700 bg-rose-950/50 border-rose-800/50 font-bold shadow-md"
- : todo.priority === "Medium"
- ? "dark:text-amber-400 text-amber-700 bg-amber-950/50 border-amber-800/50"
- : "dark:text-emerald-400 text-emerald-700 bg-emerald-950/50 border-emerald-800/50"
- }`}
- >
- {todo.priority === "High"
- ? "CRITICAL MISSION"
- : todo.priority}
- </span>
- )}
- <span
- className={`text-[10px] font-mono px-2 py-0.5 rounded border uppercase tracking-wider transition-colors ${
- todo.completed
- ? "dark:text-slate-500 text-slate-600 dark:bg-slate-800 bg-slate-100/50 dark:border-slate-700 border-slate-300/50"
- : "dark:text-cyan-300 dark:text-cyan-400 text-cyan-700 bg-cyan-950/50 border-cyan-800/50 shadow-md"
- }`}
- >
- {todo.type}
- </span>
- {!todo.completed && todo.xpReward > 0 && (
- <span className="flex items-center gap-1 text-[10px] font-mono dark:text-amber-400 text-amber-700 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded shadow-md transition-opacity group/xp">
- <motion.div
- whileHover={{ scale: 1.5, rotate: 15 }}
- className="relative z-10"
- >
- <Target className="w-3 h-3 group-hover/xp:drop-shadow-md transition-all" />
- </motion.div>
- +{todo.xpReward} XP
- </span>
- )}
- {todo.calendarSynced && (
- <span
- title="Scheduled in Google Calendar"
- className="flex items-center text-[10px] dark:text-blue-400 text-blue-700 bg-blue-500/10 border border-blue-500/20 px-1 py-0.5 rounded shadow-md"
- >
- <Calendar className="w-3 h-3" />
- </span>
- )}
- </div>
- </div>
- </button>
- <button
- onClick={() => deleteTodo(todo.id)}
- className="p-2 dark:text-slate-500 text-slate-600 hover:dark:text-rose-400 text-rose-700 transition-colors rounded-lg hover:bg-rose-500/10 relative z-10 group/trash"
- >
- <motion.div
- whileHover={{ scale: 1.2, rotate: -10 }}
- transition={{ duration: 0.4 }}
- >
- <Trash2 className="w-5 h-5 group-hover/trash:drop-shadow-md" />
- </motion.div>
- </button>
- </motion.div>
- ))
+   <DndContext
+     sensors={sensors}
+     collisionDetection={closestCenter}
+     onDragEnd={handleDragEnd}
+   >
+     <SortableContext
+       items={displayedTodos.map((t) => t.id)}
+       strategy={verticalListSortingStrategy}
+     >
+       <div className="space-y-3">
+         {displayedTodos.map((todo) => (
+           <SortableTodoItem
+             key={todo.id}
+             todo={todo}
+             toggleTodo={toggleTodo}
+             deleteTodo={deleteTodo}
+           />
+         ))}
+       </div>
+     </SortableContext>
+   </DndContext>
  )}
  </AnimatePresence>
  </div>

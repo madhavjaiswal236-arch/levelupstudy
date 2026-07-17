@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target } from 'lucide-react';
+import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target, Terminal } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 
 export default function Settings() {
   const { 
     notificationSettings, setNotificationSettings,
     playerName, setPlayerName,
-    dailyTarget, setDailyTarget, class11EndDate, setClass11EndDate, totalXpGoal, setTotalXpGoal, xp,
+    dailyTarget, setDailyTarget, class11EndDate, setClass11EndDate, totalXpGoal, setTotalXpGoal, xp, setXp,
     resetApp, firebaseUser
   } = useAppContext();
 
@@ -16,6 +16,7 @@ export default function Settings() {
   const [pomoTime, setPomoTime] = useState(25);
   const [deepWorkTime, setDeepWorkTime] = useState(50);
   const [mainGoal, setMainGoal] = useState("Crack JEE 2026");
+  const [devXp, setDevXp] = useState(xp.toString());
 
   const handleSave = () => {
     // Save to local storage for now
@@ -257,6 +258,44 @@ export default function Settings() {
               <Trash2 className="w-4 h-4" />
               Hard Reset App Data
             </button>
+          </div>
+        </Card>
+
+        {/* Developer Mode */}
+        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
+          <div className="flex items-center gap-2 mb-6">
+            <Terminal className="w-5 h-5 text-emerald-500" />
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Developer Mode</h2>
+          </div>
+          
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Set Earned XP</label>
+              <div className="flex gap-2">
+                <input 
+                  type="number" 
+                  value={devXp}
+                  onChange={(e) => setDevXp(e.target.value)}
+                  className="flex-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                  placeholder="Enter custom XP value"
+                />
+                <button 
+                  onClick={() => {
+                    const parsed = parseInt(devXp, 10);
+                    if (!isNaN(parsed) && parsed >= 0) {
+                      setXp(parsed);
+                      alert(`XP set to ${parsed}`);
+                    } else {
+                      alert("Please enter a valid number");
+                    }
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl transition-colors shadow-md"
+                >
+                  Apply
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Instantly update your XP for testing purposes. Will calculate level accordingly on next load or update.</p>
+            </div>
           </div>
         </Card>
 

@@ -154,6 +154,7 @@ interface AppState {
  notificationSettings: NotificationSettings;
  setNotificationSettings: React.Dispatch<React.SetStateAction<NotificationSettings>>;
  xp: number;
+ setXp: React.Dispatch<React.SetStateAction<number>>;
  xpGainedToday: number;
  spentXpToday: number;
  setSpentXpToday: React.Dispatch<React.SetStateAction<number>>;
@@ -162,6 +163,7 @@ interface AppState {
  hoursStudiedToday: number;
  setHoursStudiedToday: React.Dispatch<React.SetStateAction<number>>;
  level: number;
+ setLevel: React.Dispatch<React.SetStateAction<number>>;
  questionsSolved: number;
  setQuestionsSolved: React.Dispatch<React.SetStateAction<number>>;
  practiceSessions: PracticeSession[];
@@ -483,7 +485,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
  useEffect(() => {
  if (!isLoaded) return;
  const stateToSave = {
- xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level, questionsSolved, dailyTarget, accuracy, speedScore,
+ xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
+ questionsSolved, dailyTarget, accuracy, speedScore,
  streakDays, lastStudyDate, focusBadges, syllabus, activeBoost,
  class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules,
  habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
@@ -511,7 +514,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
- }, [isLoaded, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level, questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal]);
+ }, [isLoaded, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
+ questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal]);
 
  // Handle Cross-Tab Synchronization
  useEffect(() => {
@@ -898,12 +902,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
    const contextValue = useMemo(() => ({
     xp,
+    setXp,
     xpGainedToday,
     spentXpToday,
     setSpentXpToday,
     totalSpentXp,
     setTotalSpentXp,
     level,
+    setLevel,
     questionsSolved,
     setQuestionsSolved,
     dailyTarget,
@@ -988,6 +994,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     totalSpentXp,
     setTotalSpentXp,
     level,
+    setLevel,
     questionsSolved,
     setQuestionsSolved,
     dailyTarget,

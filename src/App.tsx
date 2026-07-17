@@ -666,6 +666,43 @@ function AppContent() {
  }
  };
 
+  const handleNavigationKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const currentIdx = tabs.findIndex((tab) => tab.id === activeTab);
+      let nextIdx = currentIdx;
+      if (e.key === "ArrowRight") {
+        nextIdx = (currentIdx + 1) % tabs.length;
+      } else {
+        nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+      }
+
+      // Find the first unlocked tab
+      let foundTab = tabs[nextIdx];
+      let attempts = 0;
+      while (level < foundTab.requiredLevel && attempts < tabs.length) {
+        if (e.key === "ArrowRight") {
+          nextIdx = (nextIdx + 1) % tabs.length;
+        } else {
+          nextIdx = (nextIdx - 1 + tabs.length) % tabs.length;
+        }
+        foundTab = tabs[nextIdx];
+        attempts++;
+      }
+
+      if (level >= foundTab.requiredLevel) {
+        handleTabChange(foundTab.id);
+        // Also focus the newly selected tab button
+        setTimeout(() => {
+          const button = document.getElementById("tab-btn-" + foundTab.id);
+          if (button) {
+            button.focus();
+          }
+        }, 10);
+      }
+    }
+  };
+
  const touchStartX = React.useRef(0);
  const touchEndX = React.useRef(0);
  const touchStartY = React.useRef(0);
@@ -1250,7 +1287,12 @@ function AppContent() {
  <div className="hidden md:block w-10"></div>
 
  {/* Navigation Links */}
- <div className="hidden md:flex items-center justify-center gap-1">
+ <div
+   role="tablist"
+   aria-label="Main Navigation"
+   onKeyDown={handleNavigationKeyDown}
+   className="hidden md:flex items-center justify-center gap-1"
+ >
  {tabs.map((tab) => {
  const Icon = tab.icon;
  const isActive = activeTab === tab.id;
@@ -1265,6 +1307,11 @@ function AppContent() {
  return (
  <motion.button
  key={tab.id}
+ id={`tab-btn-${tab.id}`}
+ role="tab"
+ aria-selected={isActive}
+ tabIndex={isActive ? 0 : -1}
+ aria-label={tab.label}
  onClick={() => {
  if (isLocked) {
  showToast(
@@ -1276,7 +1323,7 @@ function AppContent() {
  }}
  whileHover={!isLocked ? { scale: 1.05 } : {}}
  whileTap={!isLocked ? { scale: 0.95 } : {}}
- className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all duration-300 relative group ${
+ className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all duration-300 relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0f16] ${
  isActive
  ? "dark:text-white text-slate-900 bg-cyan-950/60 border border-cyan-500/30 shadow-md"
  : isLocked
