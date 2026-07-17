@@ -1,0 +1,17 @@
+{
+  "name": "JEE Levelling",
+  "short_name": "JEE Level",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#22d3ee",
+  "description": "A gamified productivity ecosystem for JEE preparation.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512 any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

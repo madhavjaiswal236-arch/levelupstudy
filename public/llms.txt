@@ -1,0 +1,10 @@
+# LevelUp Study Tracker
+
+This is an AI-powered study tracker application built with React, Vite, and Firebase.
+It features gamification, calendar integrations, and real-time study tracking.
+
+## Core Features
+- [Dashboard](/#)
+- [Analytics](/analytics)
+- [Missions](/missions)
+- [Protocols](/protocols)

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="LevelUp Study - A gamified study tracker and productivity tool." />
+    <title>LevelUp Study</title>
+    <script>
+      (function() {
+        try {
+          var theme = localStorage.getItem('theme');
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" />
+                <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const originalError = console.error;
+      console.error = function(...args) {
+        if (args[0] && typeof args[0] === 'string' && args[0].includes('failed to connect to websocket')) {
+          return;
+        }
+        if (args[0] && typeof args[0] === 'string' && args[0].includes('WebSocket connection to')) {
+          return;
+        }
+        originalError.apply(console, args);
+      };
+      
+      const originalLog = console.log;
+      console.log = function(...args) {
+        if (args[0] && typeof args[0] === 'string' && args[0].includes('server connection lost. polling for restart')) {
+          return;
+        }
+        originalLog.apply(console, args);
+      };
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
