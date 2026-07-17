@@ -169,6 +169,7 @@ interface AppState {
  practiceSessions: PracticeSession[];
  setPracticeSessions: React.Dispatch<React.SetStateAction<PracticeSession[]>>;
  dailyTarget: number;
+ setDailyTarget: React.Dispatch<React.SetStateAction<number>>;
  accuracy: number;
  speedScore: number;
  streakDays: number;
@@ -913,6 +914,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     questionsSolved,
     setQuestionsSolved,
     dailyTarget,
+    setDailyTarget,
     accuracy,
     speedScore,
     streakDays,
@@ -998,6 +1000,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     questionsSolved,
     setQuestionsSolved,
     dailyTarget,
+    setDailyTarget,
     accuracy,
     speedScore,
     streakDays,

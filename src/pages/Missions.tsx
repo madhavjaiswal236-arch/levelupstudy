@@ -1,13 +1,13 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { TiltWrapper } from '@/components/TiltWrapper';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { TiltWrapper } from '../components/TiltWrapper';
 import { CheckCircle2, Circle, Activity, BrainCircuit, Target, AlertTriangle } from 'lucide-react';
-import { useAppContext } from '@/context/AppContext';
-import { TourStep, useTour } from '@/components/TourGuide';
+import { useAppContext } from '../context/AppContext';
+import { TourStep, useTour } from '../components/TourGuide';
 import { useEffect } from 'react';
 
-import { markCalendarEventCompleted, updateGoogleTaskStatus } from '@/lib/calendar';
+import { markCalendarEventCompleted, updateGoogleTaskStatus } from '../lib/calendar';
 
 export default function Missions() {
  const { todos, setTodos, pendingTasks, isLoaded } = useAppContext();
@@ -44,7 +44,7 @@ export default function Missions() {
  opacity: 1, 
  y: 0, 
  scale: 1, 
- transition: { type: "spring", stiffness: 120, damping: 10 } 
+ transition: { type: "spring" as const, stiffness: 120, damping: 10 } 
  }
  };
 

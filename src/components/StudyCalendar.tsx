@@ -4,11 +4,11 @@ import {
   X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, 
   Clock, Plus, Search, CheckCircle2, Zap, AlertCircle, Atom, Beaker, Sigma, Check, ArrowRight
 } from 'lucide-react';
-import { getAccessToken, googleSignIn } from "@/lib/firebase";
-import { useAppContext, Todo } from '@/context/AppContext';
-import { rescheduleCalendarEvents, createCalendarEvent, updateCalendarEventTime, deleteCalendarEvent, fetchGoogleCalendarEvents } from '@/lib/calendar';
+import { getAccessToken, googleSignIn } from "../lib/firebase";
+import { useAppContext, Todo } from '../context/AppContext';
+import { rescheduleCalendarEvents, createCalendarEvent, updateCalendarEventTime, deleteCalendarEvent, fetchGoogleCalendarEvents } from '../lib/calendar';
 import { format, addDays, startOfWeek, isSameDay, startOfDay, getDay, endOfMonth, startOfMonth, parseISO, addMonths } from 'date-fns';
-import { predictNextLecture } from '@/lib/utils';
+import { predictNextLecture } from '../lib/utils';
 
 
 const COLORS: Record<string, string> = {
@@ -176,7 +176,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     }
   }, [showTaskModal, dragSelection]);
 
-  const [resizingEventId, setResizingEventId] = useState<string | null>(null);
+  const [resizingEventId, setResizingEventId] = useState<number | null>(null);
   const [hoveredHandleId, setHoveredHandleId] = useState<string | null>(null);
   const [, setResizingDeltaMins] = useState<number>(0);
   const [resizeStartHeight, setResizeStartHeight] = useState<number>(0);
@@ -238,7 +238,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
 
 
   // Drag and Drop State
-  const [dragEventId, setDragEventId] = useState<string | null>(null);
+  const [dragEventId, setDragEventId] = useState<number | null>(null);
   const [isDraggingEvent, setIsDraggingEvent] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [unsyncedChanges, setUnsyncedChanges] = useState(false);

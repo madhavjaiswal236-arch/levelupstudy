@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getAccessToken } from '@/lib/firebase';
+import { getAccessToken } from '../lib/firebase';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 /**

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TiltWrapper } from '@/components/TiltWrapper';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { TiltWrapper } from '../components/TiltWrapper';
 import { Trophy, Swords, TrendingUp, Flame, ChevronUp, ChevronDown } from 'lucide-react';
 
 const initialLeaderboard = [
@@ -48,7 +48,7 @@ export default function Rivals() {
  opacity: 1, 
  y: 0, 
  scale: 1, 
- transition: { type: "spring", stiffness: 120, damping: 10 } 
+ transition: { type: "spring" as const, stiffness: 120, damping: 10 } 
  }
  };
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Card } from '@/components/ui/card';
+import { Card } from '../components/ui/card';
 import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target, Terminal } from 'lucide-react';
-import { useAppContext } from '@/context/AppContext';
+import { useAppContext } from '../context/AppContext';
 
 export default function Settings() {
   const { 

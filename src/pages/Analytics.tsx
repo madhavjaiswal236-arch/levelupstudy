@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { TiltWrapper } from '@/components/TiltWrapper';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { TiltWrapper } from '../components/TiltWrapper';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, Cell, PieChart, Pie } from 'recharts';
 import { Activity, Brain, TrendingUp, AlertCircle, Target, Zap, Clock, Plus, BookOpen, X } from 'lucide-react';
-import { useAppContext, SyllabusData } from '@/context/AppContext';
-import { TourStep, useTour } from '@/components/TourGuide';
+import { useAppContext, SyllabusData } from '../context/AppContext';
+import { TourStep, useTour } from '../components/TourGuide';
 
 const MISTAKE_TYPES = [
  "Conceptual",
@@ -358,7 +358,7 @@ export default function Analytics() {
  const insights = generateInsights();
 
  const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } };
- const itemVariants = { hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 120, damping: 10 } } };
+ const itemVariants = { hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 120, damping: 10 } } };
 
  return (
  <div className="space-y-8 pb-12">

@@ -1,9 +1,9 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TiltWrapper } from '@/components/TiltWrapper';
-import { useAppContext, PlayHistoryEntry, Todo } from '@/context/AppContext';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { TiltWrapper } from '../components/TiltWrapper';
+import { useAppContext, PlayHistoryEntry, Todo } from '../context/AppContext';
 import { Calendar, Clock, Target, Zap, CheckCircle2, ChevronRight, Monitor, Activity, TrendingUp, Cpu, Award, ShieldAlert, Sparkles, Flame, Loader2, BrainCircuit } from 'lucide-react';
-import { TourStep, useTour } from '@/components/TourGuide';
+import { TourStep, useTour } from '../components/TourGuide';
 import { useState, useEffect, useMemo } from 'react';
 
 // Daily Rating System Helper
@@ -77,7 +77,7 @@ export default function History() {
  y: 0, 
  scale: 1, 
  transition: { 
- type: 'spring', 
+ type: 'spring' as const, 
  stiffness: 150, 
  damping: 12, 
  bounce: 0.4 

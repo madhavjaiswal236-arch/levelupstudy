@@ -40,6 +40,10 @@ const Syllabus = lazy(() => import("./pages/Syllabus"));
 import { HAPTIC_PATTERNS, vibrate } from "./lib/haptics";
 import { sendNotification } from "./lib/notifications";
 
+import { LunarGravityCard, LunarGravityCanvas } from "./components/ui/lunar-gravity-card";
+import { ShaderAnimation } from "./components/ui/shader-animation";
+import { TextReveal } from "./components/ui/text-reveal";
+
 const Protocols = lazy(() => import("./pages/Protocols"));
 const Rivals = lazy(() => import("./pages/Rivals"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -98,6 +102,7 @@ function AppContent() {
  xp,
  level,
  streakDays,
+ dailyTarget,
  playerName,
  setPlayerName,
  isLoaded,
@@ -118,6 +123,35 @@ function AppContent() {
  notificationSettings
  } = useAppContext();
   const processedHistoryRef = useRef(new Set<string>());
+
+  const [showWelcomeHero, setShowWelcomeHero] = useState(false);
+  const [isShifted, setIsShifted] = useState(false);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const todayStr = getLogicalDate().toDateString();
+    const lastSeen = localStorage.getItem("last_seen_welcome_hero");
+    if (lastSeen !== todayStr) {
+      setShowWelcomeHero(true);
+    }
+  }, [isLoaded]);
+
+  useEffect(() => {
+    if (showWelcomeHero) {
+      setIsShifted(false);
+      const timer = setTimeout(() => {
+        setIsShifted(true);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [showWelcomeHero]);
+
+  const handleEnterApp = () => {
+    const todayStr = getLogicalDate().toDateString();
+    localStorage.setItem("last_seen_welcome_hero", todayStr);
+    setShowWelcomeHero(false);
+    vibrate(HAPTIC_PATTERNS.SUCCESS);
+  };
 
  // Periodic Rollover Check past 3:00 AM
  useEffect(() => {
@@ -336,7 +370,7 @@ function AppContent() {
           
           let planned = entry.plannedTasks;
           if (!planned || planned.length === 0) {
-            planned = entry.completedTasks.map((t) => ({ id: t.id, text: t.text }));
+            planned = entry.completedTasks.map((t) => ({ ...t })) as any;
             if (planned.length === 0) {
               planned = [{ id: "dummy", text: "Daily Planned Tasks", completed: false } as any];
             }
@@ -471,11 +505,11 @@ function AppContent() {
 
  // Notifications logic
  const lastHourNotified = React.useRef<number | null>(null);
-  const stateRef = useRef({ xpGainedToday, pendingTasks, todos, notificationSettings });
+  const stateRef = useRef({ xpGainedToday, pendingTasks, todos, notificationSettings, dailyTarget, level, streakDays });
   
   useEffect(() => {
-    stateRef.current = { xpGainedToday, pendingTasks, todos, notificationSettings };
-  }, [xpGainedToday, pendingTasks, todos, notificationSettings]);
+    stateRef.current = { xpGainedToday, pendingTasks, todos, notificationSettings, dailyTarget, level, streakDays };
+  }, [xpGainedToday, pendingTasks, todos, notificationSettings, dailyTarget, level, streakDays]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -744,6 +778,122 @@ function AppContent() {
  </div>
  );
  }
+
+  if (isLoaded && showWelcomeHero) {
+    return (
+      <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans select-none z-[10000]">
+        {/* Background WebGL Shader Animation */}
+        <div className="absolute inset-0 z-0 opacity-80 pointer-events-none">
+          <ShaderAnimation />
+        </div>
+
+        {/* Ambient Overlay to darken background slightly and make text pop */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/80 z-10 pointer-events-none" />
+
+        {/* Foreground Content container */}
+        <motion.div 
+          layout
+          transition={{ type: "spring", stiffness: 70, damping: 20 }}
+          className="relative z-20 w-full max-w-7xl px-6 py-12 flex flex-col md:flex-row items-center justify-center min-h-screen gap-12"
+        >
+          
+          {/* Left Column (Text, description, button) */}
+          <motion.div 
+            layout 
+            transition={{ type: "spring", stiffness: 70, damping: 20 }}
+            className={`flex flex-col ${isShifted ? "items-center md:items-start text-center md:text-left w-full md:w-[45%]" : "items-center text-center w-full max-w-3xl"}`}
+          >
+            
+            {/* Animated Title */}
+            <motion.div 
+              layout 
+              transition={{ type: "spring", stiffness: 70, damping: 20 }}
+              className={`flex flex-col justify-center ${isShifted ? "items-center md:items-start" : "items-center"}`}
+            >
+              <span className={`text-[10px] md:text-xs uppercase tracking-[0.5em] text-cyan-400 font-semibold mb-2 block transition-all duration-1000 ${isShifted ? "opacity-60" : "opacity-100"}`}>
+                WELCOME TO THE ULTIMATE COMMAND CENTER
+              </span>
+              <h1 className="text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none select-none">
+                <TextReveal preset="fade-in-blur" per="word" speedReveal={1.5} className="inline-block">
+                  levelup study
+                </TextReveal>
+              </h1>
+              {/* study in gradient colors */}
+              <motion.div 
+                layout
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ 
+                  opacity: { delay: 1.2, duration: 0.8 },
+                  y: { delay: 1.2, duration: 0.8 },
+                  layout: { type: "spring", stiffness: 70, damping: 20 }
+                }}
+                className="mt-3 text-6xl md:text-8xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-transparent uppercase filter drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+              >
+                STUDY
+              </motion.div>
+            </motion.div>
+
+            {/* Shifted details */}
+            <AnimatePresence>
+              {isShifted && (
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 1.2, ease: "easeOut" }}
+                  className="space-y-6 mt-8 flex flex-col items-center md:items-start"
+                >
+                  <p className="text-sm md:text-base text-slate-300 max-w-md leading-relaxed font-medium">
+                    Your daily study study command center is online. Click and drag the 3D Moon to rotate, click it to release gravity rings, and enter your workspace to begin.
+                  </p>
+                  
+                  <div className="flex flex-col items-center md:items-start gap-3">
+                    <button
+                      onClick={handleEnterApp}
+                      className="relative px-12 py-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 text-white font-extrabold text-sm uppercase tracking-widest shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:shadow-[0_0_50px_rgba(6,182,212,0.6)] hover:scale-[1.05] active:scale-[0.98] transition-all duration-300 border border-white/20 group overflow-hidden cursor-pointer"
+                    >
+                      {/* Shiny reflection */}
+                      <div className="absolute inset-0 w-[50%] h-full bg-white/20 skew-x-12 translate-x-[-120%] group-hover:translate-x-[250%] transition-transform duration-1000 ease-out pointer-events-none" />
+                      ACCESS STUDY COMMAND
+                    </button>
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold animate-pulse mt-2">
+                      Click the Moon to generate particle orbits
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          {/* Right Column: Standalone Interactive Lunar Gravity 3D Component */}
+          <motion.div 
+            layout
+            transition={{ type: "spring", stiffness: 70, damping: 20 }}
+            className={`flex items-center justify-center relative pointer-events-auto z-20 ${isShifted ? "w-full md:w-[50%] h-[350px] md:h-[550px] opacity-100" : "w-0 h-0 overflow-hidden opacity-0"}`}
+          >
+            <AnimatePresence>
+              {isShifted && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.7, rotate: -45 }}
+                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                  exit={{ opacity: 0, scale: 0.7, rotate: 45 }}
+                  transition={{ duration: 1.8, ease: [0.16, 1, 0.3, 1] }}
+                  className="w-full h-full cursor-grab active:cursor-grabbing"
+                >
+                  <LunarGravityCanvas 
+                    onMoonClick={() => {
+                      vibrate(150);
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+        </motion.div>
+      </div>
+    );
+  }
 
  const renderContent = () => {
  switch (activeTab) {
@@ -1696,9 +1846,9 @@ function AppContent() {
  );
 }
 
-import { TourProvider } from "@/components/TourGuide";
+import { TourProvider } from "./components/TourGuide";
 
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export default function App() {
  return (
