@@ -15,7 +15,7 @@ const RealisticMoon = ({ onClick }: { onClick?: () => void }) => {
   const colorMap = useTexture("https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg");
 
   useFrame((_, delta) => {
-    if (meshRef.current) meshRef.current.rotation.y += delta * 0.05;
+    if (meshRef.current) meshRef.current.rotation.y += delta * 0.12;
   });
 
   return (
@@ -27,7 +27,7 @@ const RealisticMoon = ({ onClick }: { onClick?: () => void }) => {
       onPointerOver={() => { document.body.style.cursor = 'pointer'; }} 
       onPointerOut={() => { document.body.style.cursor = 'auto'; }}
    >
-      <sphereGeometry args={[RADIUS, 64, 64]} />
+      <sphereGeometry args={[RADIUS, 40, 40]} />
       <meshStandardMaterial 
         map={colorMap} 
         bumpMap={colorMap} 
@@ -102,7 +102,7 @@ const ParticleRing = ({ ringState, massiveAsteroidsRef }: { ringState: 'hidden' 
 
   useFrame((state, delta) => {
     if (pointsRef.current) {
-      pointsRef.current.rotation.y -= delta * 0.02;
+      pointsRef.current.rotation.y -= delta * 0.05;
       pointsRef.current.updateMatrix();
 
       const invMat = invMatRef.current.copy(pointsRef.current.matrix).invert();
@@ -126,7 +126,7 @@ const ParticleRing = ({ ringState, massiveAsteroidsRef }: { ringState: 'hidden' 
     uniforms.current.time.value = state.clock.elapsedTime;
 
     if (ringState === 'animating') {
-      uniforms.current.uProgress.value += delta * 0.35; 
+      uniforms.current.uProgress.value += delta * 0.8; 
       if (uniforms.current.uProgress.value > 1.0) uniforms.current.uProgress.value = 1.0;
     } else if (ringState === 'visible') {
       uniforms.current.uProgress.value = 1.0;
@@ -165,16 +165,18 @@ const ParticleRing = ({ ringState, massiveAsteroidsRef }: { ringState: 'hidden' 
       transformed.y += sin(angle * 10.0 + time) * 0.05 * aRandom;
 
       if (uProgress > 0.5) {
-        for(int i = 0; i < 75; i++) {
+        for(int i = 0; i < 30; i++) {
           vec4 astData = uAsteroids[i];
           vec3 delta = transformed - astData.xyz;
-          float dist = length(delta);
-
+          float distSq = dot(delta, delta);
           float rad = astData.w * 2.0 + 0.15;
+          float radSq = rad * rad;
 
-          if (dist < rad) {
-             float force = pow((rad - dist) / rad, 2.0); 
-             transformed += normalize(delta) * force * 0.4;
+          if (distSq < radSq) {
+             float dist = sqrt(distSq);
+             float force = (rad - dist) / rad; 
+             force = force * force;
+             transformed += (delta / (dist + 0.0001)) * force * 0.4;
              transformed.y += force * 0.20 * (aRandom - 0.5);
           }
         }
@@ -295,7 +297,7 @@ const AsteroidBelt = ({ ringState, massiveAsteroidsRef }: { ringState: 'hidden' 
     if (!meshRef.current) return;
 
     const targetScale = ringState === 'hidden' ? 0 : 1;
-    const lerpSpeed = ringState === 'hidden' ? 5 : 2;
+    const lerpSpeed = ringState === 'hidden' ? 8 : 4;
     scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, delta * lerpSpeed);
 
     if (scaleRef.current < 0.01) {
@@ -306,9 +308,9 @@ const AsteroidBelt = ({ ringState, massiveAsteroidsRef }: { ringState: 'hidden' 
 
     asteroids.forEach((ast, i) => {
 
-      ast.angle += ast.speed * delta; 
+      ast.angle += ast.speed * 2.0 * delta; 
 
-      ast.phase += ast.radialSpeed * delta;
+      ast.phase += ast.radialSpeed * 1.8 * delta;
       let currentRadius = ast.baseRadius + Math.sin(ast.phase) * ast.radialAmplitude;
 
       if (currentRadius < 2.15) {
@@ -408,7 +410,7 @@ export function LunarGravityCard({
             <Environment preset="city" />
 
             <ambientLight intensity={0.02} />
-            <directionalLight position={[8, 5, 5]} intensity={1.5} color="#ffffff" castShadow shadow-mapSize={[2048, 2048]} />
+            <directionalLight position={[8, 5, 5]} intensity={1.5} color="#ffffff" castShadow shadow-mapSize={[1024, 1024]} />
             <directionalLight position={[-5, -3, -5]} intensity={0.15} color="#4a90e2" />
 
             <OrbitControls enableZoom={false} enablePan={false} autoRotate={false} />
@@ -447,7 +449,7 @@ export function LunarGravityCanvas({ onMoonClick }: { onMoonClick?: () => void }
       <Environment preset="city" />
 
       <ambientLight intensity={0.02} />
-      <directionalLight position={[8, 5, 5]} intensity={1.5} color="#ffffff" castShadow shadow-mapSize={[2048, 2048]} />
+      <directionalLight position={[8, 5, 5]} intensity={1.5} color="#ffffff" castShadow shadow-mapSize={[1024, 1024]} />
       <directionalLight position={[-5, -3, -5]} intensity={0.15} color="#4a90e2" />
 
       <OrbitControls enableZoom={false} enablePan={false} autoRotate={false} />

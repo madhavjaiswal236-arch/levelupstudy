@@ -672,7 +672,7 @@ function AppContent() {
  icon: LayoutDashboard,
  requiredLevel: 1,
  },
- { id: "syllabus", label: "Syllabus", icon: BookOpen, requiredLevel: 2 },
+ { id: "syllabus", label: "Syllabus", icon: BookOpen, requiredLevel: 1 },
  { id: "history", label: "History", icon: RefreshCw, requiredLevel: 1 },
  { id: "analytics", label: "Analytics", icon: LineChart, requiredLevel: 6 },
  { id: "quests", label: "Missions", icon: Target, requiredLevel: 3 },
