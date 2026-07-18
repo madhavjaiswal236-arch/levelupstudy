@@ -42,56 +42,29 @@ export function WebGLShader() {
       uniform float yScale;
       uniform float distortion;
 
-      // Cosine palette for rich, vivid cosmic colors (cyan, magenta, purple, gold shifts)
-      vec3 getRainbowColor(float t) {
-        vec3 a = vec3(0.5, 0.5, 0.5);
-        vec3 b = vec3(0.5, 0.5, 0.5);
-        vec3 c = vec3(1.0, 1.0, 1.0);
-        vec3 d = vec3(0.0, 0.33, 0.67);
-        return a + b * cos(6.28318 * (c * t + d));
-      }
-
       void main() {
         vec2 p = (gl_FragCoord.xy * 2.0 - resolution) / min(resolution.x, resolution.y);
         
-        float t = time * 0.8;
-        vec3 finalColor = vec3(0.0);
+        float d = length(p) * distortion;
         
-        // Render 2 overlapping waves with slightly different frequencies and phases
-        for (float i = 0.0; i < 2.0; i++) {
-          // Add some organic wiggle to the coordinates
-          float xOffset = p.x * xScale + t * (1.0 + i * 0.25) + i * 1.8;
-          float wave = sin(xOffset) * yScale * (1.0 - i * 0.2) + cos(p.x * 0.7 - t * 0.4) * 0.12;
-          
-          float dist = abs(p.y - wave);
-          
-          // Ultra-bright core (white hot at the center)
-          float coreGlow = 0.015 / (dist + 0.002);
-          
-          // Surrounding colorful aura with high contrast
-          float auraGlow = 0.055 / (dist + 0.02);
-          auraGlow = pow(auraGlow, 1.15) * 1.5;
-          
-          // Dynamic color based on x position and wave index
-          vec3 auraColor = getRainbowColor(p.x * 0.22 + t * 0.12 + i * 0.4);
-          
-          // White-hot center core mixed with the vivid color aura
-          finalColor += vec3(coreGlow * 0.9) + (auraColor * auraGlow * 2.0);
-        }
+        float rx = p.x * (1.0 + d);
+        float gx = p.x;
+        float bx = p.x * (1.0 - d);
+
+        float r = 0.05 / abs(p.y + sin((rx + time) * xScale) * yScale);
+        float g = 0.05 / abs(p.y + sin((gx + time) * xScale) * yScale);
+        float b = 0.05 / abs(p.y + sin((bx + time) * xScale) * yScale);
         
-        // Boost contrast and brightness for absolute visual pop
-        finalColor = pow(finalColor, vec3(0.85)) * 1.5;
-        finalColor = clamp(finalColor, 0.0, 1.0);
-        
-        gl_FragColor = vec4(finalColor, 1.0);
+        float alpha = clamp(max(r, max(g, b)), 0.0, 1.0);
+        gl_FragColor = vec4(r, g, b, alpha);
       }
     `
 
     const initScene = () => {
       refs.scene = new THREE.Scene()
-      refs.renderer = new THREE.WebGLRenderer({ canvas })
+      refs.renderer = new THREE.WebGLRenderer({ canvas, alpha: true })
       refs.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-      refs.renderer.setClearColor(new THREE.Color(0x000000))
+      refs.renderer.setClearColor(0x000000, 0.0)
 
       refs.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, -1)
 
@@ -121,6 +94,7 @@ export function WebGLShader() {
         fragmentShader,
         uniforms: refs.uniforms,
         side: THREE.DoubleSide,
+        transparent: true,
       })
 
       refs.mesh = new THREE.Mesh(geometry, material)
@@ -166,7 +140,7 @@ export function WebGLShader() {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed top-0 left-0 w-full h-full block pointer-events-none z-30 mix-blend-screen opacity-100"
+      className="absolute inset-0 w-full h-full block pointer-events-none"
     />
   )
 }

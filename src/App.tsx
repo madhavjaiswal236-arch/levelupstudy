@@ -772,53 +772,35 @@ function AppContent() {
   if (isLoaded && showWelcomeHero) {
     return (
       <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans select-none z-[10000]">
-        {/* Background WebGL Shader Animation - layered above main content via canvas z-index */}
-        <div className="absolute inset-0 z-30 pointer-events-none">
-          <Suspense fallback={<div className="absolute inset-0 bg-black" />}>
+        {/* Background WebGL Shader Animation now rendered in front of the card */}
+        <div className="absolute inset-0 z-30 opacity-90 pointer-events-none mix-blend-screen" style={{ mixBlendMode: 'screen' }}>
+          <Suspense fallback={<div className="absolute inset-0 bg-transparent" />}>
             <WebGLShader />
           </Suspense>
         </div>
 
-        {/* Ambient Overlay to darken background slightly and make text pop - layered behind content */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/90 z-0 pointer-events-none" />
+        {/* Ambient Overlay to darken background slightly and make text pop */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/80 z-10 pointer-events-none" />
 
-        {/* Foreground Content container - layered in the front */}
+        {/* Foreground Content container */}
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1.0, ease: "easeOut" }}
-          className="relative z-50 w-full max-w-3xl px-6 py-12 flex flex-col items-center justify-center min-h-screen"
+          className="relative z-20 w-full max-w-3xl px-6 py-12 flex flex-col items-center justify-center min-h-screen"
         >
-          <div className="relative border border-white/20 p-3 w-full mx-auto rounded-3xl bg-slate-900/35 backdrop-blur-3xl shadow-[inset_0_1.5px_3px_rgba(255,255,255,0.25),_0_25px_50px_-12px_rgba(0,0,0,0.7),_0_0_40px_rgba(59,130,246,0.1)] ring-1 ring-white/10 overflow-hidden transition-all duration-500 hover:border-white/30">
-            {/* Glowing liquid glass orb highlights */}
-            <div className="absolute top-[-10%] left-[10%] w-48 h-48 rounded-full bg-cyan-500/20 blur-3xl animate-pulse pointer-events-none" />
-            <div className="absolute bottom-[-10%] right-[10%] w-48 h-48 rounded-full bg-purple-500/20 blur-3xl animate-pulse pointer-events-none" />
-            <div className="absolute top-[40%] left-[45%] w-36 h-36 rounded-full bg-blue-500/15 blur-3xl pointer-events-none animate-pulse [animation-duration:6s]" />
-            
-            {/* Liquid glass light reflections and subtle gloss gradients */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/15 via-transparent to-purple-500/15 pointer-events-none" />
-            <div className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.18)_0%,transparent_60%)] pointer-events-none mix-blend-overlay" />
-            
-            {/* Diagonal premium glass glare line */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_8s_infinite] pointer-events-none" style={{ transform: 'skewX(-25deg)' }} />
-
-            <main className="relative border border-white/10 rounded-2xl py-12 px-6 md:px-12 overflow-hidden flex flex-col items-center bg-gradient-to-b from-white/[0.05] to-transparent backdrop-blur-2xl">
+          <div className="relative border border-[#27272a] p-2 w-full mx-auto rounded-3xl bg-black/40 backdrop-blur-md">
+            <main className="relative border border-[#27272a] rounded-2xl py-12 px-6 md:px-12 overflow-hidden flex flex-col items-center">
               <span className="text-[10px] md:text-xs uppercase tracking-[0.4em] text-cyan-400 font-bold mb-4 text-center block">
                 WELCOME TO THE ULTIMATE COMMAND CENTER
               </span>
               
-              <div className="flex flex-row flex-wrap items-center justify-center mb-6 text-center">
-                <TextReveal
-                  as="h1"
-                  className="text-white text-center text-5xl md:text-7xl font-extrabold tracking-tighter uppercase leading-none select-none filter drop-shadow-[0_0_15px_rgba(255,255,255,0.15)]"
-                  per="char"
-                  preset="fade-in-blur"
-                  speedReveal={1.2}
-                  delay={0.15}
-                >
-                  levelup study
-                </TextReveal>
-              </div>
+              <h1 className="mb-1 text-white text-center text-5xl md:text-7xl font-bold tracking-tighter leading-none">
+                LevelUp
+              </h1>
+              <h2 className="mb-6 text-white text-center text-6xl md:text-8xl font-black tracking-tighter leading-none">
+                Study
+              </h2>
 
               <p className="text-white/60 px-6 text-center text-xs md:text-sm lg:text-base max-w-md leading-relaxed mb-8">
                 Your study command center is online. Monitor concepts, practice custom protocols, track daily milestones, and elevate your learnings.
@@ -902,60 +884,56 @@ function AppContent() {
  </div>
 
  {/* Enter Name Modal */}
-  {createPortal(
-  <AnimatePresence>
-  {showNameModal && (
-  <motion.div
-  initial={{ opacity: 0 }}
-  animate={{ opacity: 1 }}
-  exit={{ opacity: 0 }}
-  className="fixed inset-0 z-[9999] bg-black/40 overflow-y-auto custom-scrollbar flex flex-col"
-  >
-  <div className="w-full flex justify-center p-4 py-12 m-auto">
-  <motion.div
-  initial={{ scale: 0.8, y: 50, opacity: 0 }}
-  animate={{ scale: 1, y: 0, opacity: 1 }}
-  transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
-  className="relative border border-white/20 p-8 md:p-12 rounded-3xl max-w-lg w-full text-center bg-zinc-950/85 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] ring-1 ring-white/10 overflow-hidden"
-  >
-  {/* Liquid glass light reflections and subtle gloss gradients */}
-  <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 via-transparent to-purple-500/10 pointer-events-none" />
-  <div className="absolute -top-[40%] -left-[40%] w-[180%] h-[180%] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08)_0%,transparent_50%)] pointer-events-none mix-blend-overlay" />
-  
-  <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-6 drop-shadow-[0_0_15px_rgba(250,204,21,0.4)] relative z-10" />
-  <h2 className="text-3xl font-black text-white mb-2 uppercase tracking-widest relative z-10 filter drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
-  Welcome, Challenger
-  </h2>
-  <p className="text-cyan-400 mb-8 font-mono text-sm relative z-10 uppercase tracking-wide font-semibold">
-  Enter your name to begin your journey.
-  </p>
+ {createPortal(
+ <AnimatePresence>
+ {showNameModal && (
+ <motion.div
+ initial={{ opacity: 0 }}
+ animate={{ opacity: 1 }}
+ exit={{ opacity: 0 }}
+ className="fixed inset-0 z-[9999] dark:bg-black bg-slate-50 overflow-y-auto custom-scrollbar flex flex-col"
+ >
+ <div className="w-full flex justify-center p-4 py-12 m-auto">
+ <motion.div
+ initial={{ scale: 0.8, y: 50, opacity: 0 }}
+ animate={{ scale: 1, y: 0, opacity: 1 }}
+ transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
+ className="dark:bg-slate-900 bg-white border border-cyan-500/30 p-8 md:p-12 rounded-3xl max-w-lg w-full text-center shadow-md relative overflow-hidden"
+ >
+ <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
+ <Trophy className="w-16 h-16 dark:text-yellow-400 text-yellow-700 mx-auto mb-6 drop-shadow-md" />
+ <h2 className="text-3xl font-black dark:text-white text-slate-900 mb-2 uppercase tracking-widest">
+ Welcome, Challenger
+ </h2>
+ <p className="dark:text-cyan-400 text-cyan-700/80 mb-8 font-mono text-sm">
+ Enter your name to begin your journey.
+ </p>
 
-  <form onSubmit={handleNameSubmit} className="space-y-6 relative z-10">
-  <input
-  type="text"
-  value={tempName || ""}
-  onChange={(e) => setTempName(e.target.value)}
-  placeholder="Your Name"
-  id="nameInput"
-  className="w-full bg-black/60 border-2 border-cyan-500/50 rounded-xl p-4 text-white text-center text-2xl font-bold tracking-wide placeholder-white/30 shadow-[0_0_15px_rgba(6,182,212,0.15)] focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 focus:shadow-[0_0_25px_rgba(6,182,212,0.3)] outline-none transition-all duration-300 relative z-10"
-  autoFocus
-  required
-  />
-  <button
-  type="submit"
-  className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-black text-xl py-4 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] uppercase tracking-wider relative z-10"
-  >
-  START ADVENTURE
-  </button>
-  </form>
-  </motion.div>
-  </div>
-  </motion.div>
-  )}
-  </AnimatePresence>,
-  document.body,
-  )
-  }
+ <form onSubmit={handleNameSubmit} className="space-y-6">
+ <input
+ type="text"
+ value={tempName || ""}
+ onChange={(e) => setTempName(e.target.value)}
+ placeholder="Your Name"
+ id="nameInput"
+ className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-4 dark:text-white text-slate-900 text-center text-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-colors"
+ autoFocus
+ required
+ />
+ <button
+ type="submit"
+ className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-lg py-4 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.02]"
+ >
+ START ADVENTURE
+ </button>
+ </form>
+ </motion.div>
+ </div>
+ </motion.div>
+ )}
+ </AnimatePresence>,
+ document.body,
+ )}
 
  {/* Consistency Broken Modal */}
  {createPortal(
@@ -1635,7 +1613,7 @@ function AppContent() {
  <Trophy className="w-8 h-8 md:w-12 md:h-12 text-yellow-500 dark:text-yellow-400 icon-glow-yellow transition-all duration-300" />
  </motion.div>
 
- <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r dark:from-cyan-200 dark:via-blue-300 dark:to-purple-300 from-cyan-600 via-blue-700 to-purple-600 drop-shadow-md">
+ <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter dark:text-white text-slate-900 drop-shadow-md">
  LevelUp Study
  </h1>
 
@@ -1697,7 +1675,7 @@ function AppContent() {
  </AnimatePresence>
 
  <main 
- className="flex-1 relative px-4 py-2 sm:px-6 sm:py-4 md:px-8 md:py-6 lg:px-12 lg:py-10 pb-2 flex flex-col"
+ className="flex-1 relative p-2 sm:p-4 md:p-6 lg:p-10 pb-2 flex flex-col"
  onTouchStart={handleTouchStart}
  onTouchMove={handleTouchMove}
  onTouchEnd={handleTouchEnd}

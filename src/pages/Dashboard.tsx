@@ -2509,13 +2509,15 @@ export default function Dashboard() {
           >
             Sort by Urgency
           </Button>
-          <button
+          <Button
+            variant="default"
+            size="sm"
             onClick={() => setShowCalendar(true)}
-            className="shadow__btn"
+            className="h-8 px-3 text-white border-none rounded-[7px] font-bold gap-1.5 bg-[rgb(0,140,255)] uppercase tracking-[2px] text-[11px] transition-[box-shadow] duration-500 shadow-[0_0_25px_rgb(0,140,255)] hover:shadow-[0_0_5px_rgb(0,140,255),0_0_25px_rgb(0,140,255),0_0_50px_rgb(0,140,255),0_0_100px_rgb(0,140,255)]"
           >
-            <Calendar className="w-4 h-4" />
-            calendar
-          </button>
+            <Calendar className="w-4 h-4 text-white" />
+            Calendar
+          </Button>
         </div>
  </div>
  <Card
