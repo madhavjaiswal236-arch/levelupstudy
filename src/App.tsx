@@ -40,9 +40,12 @@ const Syllabus = lazy(() => import("./pages/Syllabus"));
 import { HAPTIC_PATTERNS, vibrate } from "./lib/haptics";
 import { sendNotification } from "./lib/notifications";
 
-import { LunarGravityCard, LunarGravityCanvas } from "./components/ui/lunar-gravity-card";
-import { ShaderAnimation } from "./components/ui/shader-animation";
+const LunarGravityCanvas = lazy(() => import("./components/ui/lunar-gravity-card").then(m => ({ default: m.LunarGravityCanvas })));
+const ShaderAnimation = lazy(() => import("./components/ui/shader-animation").then(m => ({ default: m.ShaderAnimation })));
+const WebGLShader = lazy(() => import("./components/ui/web-gl-shader").then(m => ({ default: m.WebGLShader })));
+const LiquidButton = lazy(() => import("./components/ui/liquid-glass-button").then(m => ({ default: m.LiquidButton })));
 import { TextReveal } from "./components/ui/text-reveal";
+import { PageSkeleton } from "./components/PageSkeleton";
 
 const Protocols = lazy(() => import("./pages/Protocols"));
 const Rivals = lazy(() => import("./pages/Rivals"));
@@ -125,30 +128,17 @@ function AppContent() {
   const processedHistoryRef = useRef(new Set<string>());
 
   const [showWelcomeHero, setShowWelcomeHero] = useState(false);
-  const [isShifted, setIsShifted] = useState(false);
 
   useEffect(() => {
     if (!isLoaded) return;
-    const todayStr = getLogicalDate().toDateString();
-    const lastSeen = localStorage.getItem("last_seen_welcome_hero");
-    if (lastSeen !== todayStr) {
+    const hasSeenForever = localStorage.getItem("welcome_hero_dismissed_forever");
+    if (!hasSeenForever) {
       setShowWelcomeHero(true);
     }
   }, [isLoaded]);
 
-  useEffect(() => {
-    if (showWelcomeHero) {
-      setIsShifted(false);
-      const timer = setTimeout(() => {
-        setIsShifted(true);
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [showWelcomeHero]);
-
   const handleEnterApp = () => {
-    const todayStr = getLogicalDate().toDateString();
-    localStorage.setItem("last_seen_welcome_hero", todayStr);
+    localStorage.setItem("welcome_hero_dismissed_forever", "true");
     setShowWelcomeHero(false);
     vibrate(HAPTIC_PATTERNS.SUCCESS);
   };
@@ -782,114 +772,75 @@ function AppContent() {
   if (isLoaded && showWelcomeHero) {
     return (
       <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans select-none z-[10000]">
-        {/* Background WebGL Shader Animation */}
-        <div className="absolute inset-0 z-0 opacity-80 pointer-events-none">
-          <ShaderAnimation />
+        {/* Background WebGL Shader Animation - layered above main content via canvas z-index */}
+        <div className="absolute inset-0 z-30 pointer-events-none">
+          <Suspense fallback={<div className="absolute inset-0 bg-black" />}>
+            <WebGLShader />
+          </Suspense>
         </div>
 
-        {/* Ambient Overlay to darken background slightly and make text pop */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/80 z-10 pointer-events-none" />
+        {/* Ambient Overlay to darken background slightly and make text pop - layered behind content */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/90 z-0 pointer-events-none" />
 
-        {/* Foreground Content container */}
+        {/* Foreground Content container - layered in the front */}
         <motion.div 
-          layout
-          transition={{ type: "spring", stiffness: 70, damping: 20 }}
-          className="relative z-20 w-full max-w-7xl px-6 py-12 flex flex-col md:flex-row items-center justify-center min-h-screen gap-12"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.0, ease: "easeOut" }}
+          className="relative z-50 w-full max-w-3xl px-6 py-12 flex flex-col items-center justify-center min-h-screen"
         >
-          
-          {/* Left Column (Text, description, button) */}
-          <motion.div 
-            layout 
-            transition={{ type: "spring", stiffness: 70, damping: 20 }}
-            className={`flex flex-col ${isShifted ? "items-center md:items-start text-center md:text-left w-full md:w-[45%]" : "items-center text-center w-full max-w-3xl"}`}
-          >
+          <div className="relative border border-white/10 p-2 w-full mx-auto rounded-3xl bg-zinc-950/85 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] ring-1 ring-white/10 overflow-hidden">
+            {/* Liquid glass light reflections and subtle gloss gradients */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
+            <div className="absolute -top-[40%] -left-[40%] w-[180%] h-[180%] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08)_0%,transparent_55%)] pointer-events-none mix-blend-overlay" />
             
-            {/* Animated Title */}
-            <motion.div 
-              layout 
-              transition={{ type: "spring", stiffness: 70, damping: 20 }}
-              className={`flex flex-col justify-center ${isShifted ? "items-center md:items-start" : "items-center"}`}
-            >
-              <span className={`text-[10px] md:text-xs uppercase tracking-[0.5em] text-cyan-400 font-semibold mb-2 block transition-all duration-1000 ${isShifted ? "opacity-60" : "opacity-100"}`}>
+            <main className="relative border border-white/5 rounded-2xl py-12 px-6 md:px-12 overflow-hidden flex flex-col items-center bg-gradient-to-b from-white/[0.04] to-transparent">
+              <span className="text-[10px] md:text-xs uppercase tracking-[0.4em] text-cyan-400 font-bold mb-4 text-center block">
                 WELCOME TO THE ULTIMATE COMMAND CENTER
               </span>
-              <h1 className="text-5xl md:text-7xl font-black tracking-tighter uppercase leading-none select-none">
-                <TextReveal preset="fade-in-blur" per="word" speedReveal={1.5} className="inline-block">
+              
+              <div className="flex flex-row flex-wrap items-center justify-center mb-6 text-center">
+                <TextReveal
+                  as="h1"
+                  className="text-white text-center text-5xl md:text-7xl font-extrabold tracking-tighter uppercase leading-none select-none filter drop-shadow-[0_0_15px_rgba(255,255,255,0.15)]"
+                  per="char"
+                  preset="fade-in-blur"
+                  speedReveal={1.2}
+                  delay={0.15}
+                >
                   levelup study
                 </TextReveal>
-              </h1>
-              {/* study in gradient colors */}
-              <motion.div 
-                layout
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ 
-                  opacity: { delay: 1.2, duration: 0.8 },
-                  y: { delay: 1.2, duration: 0.8 },
-                  layout: { type: "spring", stiffness: 70, damping: 20 }
-                }}
-                className="mt-3 text-6xl md:text-8xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-transparent uppercase filter drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]"
-              >
-                STUDY
-              </motion.div>
-            </motion.div>
+              </div>
 
-            {/* Shifted details */}
-            <AnimatePresence>
-              {isShifted && (
-                <motion.div
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 1.2, ease: "easeOut" }}
-                  className="space-y-6 mt-8 flex flex-col items-center md:items-start"
-                >
-                  <p className="text-sm md:text-base text-slate-300 max-w-md leading-relaxed font-medium">
-                    Your daily study study command center is online. Click and drag the 3D Moon to rotate, click it to release gravity rings, and enter your workspace to begin.
-                  </p>
-                  
-                  <div className="flex flex-col items-center md:items-start gap-3">
-                    <button
-                      onClick={handleEnterApp}
-                      className="relative px-12 py-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 text-white font-extrabold text-sm uppercase tracking-widest shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:shadow-[0_0_50px_rgba(6,182,212,0.6)] hover:scale-[1.05] active:scale-[0.98] transition-all duration-300 border border-white/20 group overflow-hidden cursor-pointer"
-                    >
-                      {/* Shiny reflection */}
-                      <div className="absolute inset-0 w-[50%] h-full bg-white/20 skew-x-12 translate-x-[-120%] group-hover:translate-x-[250%] transition-transform duration-1000 ease-out pointer-events-none" />
-                      ACCESS STUDY COMMAND
-                    </button>
-                    <span className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold animate-pulse mt-2">
-                      Click the Moon to generate particle orbits
-                    </span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+              <p className="text-white/60 px-6 text-center text-xs md:text-sm lg:text-base max-w-md leading-relaxed mb-8">
+                Your study command center is online. Monitor concepts, practice custom protocols, track daily milestones, and elevate your learnings.
+              </p>
 
-          {/* Right Column: Standalone Interactive Lunar Gravity 3D Component */}
-          <motion.div 
-            layout
-            transition={{ type: "spring", stiffness: 70, damping: 20 }}
-            className={`flex items-center justify-center relative pointer-events-auto z-20 ${isShifted ? "w-full md:w-[50%] h-[350px] md:h-[550px] opacity-100" : "w-0 h-0 overflow-hidden opacity-0"}`}
-          >
-            <AnimatePresence>
-              {isShifted && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.7, rotate: -45 }}
-                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                  exit={{ opacity: 0, scale: 0.7, rotate: 45 }}
-                  transition={{ duration: 1.8, ease: [0.16, 1, 0.3, 1] }}
-                  className="w-full h-full cursor-grab active:cursor-grabbing"
-                >
-                  <LunarGravityCanvas 
-                    onMoonClick={() => {
-                      vibrate(150);
-                    }}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
+              <div className="mb-8 flex items-center justify-center gap-2">
+                <span className="relative flex h-3 w-3 items-center justify-center">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+                </span>
+                <p className="text-xs text-green-500 uppercase tracking-widest font-semibold">System Calibrated & Online</p>
+              </div>
+              
+              <div className="flex justify-center w-full"> 
+                <Suspense fallback={
+                  <button className="h-14 px-10 rounded-full border border-white/20 text-white bg-white/5 animate-pulse">
+                    Let's Go
+                  </button>
+                }>
+                  <LiquidButton 
+                    className="text-white border border-white/20 rounded-full hover:scale-105 duration-300 transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_40px_rgba(6,182,212,0.5)] cursor-pointer" 
+                    size="xl"
+                    onClick={handleEnterApp}
+                  >
+                    Let's Go
+                  </LiquidButton>
+                </Suspense> 
+              </div> 
+            </main>
+          </div>
         </motion.div>
       </div>
     );
@@ -943,56 +894,60 @@ function AppContent() {
  </div>
 
  {/* Enter Name Modal */}
- {createPortal(
- <AnimatePresence>
- {showNameModal && (
- <motion.div
- initial={{ opacity: 0 }}
- animate={{ opacity: 1 }}
- exit={{ opacity: 0 }}
- className="fixed inset-0 z-[9999] dark:bg-black bg-slate-50 overflow-y-auto custom-scrollbar flex flex-col"
- >
- <div className="w-full flex justify-center p-4 py-12 m-auto">
- <motion.div
- initial={{ scale: 0.8, y: 50, opacity: 0 }}
- animate={{ scale: 1, y: 0, opacity: 1 }}
- transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
- className="dark:bg-slate-900 bg-white border border-cyan-500/30 p-8 md:p-12 rounded-3xl max-w-lg w-full text-center shadow-md relative overflow-hidden"
- >
- <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
- <Trophy className="w-16 h-16 dark:text-yellow-400 text-yellow-700 mx-auto mb-6 drop-shadow-md" />
- <h2 className="text-3xl font-black dark:text-white text-slate-900 mb-2 uppercase tracking-widest">
- Welcome, Challenger
- </h2>
- <p className="dark:text-cyan-400 text-cyan-700/80 mb-8 font-mono text-sm">
- Enter your name to begin your journey.
- </p>
+  {createPortal(
+  <AnimatePresence>
+  {showNameModal && (
+  <motion.div
+  initial={{ opacity: 0 }}
+  animate={{ opacity: 1 }}
+  exit={{ opacity: 0 }}
+  className="fixed inset-0 z-[9999] bg-black/40 overflow-y-auto custom-scrollbar flex flex-col"
+  >
+  <div className="w-full flex justify-center p-4 py-12 m-auto">
+  <motion.div
+  initial={{ scale: 0.8, y: 50, opacity: 0 }}
+  animate={{ scale: 1, y: 0, opacity: 1 }}
+  transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
+  className="relative border border-white/20 p-8 md:p-12 rounded-3xl max-w-lg w-full text-center bg-zinc-950/85 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] ring-1 ring-white/10 overflow-hidden"
+  >
+  {/* Liquid glass light reflections and subtle gloss gradients */}
+  <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 via-transparent to-purple-500/10 pointer-events-none" />
+  <div className="absolute -top-[40%] -left-[40%] w-[180%] h-[180%] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08)_0%,transparent_50%)] pointer-events-none mix-blend-overlay" />
+  
+  <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-6 drop-shadow-[0_0_15px_rgba(250,204,21,0.4)] relative z-10" />
+  <h2 className="text-3xl font-black text-white mb-2 uppercase tracking-widest relative z-10 filter drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+  Welcome, Challenger
+  </h2>
+  <p className="text-cyan-400 mb-8 font-mono text-sm relative z-10 uppercase tracking-wide font-semibold">
+  Enter your name to begin your journey.
+  </p>
 
- <form onSubmit={handleNameSubmit} className="space-y-6">
- <input
- type="text"
- value={tempName || ""}
- onChange={(e) => setTempName(e.target.value)}
- placeholder="Your Name"
- id="nameInput"
- className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-4 dark:text-white text-slate-900 text-center text-xl focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-colors"
- autoFocus
- required
- />
- <button
- type="submit"
- className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-lg py-4 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.02]"
- >
- START ADVENTURE
- </button>
- </form>
- </motion.div>
- </div>
- </motion.div>
- )}
- </AnimatePresence>,
- document.body,
- )}
+  <form onSubmit={handleNameSubmit} className="space-y-6 relative z-10">
+  <input
+  type="text"
+  value={tempName || ""}
+  onChange={(e) => setTempName(e.target.value)}
+  placeholder="Your Name"
+  id="nameInput"
+  className="w-full bg-black/60 border-2 border-cyan-500/50 rounded-xl p-4 text-white text-center text-2xl font-bold tracking-wide placeholder-white/30 shadow-[0_0_15px_rgba(6,182,212,0.15)] focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 focus:shadow-[0_0_25px_rgba(6,182,212,0.3)] outline-none transition-all duration-300 relative z-10"
+  autoFocus
+  required
+  />
+  <button
+  type="submit"
+  className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-black text-xl py-4 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] uppercase tracking-wider relative z-10"
+  >
+  START ADVENTURE
+  </button>
+  </form>
+  </motion.div>
+  </div>
+  </motion.div>
+  )}
+  </AnimatePresence>,
+  document.body,
+  )
+  }
 
  {/* Consistency Broken Modal */}
  {createPortal(
@@ -1751,13 +1706,7 @@ function AppContent() {
                   className="max-w-7xl mx-auto w-full relative"
                 >
                   <ErrorBoundary>
-                    <Suspense
-                      fallback={
-                        <div className="flex flex-col items-center justify-center min-h-[50vh]">
-                          <div className="w-8 h-8 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" />
-                        </div>
-                      }
-                    >
+                    <Suspense fallback={<PageSkeleton />}>
                       {renderContent()}
                     </Suspense>
                   </ErrorBoundary>

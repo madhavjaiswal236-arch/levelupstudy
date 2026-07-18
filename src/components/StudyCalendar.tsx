@@ -262,6 +262,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     setUnsyncedChanges(false);
     
     let allSuccess = true;
+    let errorMessage = "";
     try {
         await ensureCalendarAuth();
         
@@ -294,15 +295,16 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
         }
         setTodos(newTodos);
         
-    } catch(e) {
+    } catch(e: any) {
         console.error(e);
         allSuccess = false;
+        errorMessage = e.message || "Failed to apply all changes to Google Calendar.";
     }
     if (allSuccess) {
        showToast("Timeline applied successfully!", "success");
        setUnsyncedChanges(false);
     } else {
-       showToast("Failed to apply all changes to Google Calendar.", "error");
+       showToast(errorMessage || "Failed to apply all changes to Google Calendar.", "error");
     }
     setIsSyncing(false);
   };

@@ -93,6 +93,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
  return { user: result.user, accessToken: cachedAccessToken };
  } catch (error: any) {
  console.error('Sign in error:', error);
+
  if (!Capacitor.isNativePlatform() && (error.code === 'auth/popup-blocked' || error.message?.toLowerCase().includes('popup'))) {
    console.log('Popup blocked, using redirect...');
    import('firebase/auth').then(({ signInWithRedirect }) => {

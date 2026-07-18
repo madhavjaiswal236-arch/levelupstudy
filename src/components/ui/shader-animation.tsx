@@ -45,7 +45,7 @@ export function ShaderAnimation() {
         vec2 uv0 = uv;
         vec3 finalColor = vec3(0.0);
         
-        float t = time * 0.2; // Optimized flow speed
+        float t = time * 0.15; // Extremely smooth and majestic flow speed
         
         // Generate glowing multi-layered cosmic plasma rings
         for (float i = 0.0; i < 3.0; i++) {
@@ -53,26 +53,29 @@ export function ShaderAnimation() {
 
             float d = length(uv) * exp(-length(uv0));
 
-            // Custom neon palette: deep space sapphire blue, neon cyan, electric purple
+            // Custom vibrant neon palette: electric violet, deep sapphire, neon magenta & glowing cyan
             vec3 col = palette(length(uv0) + i * 0.4 + t, 
+                vec3(0.5, 0.4, 0.6), 
                 vec3(0.5, 0.5, 0.5), 
-                vec3(0.5, 0.5, 0.5), 
-                vec3(1.0, 1.0, 1.0), 
-                vec3(0.0, 0.33, 0.67)
+                vec3(2.0, 1.5, 1.0), 
+                vec3(0.1, 0.35, 0.75)
             );
 
             d = sin(d * 8.0 + t) / 8.0;
             d = abs(d);
 
-            // High intensity glow formula
-            d = pow(0.012 / d, 1.25);
+            // Double the glow power and range for a super enhanced, radiant look
+            d = pow(0.024 / d, 1.35);
 
             finalColor += col * d;
         }
         
-        // Ambient background gradient to add depth
-        vec3 ambient = vec3(0.015, 0.02, 0.06) * (1.0 - length(uv0) * 0.4);
+        // Ambient background gradient to add rich deep-space color depth
+        vec3 ambient = vec3(0.02, 0.025, 0.08) * (1.2 - length(uv0) * 0.5);
         finalColor += ambient;
+        
+        // Saturate and boost contrast to make the neon glow extremely prominent
+        finalColor = pow(finalColor, vec3(0.88)) * 1.35;
         
         // Output safety clamp
         finalColor = clamp(finalColor, 0.0, 1.0);

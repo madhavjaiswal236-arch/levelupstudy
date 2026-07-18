@@ -297,8 +297,8 @@ const AsteroidBelt = ({ ringState, massiveAsteroidsRef }: { ringState: 'hidden' 
     if (!meshRef.current) return;
 
     const targetScale = ringState === 'hidden' ? 0 : 1;
-    const lerpSpeed = ringState === 'hidden' ? 8 : 4;
-    scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, delta * lerpSpeed);
+    const lerpSpeed = ringState === 'hidden' ? 12 : 36;
+    scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, Math.min(1.0, delta * lerpSpeed));
 
     if (scaleRef.current < 0.01) {
       meshRef.current.visible = false;
