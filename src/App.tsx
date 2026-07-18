@@ -789,12 +789,20 @@ function AppContent() {
           transition={{ duration: 1.0, ease: "easeOut" }}
           className="relative z-50 w-full max-w-3xl px-6 py-12 flex flex-col items-center justify-center min-h-screen"
         >
-          <div className="relative border border-white/10 p-2 w-full mx-auto rounded-3xl bg-zinc-950/85 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] ring-1 ring-white/10 overflow-hidden">
-            {/* Liquid glass light reflections and subtle gloss gradients */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 via-transparent to-purple-500/5 pointer-events-none" />
-            <div className="absolute -top-[40%] -left-[40%] w-[180%] h-[180%] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08)_0%,transparent_55%)] pointer-events-none mix-blend-overlay" />
+          <div className="relative border border-white/20 p-3 w-full mx-auto rounded-3xl bg-slate-900/35 backdrop-blur-3xl shadow-[inset_0_1.5px_3px_rgba(255,255,255,0.25),_0_25px_50px_-12px_rgba(0,0,0,0.7),_0_0_40px_rgba(59,130,246,0.1)] ring-1 ring-white/10 overflow-hidden transition-all duration-500 hover:border-white/30">
+            {/* Glowing liquid glass orb highlights */}
+            <div className="absolute top-[-10%] left-[10%] w-48 h-48 rounded-full bg-cyan-500/20 blur-3xl animate-pulse pointer-events-none" />
+            <div className="absolute bottom-[-10%] right-[10%] w-48 h-48 rounded-full bg-purple-500/20 blur-3xl animate-pulse pointer-events-none" />
+            <div className="absolute top-[40%] left-[45%] w-36 h-36 rounded-full bg-blue-500/15 blur-3xl pointer-events-none animate-pulse [animation-duration:6s]" />
             
-            <main className="relative border border-white/5 rounded-2xl py-12 px-6 md:px-12 overflow-hidden flex flex-col items-center bg-gradient-to-b from-white/[0.04] to-transparent">
+            {/* Liquid glass light reflections and subtle gloss gradients */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/15 via-transparent to-purple-500/15 pointer-events-none" />
+            <div className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.18)_0%,transparent_60%)] pointer-events-none mix-blend-overlay" />
+            
+            {/* Diagonal premium glass glare line */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_8s_infinite] pointer-events-none" style={{ transform: 'skewX(-25deg)' }} />
+
+            <main className="relative border border-white/10 rounded-2xl py-12 px-6 md:px-12 overflow-hidden flex flex-col items-center bg-gradient-to-b from-white/[0.05] to-transparent backdrop-blur-2xl">
               <span className="text-[10px] md:text-xs uppercase tracking-[0.4em] text-cyan-400 font-bold mb-4 text-center block">
                 WELCOME TO THE ULTIMATE COMMAND CENTER
               </span>
@@ -1689,12 +1697,12 @@ function AppContent() {
  </AnimatePresence>
 
  <main 
- className="flex-1 relative p-2 sm:p-4 md:p-6 lg:p-10 pb-2 flex flex-col"
+ className="flex-1 relative px-4 py-2 sm:px-6 sm:py-4 md:px-8 md:py-6 lg:px-12 lg:py-10 pb-2 flex flex-col"
  onTouchStart={handleTouchStart}
  onTouchMove={handleTouchMove}
  onTouchEnd={handleTouchEnd}
  >
- <div className="flex-1 overflow-hidden relative">
+ <div className="flex-1 overflow-visible relative">
               <AnimatePresence mode="wait" custom={direction}>
                 <motion.div
                   key={activeTab}

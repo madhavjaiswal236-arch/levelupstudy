@@ -15,8 +15,8 @@ export const TiltWrapper: React.FC<TiltWrapperProps> = ({ children, className = 
  const y = useMotionValue(0);
 
  // Springs to add bounce and physics
- const mouseXSpring = useSpring(x, { stiffness: 350, damping: 25 });
- const mouseYSpring = useSpring(y, { stiffness: 350, damping: 25 });
+ const mouseXSpring = useSpring(x, { stiffness: 150, damping: 20, mass: 0.5 });
+ const mouseYSpring = useSpring(y, { stiffness: 150, damping: 20, mass: 0.5 });
 
  // Map coordinate bounds (-0.5 to 0.5) to rotation range
  const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], [`${tiltAmount}deg`, `-${tiltAmount}deg`]);
@@ -58,7 +58,7 @@ export const TiltWrapper: React.FC<TiltWrapperProps> = ({ children, className = 
  onMouseMove={handleMouseMove}
  onMouseLeave={handleMouseLeave}
  style={{
- rotateX,
+ rotateX, transformStyle: "preserve-3d", willChange: "transform",
  rotateY
  }}
  whileHover={{ scale: 1.02 }}
