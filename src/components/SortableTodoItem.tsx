@@ -2,7 +2,8 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "motion/react";
-import { GripVertical, Circle, CheckCircle2, Target, Calendar, Trash2 } from "lucide-react";
+import { GripVertical, Target, Calendar, Trash2 } from "lucide-react";
+import { NeonCheckbox } from "./ui/neon-checkbox";
 
 interface SortableTodoItemProps {
   todo: any;
@@ -25,6 +26,14 @@ export function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoI
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  const checkboxColor = todo.completed
+    ? "green"
+    : todo.priority === "High"
+    ? "rose"
+    : todo.priority === "Medium"
+    ? "amber"
+    : "cyan";
 
   return (
     <motion.div
@@ -78,32 +87,12 @@ export function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoI
           onClick={() => toggleTodo(todo.id)}
           className="flex items-center gap-4 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg p-0.5"
         >
-          <motion.div
-            key={todo.completed ? "checked" : "unchecked"}
-            initial={{
-              scale: todo.completed ? 1.5 : 0.8,
-              rotate: todo.completed ? -15 : -10,
-              opacity: 0,
-            }}
-            animate={{ scale: 1, rotate: 0, opacity: 1 }}
-            transition={{
-              type: "spring",
-              stiffness: 400,
-              damping: 15,
-              bounce: 0.6,
-            }}
-            className={
-              todo.completed
-                ? "dark:text-emerald-400 text-emerald-700"
-                : "dark:text-cyan-400 text-cyan-700 group-hover:dark:text-cyan-400 text-cyan-700 transition-colors"
-            }
-          >
-            {todo.completed ? (
-              <CheckCircle2 className="w-6 h-6 drop-shadow-md" />
-            ) : (
-              <Circle className="w-6 h-6" />
-            )}
-          </motion.div>
+          <NeonCheckbox
+            checked={todo.completed}
+            onChange={() => {}} // Click handled by parent button's onClick
+            color={checkboxColor}
+            className="pointer-events-none shrink-0"
+          />
           
           <div className="flex flex-col min-w-0 flex-1">
             <span

@@ -869,7 +869,7 @@ function AppContent() {
  <div className="fixed -inset-10 pointer-events-none z-0 dark:bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[linear-gradient(to_right,#0000000a_1px,transparent_1px),linear-gradient(to_bottom,#0000000a_1px,transparent_1px)] bg-[size:40px_40px]" />
 
  {/* Background Glows */}
- <div className="fixed -inset-10 pointer-events-none z-0 overflow-hidden">
+ <div className="hidden fixed -inset-10 pointer-events-none z-0 overflow-hidden">
    {/* Top left cyan glow */}
    <div className="absolute top-[-10%] left-[-10%] w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-cyan-400/20 dark:bg-cyan-500/12 blur-[100px] md:blur-[150px]  pointer-events-none" />
    {/* Bottom right purple glow */}

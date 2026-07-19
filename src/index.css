@@ -260,3 +260,176 @@
   user-select: none !important;
   -webkit-user-select: none !important;
 }
+
+/* ==========================================
+   NEON CHECKBOX STYLING
+   ========================================== */
+.neon-checkbox-container {
+  --neon-color: #22d3ee;
+  --neon-shadow: rgba(34, 211, 238, 0.35);
+  --neon-border: rgba(34, 211, 238, 0.6);
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+/* Color Variants */
+.neon-checkbox-container.neon-cyan {
+  --neon-color: #22d3ee;
+  --neon-shadow: rgba(34, 211, 238, 0.35);
+  --neon-border: rgba(34, 211, 238, 0.6);
+}
+
+.neon-checkbox-container.neon-green {
+  --neon-color: #10b981;
+  --neon-shadow: rgba(16, 185, 129, 0.35);
+  --neon-border: rgba(16, 185, 129, 0.6);
+}
+
+.neon-checkbox-container.neon-rose {
+  --neon-color: #f43f5e;
+  --neon-shadow: rgba(244, 63, 94, 0.35);
+  --neon-border: rgba(244, 63, 94, 0.6);
+}
+
+.neon-checkbox-container.neon-amber {
+  --neon-color: #f59e0b;
+  --neon-shadow: rgba(245, 158, 11, 0.35);
+  --neon-border: rgba(245, 158, 11, 0.6);
+}
+
+.neon-checkbox-container.neon-purple {
+  --neon-color: #a855f7;
+  --neon-shadow: rgba(168, 85, 247, 0.35);
+  --neon-border: rgba(168, 85, 247, 0.6);
+}
+
+/* Dots on hover */
+.neon-checkbox-container::before,
+.neon-checkbox-container::after {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--neon-color);
+  opacity: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none;
+}
+
+.neon-checkbox-container::before {
+  left: 0px;
+}
+
+.neon-checkbox-container::after {
+  right: 0px;
+}
+
+.neon-checkbox-container:hover::before,
+.group:hover .neon-checkbox-container::before {
+  opacity: 1;
+  left: -12px;
+  box-shadow: 0 0 10px var(--neon-color), 0 0 20px var(--neon-color);
+}
+
+.neon-checkbox-container:hover::after,
+.group:hover .neon-checkbox-container::after {
+  opacity: 1;
+  right: -12px;
+  box-shadow: 0 0 10px var(--neon-color), 0 0 20px var(--neon-color);
+}
+
+/* Checkmark box */
+.neon-checkmark {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--neon-border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 12px var(--neon-shadow);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.neon-checkbox-container:hover .neon-checkmark,
+.group:hover .neon-checkmark {
+  border-color: var(--neon-color);
+  transform: scale(1.1);
+  box-shadow: 
+    0 0 15px var(--neon-shadow),
+    0 0 30px var(--neon-shadow),
+    inset 0 0 8px var(--neon-shadow);
+}
+
+.neon-checkmark::before {
+  content: "";
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(45deg, var(--neon-color), #34d399);
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform: scale(0) rotate(-45deg);
+}
+
+.neon-checkbox-container.checked .neon-checkmark::before {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+
+/* Pulse animation on checked status */
+.neon-checkbox-container.checked .neon-checkmark {
+  animation: neon-pulse 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes neon-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 15px var(--neon-shadow);
+  }
+  50% {
+    transform: scale(0.85);
+    box-shadow: 
+      0 0 25px var(--neon-shadow),
+      0 0 40px var(--neon-shadow);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 15px var(--neon-shadow);
+  }
+}
+
+/* SVG icon transitions */
+.neon-checkmark svg {
+  width: 0;
+  height: 0;
+  color: #030712; /* Dark slate background text */
+  z-index: 1;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+}
+
+.neon-checkbox-container.checked .neon-checkmark svg {
+  width: 16px;
+  height: 16px;
+  transform: rotate(360deg);
+}
+
+/* Label effects if integrated directly */
+.neon-checkbox-label {
+  transition: all 0.3s ease;
+}
+
+.neon-checkbox-container:hover .neon-checkbox-label {
+  transform: translateX(4px);
+}

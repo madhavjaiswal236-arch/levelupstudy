@@ -2,7 +2,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { TiltWrapper } from '../components/TiltWrapper';
-import { CheckCircle2, Circle, Activity, BrainCircuit, Target, AlertTriangle } from 'lucide-react';
+import { Activity, BrainCircuit, Target, AlertTriangle } from 'lucide-react';
+import { NeonCheckbox } from '../components/ui/neon-checkbox';
 import { useAppContext } from '../context/AppContext';
 import { TourStep, useTour } from '../components/TourGuide';
 import { useEffect } from 'react';
@@ -115,7 +116,7 @@ export default function Missions() {
  animate={{ opacity: 1, y: 0 }}
  >
  <Card 
- className={`cursor-pointer transition-all duration-300 relative overflow-hidden ${
+ className={`group cursor-pointer transition-all duration-300 relative overflow-hidden ${
  quest.completed ? 'border-green-500/30 bg-green-500/5' : 'dark:border-white/10 border-black/10 dark:bg-black bg-slate-50 hover:border-cyan-500/50'
  }`}
  onClick={() => toggleQuest(quest.id)}
@@ -134,19 +135,12 @@ export default function Missions() {
  </AnimatePresence>
  <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
  <div className="flex items-start sm:items-center gap-4">
- <motion.div
- key={quest.completed ? 'checked' : 'unchecked'}
- initial={{ scale: quest.completed ? 1.5 : 0.9, rotate: quest.completed ? -15 : 0, opacity: 0 }}
- animate={{ scale: 1, rotate: 0, opacity: 1 }}
- transition={{ type: "spring", stiffness: 400, damping: 15, bounce: 0.6 }}
- className={quest.completed ? "dark:text-green-400 text-green-700" : "text-slate-500"}
- >
- {quest.completed ? (
- <CheckCircle2 className="w-6 h-6 drop-shadow-md shrink-0 mt-1 sm:mt-0" />
- ) : (
- <Circle className="w-6 h-6 shrink-0 mt-1 sm:mt-0" />
- )}
- </motion.div>
+ <NeonCheckbox
+ checked={quest.completed}
+ onChange={() => {}} // Controlled by the parent Card's onClick
+ color={quest.completed ? "green" : quest.priority === "High" ? "rose" : quest.priority === "Medium" ? "amber" : "cyan"}
+ className="pointer-events-none shrink-0 mt-1 sm:mt-0"
+ />
  <div>
  <span className={`text-lg font-medium block ${quest.completed ? 'text-slate-500 line-through' : 'dark:text-slate-200 text-slate-900'}`}>
  {quest.text}
