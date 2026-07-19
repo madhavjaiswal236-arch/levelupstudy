@@ -869,15 +869,15 @@ function AppContent() {
  <div className="fixed -inset-10 pointer-events-none z-0 dark:bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[linear-gradient(to_right,#0000000a_1px,transparent_1px),linear-gradient(to_bottom,#0000000a_1px,transparent_1px)] bg-[size:40px_40px]" />
 
  {/* Background Glows */}
- <div className="hidden fixed -inset-10 pointer-events-none z-0 overflow-hidden">
+ <div className="fixed -inset-10 pointer-events-none z-0 overflow-hidden">
    {/* Top left cyan glow */}
-   <div className="absolute top-[-10%] left-[-10%] w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-cyan-400/20 dark:bg-cyan-500/5  pointer-events-none" />
+   <div className="absolute top-[-10%] left-[-10%] w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-cyan-400/20 dark:bg-cyan-500/12 blur-[100px] md:blur-[150px]  pointer-events-none" />
    {/* Bottom right purple glow */}
-   <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-purple-400/20 dark:bg-purple-500/5  pointer-events-none" />
+   <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full bg-purple-400/20 dark:bg-purple-500/12 blur-[100px] md:blur-[150px]  pointer-events-none" />
    {/* Middle left amber/yellow warm glow */}
-   <div className="absolute top-[30%] left-[5%] w-[40vw] h-[40vw] max-w-[400px] max-h-[400px] rounded-full bg-amber-400/12 dark:bg-amber-500/3 blur-[90px] md:blur-[120px] pointer-events-none" />
+   <div className="absolute top-[30%] left-[5%] w-[40vw] h-[40vw] max-w-[400px] max-h-[400px] rounded-full bg-amber-400/15 dark:bg-amber-500/8 blur-[100px] md:blur-[140px] pointer-events-none" />
    {/* Middle right pink glow */}
-   <div className="absolute top-[50%] right-[5%] w-[45vw] h-[45vw] max-w-[450px] max-h-[450px] rounded-full bg-pink-400/12 dark:bg-pink-500/3 blur-[100px] md:blur-[130px] pointer-events-none" />
+   <div className="absolute top-[50%] right-[5%] w-[45vw] h-[45vw] max-w-[450px] max-h-[450px] rounded-full bg-pink-400/15 dark:bg-pink-500/8 blur-[110px] md:blur-[150px] pointer-events-none" />
  
  
  
@@ -1613,7 +1613,7 @@ function AppContent() {
  <Trophy className="w-8 h-8 md:w-12 md:h-12 text-yellow-500 dark:text-yellow-400 icon-glow-yellow transition-all duration-300" />
  </motion.div>
 
- <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter dark:text-white text-slate-900 drop-shadow-md">
+ <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 dark:from-[#9effff] dark:via-[#4ba8ff] dark:to-[#d8b4fe] drop-shadow-[0_0_35px_rgba(59,130,246,0.35)]">
  LevelUp Study
  </h1>
 

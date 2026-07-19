@@ -1931,7 +1931,7 @@ export default function Dashboard() {
  nextStep="dashboard-tasks"
  >
  <TiltWrapper tiltAmount={2} className="h-full">
- <Card className="relative overflow-hidden dark:border-white/5 border-black/5 md:border-cyan-500/30 shadow-md md:shadow-md hover:-translate-y-1 hover:shadow-md md:hover:shadow-md transition-all duration-300 group h-full dark:bg-slate-900 bg-white md:dark:bg-black rounded-3xl md:rounded-lg">
+ <Card className="relative overflow-visible dark:border-white/5 border-black/5 md:border-cyan-500/30 shadow-md md:shadow-md hover:-translate-y-1 hover:shadow-md md:hover:shadow-md transition-all duration-300 group h-full dark:bg-slate-900 bg-white md:dark:bg-black rounded-3xl md:rounded-lg">
  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/10 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-all duration-1000 -translate-x-full group-hover:translate-x-full ease-in-out pointer-events-none z-20" />
  <div className="absolute -top-12 -right-12 w-48 h-48 bg-cyan-500/10 rounded-full blur-[60px] pointer-events-none" />
  <CardHeader className="flex flex-row items-start md:items-center justify-between relative z-10 pt-4 px-5 md:pt-5 md:px-6 pb-0 gap-2">
@@ -2153,7 +2153,7 @@ export default function Dashboard() {
  {/* Quick Stats & XP Breakdown */}
  <div className="grid grid-cols-2 gap-4 md:gap-0 md:flex md:flex-col justify-between md:space-y-6">
  <TiltWrapper tiltAmount={4} className="flex-1">
- <Card className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-blue-500/20 h-full hover:-translate-y-1 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
+ <Card className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-blue-500/20 h-full hover:-translate-y-1 hover:shadow-md transition-all duration-300 group relative overflow-visible">
  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/10 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-all duration-1000 -translate-x-full group-hover:translate-x-full ease-in-out pointer-events-none z-20" />
  <CardContent className="p-4 md:p-6 flex flex-col items-center justify-center h-full gap-2 md:gap-4 text-center relative z-10">
  <motion.div
@@ -2186,7 +2186,7 @@ export default function Dashboard() {
  </TiltWrapper>
 
  <TiltWrapper tiltAmount={4} className="flex-1">
- <Card className="dark:bg-black bg-white dark:border-orange-500/20 h-full hover:-translate-y-1 hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+ <Card className="dark:bg-black bg-white dark:border-orange-500/20 h-full hover:-translate-y-1 hover:shadow-md transition-all duration-300 relative overflow-visible group">
  <div className="absolute inset-0 pointer-events-none opacity-20 group-hover:opacity-40 transition-opacity duration-500">
  <motion.div
  animate={{ y: [0, -20, 0], x: [0, 10, 0], rotate: 10 }}
@@ -2268,7 +2268,7 @@ export default function Dashboard() {
  <TiltWrapper tiltAmount={6}>
  <Card 
  onClick={() => setShowLiveDay(true)}
- className="cursor-pointer relative overflow-hidden border-blue-400/50 shadow-md hover:shadow-md transition-all duration-500 dark:bg-gradient-to-br dark:from-blue-950/80 dark:to-black bg-gradient-to-br from-blue-100 to-white transform hover:scale-[1.01]"
+ className="cursor-pointer relative overflow-visible border-blue-400/50 shadow-md hover:shadow-md transition-all duration-500 dark:bg-gradient-to-br dark:from-blue-950/80 dark:to-black bg-gradient-to-br from-blue-100 to-white transform hover:scale-[1.01]"
  >
  <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-20 mix-blend-overlay pointer-events-none" />
  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1 bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-70" />
