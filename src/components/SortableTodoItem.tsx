@@ -2,7 +2,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "motion/react";
-import { GripVertical, Target, Calendar, Trash2 } from "lucide-react";
+import { GripVertical, Target, Calendar, Trash2, Clock } from "lucide-react";
 import { NeonCheckbox } from "./ui/neon-checkbox";
 
 interface SortableTodoItemProps {
@@ -129,6 +129,47 @@ export function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoI
               >
                 {todo.type}
               </span>
+              {(() => {
+                let durationStr = "";
+                if (todo.startTime && todo.endTime) {
+                  const diffMs = new Date(todo.endTime).getTime() - new Date(todo.startTime).getTime();
+                  const diffMins = Math.round(diffMs / 60000);
+                  if (diffMins > 0) {
+                    const hrs = Math.floor(diffMins / 60);
+                    const mins = diffMins % 60;
+                    if (hrs > 0 && mins > 0) {
+                      durationStr = `${hrs}h ${mins}m`;
+                    } else if (hrs > 0) {
+                      durationStr = `${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`;
+                    } else {
+                      durationStr = `${mins} mins`;
+                    }
+                  }
+                } else if (todo.durationMinutes) {
+                  const hrs = Math.floor(todo.durationMinutes / 60);
+                  const mins = todo.durationMinutes % 60;
+                  if (hrs > 0 && mins > 0) {
+                    durationStr = `${hrs}h ${mins}m`;
+                  } else if (hrs > 0) {
+                    durationStr = `${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`;
+                  } else {
+                    durationStr = `${todo.durationMinutes} mins`;
+                  }
+                }
+                if (!durationStr) return null;
+                return (
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded border uppercase tracking-wider transition-colors flex items-center gap-1 ${
+                      todo.completed
+                        ? "dark:text-slate-500 text-slate-600 dark:bg-slate-800 bg-slate-100/50 dark:border-slate-700 border-slate-300/50"
+                        : "dark:text-emerald-400 text-emerald-700 bg-emerald-950/50 border-emerald-800/50 shadow-md font-bold"
+                    }`}
+                  >
+                    <Clock className="w-3 h-3 shrink-0" />
+                    {durationStr}
+                  </span>
+                );
+              })()}
               {!todo.completed && todo.xpReward > 0 && (
                 <span className="flex items-center gap-1 text-[10px] font-mono dark:text-amber-400 text-amber-700 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded shadow-md transition-opacity group/xp">
                   <motion.div

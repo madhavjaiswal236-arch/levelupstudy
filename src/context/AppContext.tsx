@@ -118,6 +118,7 @@ export interface Todo {
  calendarTaskId?: string;
  startTime?: string;
  endTime?: string;
+ durationMinutes?: number;
 }
 
 export interface PracticeSession {
@@ -237,6 +238,9 @@ interface AppState {
  setEquippedAura: (aura: string) => void;
  unlockedItems: string[];
  setUnlockedItems: React.Dispatch<React.SetStateAction<string[]>>;
+ ongoingChapters: Record<string, string>;
+ setOngoingChapters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+ getCurrentChapterForSubject: (subj: string) => string | null;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -311,6 +315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
  const [equippedTitle, setEquippedTitle] = useState<string>("");
  const [equippedAura, setEquippedAura] = useState<string>("");
  const [unlockedItems, setUnlockedItems] = useState<string[]>([]);
+ const [ongoingChapters, setOngoingChapters] = useState<Record<string, string>>({});
  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
  taskReminders: true,
  motivationalAlerts: true,
@@ -458,6 +463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
  setEquippedTitle(parsed.equippedTitle || "");
  setEquippedAura(parsed.equippedAura || "");
  setUnlockedItems(parsed.unlockedItems || []);
+ setOngoingChapters(parsed.ongoingChapters || {});
           setLevel(parsed.level || 1);
           setStreakDays(parsed.streakDays || 0);
           setLastStudyDate(parsed.lastStudyDate || null);
@@ -491,7 +497,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
  streakDays, lastStudyDate, focusBadges, syllabus, activeBoost,
  class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules,
  habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
- unlockedItems, notificationSettings, totalXpGoal
+ unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
  };
  const timeoutId = setTimeout(() => {
       if (Capacitor.isNativePlatform()) {
@@ -516,7 +522,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
  }, [isLoaded, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
- questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal]);
+ questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal, ongoingChapters]);
 
  // Handle Cross-Tab Synchronization
  useEffect(() => {
@@ -538,6 +544,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
  setEquippedTitle(parsed.equippedTitle || "");
  setEquippedAura(parsed.equippedAura || "");
  setUnlockedItems(parsed.unlockedItems || []);
+ setOngoingChapters(parsed.ongoingChapters || {});
  } catch (err) {
  console.error("Storage event parse error", err);
  }
@@ -901,6 +908,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
  setPendingMissedDays([]);
  };
 
+ const getCurrentChapterForSubject = (subj: string) => {
+   if (!subj || !['Physics', 'Chemistry', 'Mathematics'].includes(subj)) return null;
+
+   if (ongoingChapters[subj]) {
+     return ongoingChapters[subj];
+   }
+
+   const matchingTodos = todos
+     .filter(t => t.subject === subj && t.chapter)
+     .sort((a, b) => b.id - a.id);
+     
+   if (matchingTodos.length > 0) {
+     return matchingTodos[0].chapter;
+   }
+   
+   if (history && history.length > 0) {
+     const sortedHistory = [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+     for (const entry of sortedHistory) {
+       if (entry.completedTasks) {
+         const matched = entry.completedTasks.find(t => t.subject === subj && t.chapter);
+         if (matched && matched.chapter) {
+           return matched.chapter;
+         }
+       }
+     }
+   }
+   
+   const chapters = syllabus[subj as keyof typeof syllabus] || [];
+   if (chapters.length > 0) {
+     return chapters[0].name;
+   }
+   return null;
+ };
+
    const contextValue = useMemo(() => ({
     xp,
     setXp,
@@ -987,7 +1028,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hoursStudiedToday,
     setHoursStudiedToday,
     notificationSettings,
-    setNotificationSettings
+    setNotificationSettings,
+    ongoingChapters,
+    setOngoingChapters,
+    getCurrentChapterForSubject
   }), [
     xp,
     xpGainedToday,
@@ -1073,7 +1117,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hoursStudiedToday,
     setHoursStudiedToday,
     notificationSettings,
-    setNotificationSettings
+    setNotificationSettings,
+    ongoingChapters,
+    getCurrentChapterForSubject
   ]);
 
   return (

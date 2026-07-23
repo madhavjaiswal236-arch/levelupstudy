@@ -23,42 +23,8 @@ interface JeeSessionLoggerProps {
 }
 
 export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessionLog }: JeeSessionLoggerProps) {
- const { syllabus, addXp, setHoursStudiedToday, updateChapterStats, setQuestionsSolved, todos, setTodos, loggedTasksToday, setLoggedTasksToday, getStreakMultiplier, activeBoost, setPendingTasks, history } = useAppContext();
+ const { syllabus, addXp, setHoursStudiedToday, updateChapterStats, setQuestionsSolved, todos, setTodos, loggedTasksToday, setLoggedTasksToday, getStreakMultiplier, activeBoost, setPendingTasks, history, getCurrentChapterForSubject } = useAppContext();
  const { hapticSuccess } = useHaptic();
- 
- // Helper to determine what chapter the user is currently on based on created tasks and recent history
- const getCurrentChapterForSubject = (subj: string) => {
-   if (!subj || !['Physics', 'Chemistry', 'Mathematics'].includes(subj)) return null;
-
-   // 1. Look in active/upcoming/recent todos
-   const matchingTodos = todos
-     .filter(t => t.subject === subj && t.chapter)
-     .sort((a, b) => b.id - a.id); // higher ID means more recent
-     
-   if (matchingTodos.length > 0) {
-     return matchingTodos[0].chapter;
-   }
-   
-   // 2. Look in history (recent logs)
-   if (history && history.length > 0) {
-     const sortedHistory = [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-     for (const entry of sortedHistory) {
-       if (entry.completedTasks) {
-         const matched = entry.completedTasks.find(t => t.subject === subj && t.chapter);
-         if (matched && matched.chapter) {
-           return matched.chapter;
-         }
-       }
-     }
-   }
-   
-   // 3. Fallback to first chapter in syllabus
-   const chapters = syllabus[subj as keyof typeof syllabus] || [];
-   if (chapters.length > 0) {
-     return chapters[0].name;
-   }
-   return null;
- };
  
  const [isExpanded, setIsExpanded] = useState(false);
  const [pendingTaskId, setPendingTaskId] = useState<number | null>(null);
@@ -119,6 +85,22 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  
  const st = typeMap[pendingSessionLog.type] || 'Practice';
  setSessionType(st);
+
+ // Pre-fill custom duration if the task has one
+ let hoursVal: number | string = '1.75';
+ const matchedTodo = todos.find(t => t.id === pendingSessionLog.taskId);
+ if (matchedTodo) {
+   if (matchedTodo.durationMinutes) {
+     hoursVal = (matchedTodo.durationMinutes / 60).toString();
+   } else if (matchedTodo.startTime && matchedTodo.endTime) {
+     const diffMs = new Date(matchedTodo.endTime).getTime() - new Date(matchedTodo.startTime).getTime();
+     const diffMins = Math.round(diffMs / 60000);
+     if (diffMins > 0) {
+       hoursVal = (diffMins / 60).toString();
+     }
+   }
+ }
+ setHours(hoursVal);
  
  if (st === 'DPP') {
  setDppStatus('solved');
@@ -132,7 +114,7 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  clearPendingSessionLog();
  }
  }
- }, [pendingSessionLog, clearPendingSessionLog]);
+ }, [pendingSessionLog, clearPendingSessionLog, todos]);
 
  const handlePreLogCheck = () => {
  if (!subject || !chapter || (sessionType !== 'DPP' && !hours)) return;

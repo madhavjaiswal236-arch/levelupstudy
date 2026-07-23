@@ -8,7 +8,7 @@ import { TourStep, useTour } from '@/components/TourGuide';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Syllabus() {
- const { syllabus, isLoaded, todos, practiceSessions, pendingTasks, backlogPriorities, setBacklogPriorities } = useAppContext();
+ const { syllabus, isLoaded, todos, practiceSessions, pendingTasks, backlogPriorities, setBacklogPriorities, ongoingChapters, setOngoingChapters } = useAppContext();
  const [activeSubject, setActiveSubject] = useState<'Physics' | 'Chemistry' | 'Mathematics'>('Physics');
  const [selectedChapterDetail, setSelectedChapterDetail] = useState<any>(null);
  const [showBacklogs, setShowBacklogs] = useState(false);
@@ -235,6 +235,11 @@ export default function Syllabus() {
  <span className="text-xs dark:text-slate-400 text-slate-600 font-mono">
  LVL {chapter.mastery}
  </span>
+ {ongoingChapters[activeSubject] === chapter.name && (
+   <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse flex-shrink-0">
+     Ongoing
+   </span>
+ )}
  </div>
  </div>
  <span className={`text-xs font-mono px-2 py-1 rounded border ${getStatusColor(chapter.status)}`}>
@@ -316,6 +321,26 @@ export default function Syllabus() {
  <span className={`text-xs font-mono px-2 py-0.5 rounded border ${getStatusColor(selectedChapterDetail.status)}`}>
  {selectedChapterDetail.confidence.toUpperCase()}
  </span>
+ {(() => {
+   const isOngoing = ongoingChapters[activeSubject] === selectedChapterDetail.name;
+   return (
+     <button
+       onClick={() => {
+         setOngoingChapters(prev => ({
+           ...prev,
+           [activeSubject]: isOngoing ? "" : selectedChapterDetail.name
+         }));
+       }}
+       className={`text-xs font-bold px-2.5 py-0.5 rounded transition-all flex items-center gap-1 ${
+         isOngoing 
+           ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/50' 
+           : 'dark:bg-slate-800 bg-slate-100 border dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700'
+       }`}
+     >
+       {isOngoing ? "✓ Currently Going On" : "Mark as Currently Going On"}
+     </button>
+   );
+ })()}
  </div>
  </div>
  <div className="p-6 space-y-6">

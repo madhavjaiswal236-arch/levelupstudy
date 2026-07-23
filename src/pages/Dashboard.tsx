@@ -223,7 +223,8 @@ export default function Dashboard() {
   setTodos,
   setPendingTasks,
   setClass11EndDate,
-  history
+  history,
+  getCurrentChapterForSubject
 } = useAppContext();
 
  const { activeStep, setActiveStep, hasCompleted } = useTour();
@@ -293,40 +294,6 @@ export default function Dashboard() {
  setToastMessage(msg);
  setToastType(type);
  setTimeout(() => setToastMessage(""), 5000);
- };
-
- // Helper to determine what chapter the user is currently on based on created tasks and recent history
- const getCurrentChapterForSubject = (subj: string) => {
-   if (!subj || !['Physics', 'Chemistry', 'Mathematics'].includes(subj)) return null;
-
-   // 1. Look in active/upcoming/recent todos
-   const matchingTodos = todos
-     .filter(t => t.subject === subj && t.chapter)
-     .sort((a, b) => b.id - a.id); // higher ID means more recent
-     
-   if (matchingTodos.length > 0) {
-     return matchingTodos[0].chapter;
-   }
-   
-   // 2. Look in history (recent logs)
-   if (history && history.length > 0) {
-     const sortedHistory = [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-     for (const entry of sortedHistory) {
-       if (entry.completedTasks) {
-         const matched = entry.completedTasks.find(t => t.subject === subj && t.chapter);
-         if (matched && matched.chapter) {
-           return matched.chapter;
-         }
-       }
-     }
-   }
-   
-   // 3. Fallback to first chapter in syllabus
-   const chapters = syllabus[subj as keyof typeof syllabus] || [];
-   if (chapters.length > 0) {
-     return chapters[0].name;
-   }
-   return null;
  };
 
  // Study Session Timer State
@@ -459,23 +426,6 @@ export default function Dashboard() {
  "Medium",
  );
  const [addToCalendarOption, setAddToCalendarOption] = useState(true);
-
-  // Auto-select subject and chapter based on recent tasks
-  useEffect(() => {
-    if (!selectedSubject && !selectedChapter && (history.length > 0 || todos.length > 0)) {
-      // Look at recent todos first, then history
-      let recentTasks = [...todos].reverse();
-      if (recentTasks.length === 0) {
-        recentTasks = [...history].flatMap(h => h.completedTasks || []).reverse();
-      }
-      
-      const lastTask = recentTasks.find(t => t.subject && t.chapter);
-      if (lastTask) {
-        setSelectedSubject(lastTask.subject);
-        setSelectedChapter(lastTask.chapter);
-      }
-    }
-  }, [history, todos, selectedSubject, selectedChapter]);
 
   const [customDuration, setCustomDuration] = useState(105);
 
@@ -741,25 +691,47 @@ export default function Dashboard() {
  }
  const taskId = Date.now();
 
- // Default duration
- let durationMinutes = 105;
- if (type === "Practice" || type === "Custom" || type === "Revision" || type === "Quick Custom") {
- durationMinutes = 60;
- } else if (type === "Chapter Test") {
- durationMinutes = 120;
+ // Set duration (override default if custom duration is provided)
+ let durationMinutes = durationInput || 105;
+ if (!durationInput) {
+   if (type === "Practice" || type === "Custom" || type === "Revision" || type === "Quick Custom") {
+     durationMinutes = 60;
+   } else if (type === "Chapter Test") {
+     durationMinutes = 120;
+   }
+ }
+
+ // Calculate XP dynamically on an hourly basis
+ let calculatedXp = xpReward;
+ const currentSub = selectedSubject || undefined;
+ if (currentSub) {
+   let baseXpPerHour = 120; // 120 XP per hour by default
+   if (currentSub === "Mathematics" || currentSub.toLowerCase().includes("math")) {
+     baseXpPerHour = 150; // 150 XP per hour for Mathematics
+   }
+   calculatedXp = Math.max(10, Math.round((durationMinutes / 60) * baseXpPerHour));
+   
+   // Priority multiplier
+   if (taskPriority === "High") calculatedXp = Math.round(calculatedXp * 1.5);
+   else if (taskPriority === "Low") calculatedXp = Math.round(calculatedXp * 0.8);
+ } else {
+   calculatedXp = Math.max(10, Math.round((durationMinutes / 60) * 120));
+   if (taskPriority === "High") calculatedXp = Math.round(calculatedXp * 1.5);
+   else if (taskPriority === "Low") calculatedXp = Math.round(calculatedXp * 0.8);
  }
 
  const newTask = {
  id: taskId,
  text,
  completed: false,
- xpReward,
+ xpReward: calculatedXp,
  type,
  priority: taskPriority,
  subject: selectedSubject || undefined,
  chapter: selectedChapter || undefined,
  lectureNumber:
  type === "Lecture" && lecNum ? parseInt(lecNum) : undefined,
+ durationMinutes: durationMinutes
  };
 
  setTodos((prev) => [...prev, newTask]);
@@ -2613,8 +2585,8 @@ export default function Dashboard() {
        className="dark:border-slate-700 border-slate-300 hover:border-cyan-500 hover:dark:text-cyan-400 text-cyan-700 dark:text-slate-300 text-slate-900 dark:bg-black bg-white flex flex-col items-center justify-center py-4 h-auto gap-1"
        onClick={() => {
          setSelectedSubject(sub);
-         setSelectedChapter(suggested);
-         setTaskStep(suggested ? 3 : 2 as any);
+         setSelectedChapter(null);
+         setTaskStep(2);
        }}
      >
        <span className="font-bold">{sub}</span>
