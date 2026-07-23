@@ -21,7 +21,7 @@ import {
  Lock as LockIcon,
  Moon,
  Sun,
-  Settings as SettingsIcon, Calendar
+  Settings as SettingsIcon, Calendar, Keyboard, X, HelpCircle
 } from "lucide-react";
 import { AppProvider, useAppContext, getLogicalDate } from "./context/AppContext";
 import { getXpForLevel } from "./lib/utils";
@@ -70,6 +70,41 @@ function AppContent() {
   // Power Saver Mode for Mobile
   const [isPowerSaver, setIsPowerSaver] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const showShortcutsModalRef = useRef(false);
+  useEffect(() => {
+    showShortcutsModalRef.current = showShortcutsModal;
+  }, [showShortcutsModal]);
+
+  const levelRef = useRef(1);
+  const {
+  xp,
+  level,
+  streakDays,
+  dailyTarget,
+  playerName,
+  setPlayerName,
+  isLoaded,
+  needsRollover,
+  setNeedsRollover,
+  consistencyBroken,
+  setConsistencyBroken,
+  completeRollover,
+  history,
+  setHistory,
+  pendingMissedDays,
+  submitMissedDayReasons,
+  lastStudyDate,
+  practiceSessions,
+  pendingTasks,
+  todos,
+  xpGainedToday,
+  notificationSettings
+  } = useAppContext();
+
+  useEffect(() => {
+    levelRef.current = level;
+  }, [level]);
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -101,30 +136,6 @@ function AppContent() {
     }
   }, []);
  useAuthToken();
- const {
- xp,
- level,
- streakDays,
- dailyTarget,
- playerName,
- setPlayerName,
- isLoaded,
- needsRollover,
- setNeedsRollover,
- consistencyBroken,
- setConsistencyBroken,
- completeRollover,
- history,
- setHistory,
- pendingMissedDays,
- submitMissedDayReasons,
- lastStudyDate,
- practiceSessions,
- pendingTasks,
- todos,
- xpGainedToday,
- notificationSettings
- } = useAppContext();
   const processedHistoryRef = useRef(new Set<string>());
 
   const [showWelcomeHero, setShowWelcomeHero] = useState(false);
@@ -615,6 +626,51 @@ function AppContent() {
  return;
  }
 
+ // Escape key to close shortcuts overlay
+ if (e.key === "Escape") {
+ if (showShortcutsModalRef.current) {
+ e.preventDefault();
+ setShowShortcutsModal(false);
+ }
+ return;
+ }
+
+ // Shift + ? = Open Shortcuts Overlay
+ if (e.shiftKey && (e.key === "?" || e.key === "Help")) {
+ e.preventDefault();
+ setShowShortcutsModal(prev => !prev);
+ return;
+ }
+
+ // Tab Navigation Shortcuts (Shift + Key)
+ if (e.shiftKey && !["S", "N", "C"].includes(e.key.toUpperCase())) {
+ const tabShortcuts: Record<string, string> = {
+ d: "dashboard",
+ y: "syllabus",
+ h: "history",
+ a: "analytics",
+ m: "quests",
+ p: "protocols",
+ r: "rivals",
+ i: "profile",
+ g: "settings"
+ };
+ const targetTab = tabShortcuts[e.key.toLowerCase()];
+ if (targetTab) {
+ const tabObj = tabs.find(t => t.id === targetTab);
+ if (tabObj) {
+ if (levelRef.current >= tabObj.requiredLevel) {
+ e.preventDefault();
+ handleTabChange(targetTab);
+ showToast(`Switched to ${tabObj.label}`);
+ } else {
+ showToast(`${tabObj.label} unlocks at Level ${tabObj.requiredLevel}`);
+ }
+ return;
+ }
+ }
+ }
+
  // Shift + S = Pomodoro
  if (e.shiftKey && e.key.toLowerCase() === "s") {
  e.preventDefault();
@@ -866,7 +922,7 @@ function AppContent() {
  return (
  <div className="min-h-[100dvh] dark:bg-black bg-slate-50 dark:text-slate-200 text-slate-900 font-sans selection:bg-cyan-400 flex flex-col relative w-full overflow-x-hidden">
  {/* Immersive Grid Background */}
- <div className="fixed -inset-10 pointer-events-none z-0 dark:bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[linear-gradient(to_right,#0000000a_1px,transparent_1px),linear-gradient(to_bottom,#0000000a_1px,transparent_1px)] bg-[size:40px_40px]" />
+ <div className="fixed -inset-10 pointer-events-none z-0 subtle-bg-grid" />
 
  {/* Background Glows */}
  <div className="hidden fixed -inset-10 pointer-events-none z-0 overflow-hidden">
@@ -1777,6 +1833,149 @@ function AppContent() {
  </motion.div>
  )}
  </AnimatePresence>
+
+ {createPortal(
+ <AnimatePresence>
+ {showShortcutsModal && (
+ <motion.div
+ initial={{ opacity: 0 }}
+ animate={{ opacity: 1 }}
+ exit={{ opacity: 0 }}
+ className="fixed inset-0 z-[10001] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+ onClick={() => setShowShortcutsModal(false)}
+ >
+ <motion.div
+ initial={{ scale: 0.95, y: 15 }}
+ animate={{ scale: 1, y: 0 }}
+ exit={{ scale: 0.95, y: 15 }}
+ transition={{ type: "spring", duration: 0.3 }}
+ className="dark:bg-slate-900 bg-white border dark:border-cyan-500/30 border-slate-200 p-6 md:p-8 rounded-2xl max-w-2xl w-full text-left shadow-2xl relative overflow-hidden dark:text-white text-slate-900"
+ onClick={(e) => e.stopPropagation()}
+ >
+ {/* Header decor */}
+ <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-50" />
+
+ {/* Header */}
+ <div className="flex items-center justify-between mb-6 border-b dark:border-slate-800 border-slate-200 pb-4">
+ <div className="flex items-center gap-3">
+ <div className="w-10 h-10 rounded-lg dark:bg-cyan-500/10 bg-cyan-50 border dark:border-cyan-500/30 border-cyan-200 flex items-center justify-center">
+ <Keyboard className="w-5 h-5 dark:text-cyan-400 text-cyan-700 animate-pulse" />
+ </div>
+ <div>
+ <h2 className="text-xl font-bold tracking-wider uppercase dark:text-white text-slate-900">System Commands</h2>
+ <p className="text-xs dark:text-slate-400 text-slate-600 font-mono">Global Keyboard Shortcuts Help</p>
+ </div>
+ </div>
+ <button
+ onClick={() => setShowShortcutsModal(false)}
+ className="p-1.5 rounded-lg border dark:border-slate-800 border-slate-200 dark:hover:border-slate-700 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400 text-slate-600 hover:text-slate-900 dark:hover:text-white transition-all"
+ aria-label="Close shortcuts overlay"
+ >
+ <X className="w-4 h-4" />
+ </button>
+ </div>
+
+ {/* Body */}
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+ {/* Tab Shortcuts */}
+ <div>
+ <h3 className="text-xs font-mono uppercase tracking-widest dark:text-cyan-400 text-cyan-700 border-b dark:border-slate-800/60 border-slate-200 pb-1.5 mb-3">
+ Jump to Section
+ </h3>
+ <div className="space-y-2.5">
+ {[
+ { key: "D", label: "Dashboard", desc: "Main station & timers", icon: LayoutDashboard, req: 1 },
+ { key: "Y", label: "Syllabus", desc: "Subjects & masteries", icon: BookOpen, req: 1 },
+ { key: "H", label: "History", desc: "Study archives & logs", icon: RefreshCw, req: 1 },
+ { key: "A", label: "Analytics", desc: "XP charts & reports", icon: LineChart, req: 6 },
+ { key: "M", label: "Missions", desc: "XP quests & tasks", icon: Target, req: 3 },
+ { key: "P", label: "Protocols", desc: "Daily habits & logs", icon: Shield, req: 4 },
+ { key: "R", label: "Peers", desc: "Social rankings", icon: Swords, req: 5 },
+ { key: "I", label: "Profile", desc: "Identity & profile settings", icon: User, req: 1 },
+ { key: "G", label: "Settings", desc: "General preferences", icon: SettingsIcon, req: 1 }
+ ].map((item) => {
+ const isLocked = level < item.req;
+ const Icon = item.icon;
+ return (
+ <div key={item.key} className="flex items-center justify-between group p-1.5 rounded-lg dark:hover:bg-slate-800/30 hover:bg-slate-100/70 transition-colors">
+ <div className="flex items-center gap-2.5 min-w-0">
+ <Icon className={`w-4 h-4 flex-shrink-0 ${isLocked ? "dark:text-slate-600 text-slate-400" : "dark:text-slate-300 text-slate-700"}`} />
+ <div className="min-w-0">
+ <span className={`text-xs font-semibold block leading-none truncate ${isLocked ? "dark:text-slate-600 text-slate-400 line-through" : "dark:text-slate-200 text-slate-800"}`}>
+ {item.label}
+ </span>
+ <span className="text-[10px] dark:text-slate-400 text-slate-500 block truncate mt-0.5">{item.desc}</span>
+ </div>
+ {isLocked && (
+ <span className="text-[9px] font-mono text-amber-600 border border-amber-500/20 bg-amber-500/5 px-1 rounded-sm leading-none flex-shrink-0">
+ Lvl {item.req}
+ </span>
+ )}
+ </div>
+ <div className="flex items-center gap-1">
+ <kbd className="px-1.5 py-0.5 text-[9px] font-mono font-bold dark:bg-slate-950 bg-slate-100 border dark:border-slate-700/80 border-slate-300 rounded shadow dark:text-slate-300 text-slate-600">Shift</kbd>
+ <span className="dark:text-slate-500 text-slate-400 text-[10px] font-mono">+</span>
+ <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold dark:bg-slate-950 bg-slate-100 border dark:border-slate-700/80 border-slate-300 rounded shadow dark:text-cyan-400 text-cyan-700 uppercase">{item.key}</kbd>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+
+ {/* Action Shortcuts */}
+ <div className="flex flex-col justify-between">
+ <div>
+ <h3 className="text-xs font-mono uppercase tracking-widest dark:text-cyan-400 text-cyan-700 border-b dark:border-slate-800/60 border-slate-200 pb-1.5 mb-3">
+ Action Shortcuts
+ </h3>
+ <div className="space-y-3">
+ {[
+ { keys: ["Shift", "S"], label: "Pomodoro Timer", desc: "Launch focus mode immediately", icon: Zap },
+ { keys: ["Shift", "N"], label: "Create Task", desc: "Quick-add task modal", icon: Zap },
+ { keys: ["Shift", "C"], label: "Calendar Setup", desc: "Connect/configure Google Calendar", icon: Calendar },
+ { keys: ["Shift", "?"], label: "Keyboard Help", desc: "Toggle this command helper overlay", icon: HelpCircle },
+ { keys: ["Esc"], label: "Close Modal", desc: "Close any active overlay helper", icon: X }
+ ].map((item, idx) => {
+ const Icon = item.icon;
+ return (
+ <div key={idx} className="flex items-center justify-between p-1.5 rounded-lg dark:hover:bg-slate-800/30 hover:bg-slate-100/70 transition-colors">
+ <div className="flex items-center gap-2.5 min-w-0">
+ <Icon className="w-4 h-4 dark:text-cyan-400 text-cyan-700 flex-shrink-0" />
+ <div className="min-w-0">
+ <span className="text-xs font-semibold dark:text-slate-200 text-slate-800 block leading-none truncate">{item.label}</span>
+ <span className="text-[10px] dark:text-slate-400 text-slate-500 block truncate mt-0.5">{item.desc}</span>
+ </div>
+ </div>
+ <div className="flex items-center gap-1 flex-shrink-0">
+ {item.keys.map((k, kIdx) => (
+ <React.Fragment key={kIdx}>
+ {kIdx > 0 && <span className="dark:text-slate-500 text-slate-400 text-[10px] font-mono">+</span>}
+ <kbd className={`px-1.5 py-0.5 text-[10px] font-mono font-bold dark:bg-slate-950 bg-slate-100 border dark:border-slate-700/80 border-slate-300 rounded shadow ${k === "Shift" ? "dark:text-slate-300 text-slate-600" : "dark:text-cyan-400 text-cyan-700"}`}>
+ {k}
+ </kbd>
+ </React.Fragment>
+ ))}
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+
+ <div className="mt-6 md:mt-0 p-3 dark:bg-slate-950/40 bg-slate-50 rounded-xl border dark:border-slate-800/60 border-slate-200">
+ <p className="text-[11px] dark:text-slate-400 text-slate-600 leading-relaxed font-mono">
+ 💡 <span className="dark:text-cyan-400 text-cyan-700 font-semibold">Protip:</span> You can also use <kbd className="px-1 py-0.5 dark:bg-slate-800 bg-slate-200 border dark:border-slate-700 border-slate-300 rounded dark:text-slate-300 text-slate-700 text-[9px]">←</kbd> and <kbd className="px-1 py-0.5 dark:bg-slate-800 bg-slate-200 border dark:border-slate-700 border-slate-300 rounded dark:text-slate-300 text-slate-700 text-[9px]">→</kbd> arrow keys to slide between unlocked system modules!
+ </p>
+ </div>
+ </div>
+ </div>
+ </motion.div>
+ </motion.div>
+ )}
+ </AnimatePresence>,
+ document.body
+ )}
  </div>
  );
 }

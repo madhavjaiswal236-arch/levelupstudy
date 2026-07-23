@@ -181,6 +181,97 @@ export default function History() {
         type: "warning"
       });
     }
+
+    // Chronotype / Best Time of Day Analysis per Subject
+    const subjectTimeAnalysis: Record<string, Record<string, { totalXp: number, taskCount: number }>> = {};
+
+    last10Days.forEach(day => {
+      if (day.isMissed || !day.completedTasks) return;
+      day.completedTasks.forEach(task => {
+        if (!task.subject || !task.completed) return;
+        
+        let hour = -1;
+        if (task.startTime) {
+          if (task.startTime.includes('T')) {
+            hour = new Date(task.startTime).getHours();
+          } else if (task.startTime.includes(':')) {
+            hour = parseInt(task.startTime.split(':')[0], 10);
+          }
+        }
+        
+        if (hour === -1) return;
+
+        let timeOfDay = "Morning";
+        if (hour >= 5 && hour < 12) timeOfDay = "Morning";
+        else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
+        else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
+        else timeOfDay = "Night";
+
+        const sub = task.subject;
+        if (!subjectTimeAnalysis[sub]) {
+          subjectTimeAnalysis[sub] = {
+            "Morning": { totalXp: 0, taskCount: 0 },
+            "Afternoon": { totalXp: 0, taskCount: 0 },
+            "Evening": { totalXp: 0, taskCount: 0 },
+            "Night": { totalXp: 0, taskCount: 0 }
+          };
+        }
+
+        subjectTimeAnalysis[sub][timeOfDay].totalXp += task.xpReward || 0;
+        subjectTimeAnalysis[sub][timeOfDay].taskCount += 1;
+      });
+    });
+
+    const subjectRecommendations: string[] = [];
+    let bestSubjectName = "";
+    let bestTimeOfDayLabel = "";
+    let maxXpPerTask = 0;
+
+    Object.keys(subjectTimeAnalysis).forEach(sub => {
+      let bestTime = "";
+      let highestXpPerTask = 0;
+      let highestTotalXp = 0;
+      
+      Object.keys(subjectTimeAnalysis[sub]).forEach(time => {
+        const stats = subjectTimeAnalysis[sub][time];
+        if (stats.taskCount > 0) {
+          const xpPerTask = stats.totalXp / stats.taskCount;
+          if (xpPerTask > highestXpPerTask || (xpPerTask === highestXpPerTask && stats.totalXp > highestTotalXp)) {
+            highestXpPerTask = xpPerTask;
+            highestTotalXp = stats.totalXp;
+            bestTime = time;
+          }
+        }
+      });
+
+      if (bestTime && highestXpPerTask > 0) {
+        subjectRecommendations.push(
+          `${sub} is best studied in the ${bestTime} (avg. +${Math.round(highestXpPerTask)} XP/task)`
+        );
+        if (highestXpPerTask > maxXpPerTask) {
+          maxXpPerTask = highestXpPerTask;
+          bestSubjectName = sub;
+          bestTimeOfDayLabel = bestTime;
+        }
+      }
+    });
+
+    if (subjectRecommendations.length > 0) {
+      insights.push({
+        title: "Chronotype Peak Focus",
+        metric: `${bestTimeOfDayLabel} Peak`,
+        description: `Your 10-day completion patterns show subject-specific peaks: ${subjectRecommendations.join(", ")}. Aligning your heavy cognitive tasks with these windows will maximize your study flow and compound your XP gains.`,
+        type: "positive"
+      });
+    } else {
+      insights.push({
+        title: "Chronotype Calibration",
+        metric: "Awaiting Data",
+        description: "Assign subjects and start times to your scheduled calendar tasks. Once completed and logged, the system will pinpoint your peak focus times for each subject based on historical performance.",
+        type: "neutral"
+      });
+    }
+
     if (insights.length === 0) {
       insights.push({
         title: "Stable Orbit",

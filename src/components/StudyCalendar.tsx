@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, 
-  Clock, Plus, Search, CheckCircle2, Zap, AlertCircle, Atom, Beaker, Sigma, Check, ArrowRight
+  Clock, Plus, Search, CheckCircle2, Zap, AlertCircle, Atom, Beaker, Sigma, Check, ArrowRight, Menu
 } from 'lucide-react';
 import { getAccessToken, googleSignIn } from "../lib/firebase";
 import { useAppContext, Todo } from '../context/AppContext';
@@ -41,12 +41,16 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
   };
 
   const [activeCalendars, setActiveCalendars] = useState<string[]>(['Physics', 'Chemistry', 'Mathematics', 'Personal', 'General']);
+  const [selectedSubject, setSelectedSubject] = useState<string>("Physics");
   const [view, setView] = useState<'Day' | '3 Days' | 'Week' | 'Month'>('Week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [now, setNow] = useState(new Date());
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   
   const dragInitialScroll = useRef(0);
   const autoScrollRef = useRef<NodeJS.Timeout | null>(null);
+  const hasMovedRef = useRef(false);
+  const justDraggedRef = useRef(false);
   
   // Computed Days
   useEffect(() => {
@@ -140,6 +144,8 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
 
   // Drag to create
   const [dragSelection, setDragSelection] = useState<{ day: Date, startHour: number, endHour: number, isDragging: boolean } | null>(null);
+  const [liveDragOffsetMins, setLiveDragOffsetMins] = useState<number>(0);
+  const [liveResizeDeltaMins, setLiveResizeDeltaMins] = useState<number>(0);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskSubject, setTaskSubject] = useState("General");
   const [taskName, setTaskName] = useState("");
@@ -160,18 +166,29 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
       const eh = editingEvent.end.getHours();
       const em = editingEvent.end.getMinutes();
       setEditEndTime(`${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`);
+
+      // Initialize edit form states with task's current values
+      setTaskName(editingEvent.title || "");
+      setTaskType(editingEvent.todo?.type || "Custom");
+      setTaskPriority(editingEvent.todo?.priority || "Medium");
+      setTaskSubject(editingEvent.subject === 'Default' ? 'General' : editingEvent.subject || 'General');
+      setTaskChapter(editingEvent.todo?.chapter || "");
     }
   }, [editingEvent]);
 
   
   useEffect(() => {
     if (showTaskModal && dragSelection && !dragSelection.isDragging) {
-      const sh = Math.floor(dragSelection.startHour);
-      const sm = Math.round((dragSelection.startHour % 1) * 60);
+      const startMinsTotal = Math.round(dragSelection.startHour * 60);
+      let sh = Math.floor(startMinsTotal / 60);
+      let sm = startMinsTotal % 60;
+      if (sh >= 24) { sh = 23; sm = 59; }
       setModalStartTime(`${sh.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`);
       
-      const eh = Math.floor(dragSelection.endHour);
-      const em = Math.round((dragSelection.endHour % 1) * 60);
+      const endMinsTotal = Math.round(dragSelection.endHour * 60);
+      let eh = Math.floor(endMinsTotal / 60);
+      let em = endMinsTotal % 60;
+      if (eh >= 24) { eh = 23; em = 59; }
       setModalEndTime(`${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`);
     }
   }, [showTaskModal, dragSelection]);
@@ -236,6 +253,41 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     return subj ? subj : [];
   }, [taskSubject, syllabus]);
 
+  // Helper to determine what chapter the user is currently on based on created tasks and recent history
+  const getCurrentChapterForSubject = (subj: string) => {
+    if (!subj || !['Physics', 'Chemistry', 'Mathematics'].includes(subj)) return null;
+
+    // 1. Look in active/upcoming/recent todos
+    const matchingTodos = todos
+      .filter(t => t.subject === subj && t.chapter)
+      .sort((a, b) => b.id - a.id); // higher ID means more recent
+      
+    if (matchingTodos.length > 0) {
+      return matchingTodos[0].chapter;
+    }
+    
+    // 2. Look in history (recent logs)
+    if (history && history.length > 0) {
+      const sortedHistory = [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      for (const entry of sortedHistory) {
+        if (entry.completedTasks) {
+          const matched = entry.completedTasks.find(t => t.subject === subj && t.chapter);
+          if (matched && matched.chapter) {
+            return matched.chapter;
+          }
+        }
+      }
+    }
+    
+    // 3. Fallback to first chapter in syllabus
+    const chapters = syllabus[subj as keyof typeof syllabus] || [];
+    if (chapters.length > 0) {
+      return chapters[0].name;
+    }
+    
+    return null;
+  };
+
 
   // Drag and Drop State
   const [dragEventId, setDragEventId] = useState<number | null>(null);
@@ -245,26 +297,35 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
 
   
 
-  const ensureCalendarAuth = async () => {
+  const ensureCalendarAuth = async (isManual: boolean = false) => {
     let token = await getAccessToken();
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (!token && !isMobile) {
-      showToast("Google Calendar not loaded. Opening login page...", "success");
-      const loginRes = await googleSignIn();
-      if (!loginRes) {
-        throw new Error("Google Calendar login cancelled or failed.");
+    if (!token) {
+      if (isManual && !isMobile) {
+        showToast("Google Calendar not loaded. Opening login page...", "success");
+        const loginRes = await googleSignIn();
+        if (!loginRes) {
+          throw new Error("Google Calendar login cancelled or failed.");
+        }
+        return true;
       }
+      return false;
     }
+    return true;
   };
 
-  const handleCalendarSync = async () => {
+  const handleCalendarSync = async (isManual: boolean = false) => {
     setIsSyncing(true);
     setUnsyncedChanges(false);
     
     let allSuccess = true;
     let errorMessage = "";
     try {
-        await ensureCalendarAuth();
+        const hasAuth = await ensureCalendarAuth(isManual);
+        if (!hasAuth) {
+          setIsSyncing(false);
+          return;
+        }
         
         // Update existing events
         const eventsToUpdate = todos.filter(t => t.calendarEventId && t.startTime && t.endTime).map(t => ({
@@ -279,21 +340,27 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
 
         // Create new events
         const eventsToCreate = todos.filter(t => !t.calendarEventId && t.startTime && t.endTime);
-        const newTodos = [...todos];
-        for (const t of eventsToCreate) {
-            try {
-                const durationMinutes = (new Date(t.endTime!).getTime() - new Date(t.startTime!).getTime()) / 60000;
-                const result = await createCalendarEvent(t.text, durationMinutes, t.type || 'Lecture', false, newTodos, new Date(t.startTime!), new Date(t.endTime!));
-                const index = newTodos.findIndex(td => td.id === t.id);
-                if (index !== -1 && result && result.id) {
-                    newTodos[index] = { ...newTodos[index], calendarEventId: result.id };
+        if (eventsToCreate.length > 0) {
+            const createdEventIds: { id: number; calendarEventId: string }[] = [];
+            for (const t of eventsToCreate) {
+                try {
+                    const durationMinutes = (new Date(t.endTime!).getTime() - new Date(t.startTime!).getTime()) / 60000;
+                    const result = await createCalendarEvent(t.text, durationMinutes, t.type || 'Lecture', false, todos, new Date(t.startTime!), new Date(t.endTime!));
+                    if (result && result.id) {
+                        createdEventIds.push({ id: t.id, calendarEventId: result.id });
+                    }
+                } catch(e) {
+                    console.error(e);
+                    allSuccess = false;
                 }
-            } catch(e) {
-                console.error(e);
-                allSuccess = false;
+            }
+            if (createdEventIds.length > 0) {
+                setTodos(prev => prev.map(t => {
+                    const match = createdEventIds.find(c => c.id === t.id);
+                    return match ? { ...t, calendarEventId: match.calendarEventId } : t;
+                }));
             }
         }
-        setTodos(newTodos);
         
     } catch(e: any) {
         console.error(e);
@@ -303,7 +370,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     if (allSuccess) {
        showToast("Timeline applied successfully!", "success");
        setUnsyncedChanges(false);
-    } else {
+    } else if (isManual) {
        showToast(errorMessage || "Failed to apply all changes to Google Calendar.", "error");
     }
     setIsSyncing(false);
@@ -503,6 +570,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                onPointerDown={(e) => {
                  if (e.button !== 0) return; // Only left click
                  if (e.pointerType === 'touch') return; // Let browser handle touch scrolling, click event will catch tap
+                 hasMovedRef.current = false;
                  
                  e.preventDefault();
                  const target = e.currentTarget;
@@ -514,7 +582,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                  
                  // Snap start to nearest minute
                  const rawStartHour = (y / 80);
-                 const startHour = Math.floor(rawStartHour * 12) / 12;
+                 const startHour = Math.floor(rawStartHour * 4) / 4;
                  
                  setDragSelection({ day: d, startHour, endHour: startHour + 0.5, isDragging: true });
                  
@@ -528,13 +596,14 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                    const moveY = (currentClientY - rect.top) + scrollDiff;
                    
                    let rawEndHour = (moveY / 80);
-                   let currentEndHour = Math.round(rawEndHour * 12) / 12;
+                   let currentEndHour = Math.round(rawEndHour * 4) / 4;
                    if (currentEndHour <= startHour + 0.25) currentEndHour = startHour + 0.25; // min 15 mins
                    if (currentEndHour > 24) currentEndHour = 24;
                    setDragSelection({ day: d, startHour, endHour: currentEndHour, isDragging: true });
                  };
                  
                  const handlePointerMove = (moveEvent: React.PointerEvent | PointerEvent) => {
+                   hasMovedRef.current = true;
                    updateGridDrag(moveEvent.clientY);
                    
                    if (container) {
@@ -554,18 +623,44 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                    target.releasePointerCapture(e.pointerId);
                    target.removeEventListener('pointermove', handlePointerMove as EventListener);
                    target.removeEventListener('pointerup', handlePointerUp as EventListener);
-                   setDragSelection(prev => prev ? { ...prev, isDragging: false } : null);
-                   setShowTaskModal(true);
                    document.body.classList.remove('is-dragging');
+                   
+                   if (hasMovedRef.current) {
+                     setDragSelection(prev => prev ? { ...prev, isDragging: false } : null);
+                     setShowTaskModal(true);
+                     justDraggedRef.current = true;
+                   }
                  };
                  
                  target.addEventListener('pointermove', handlePointerMove as EventListener);
                  target.addEventListener('pointerup', handlePointerUp as EventListener);
                }}
-               onClick={() => {
-                   if (!dragSelection || !dragSelection.isDragging) {
-                       // simple click
-                   }
+               onClick={(e) => {
+                 if (justDraggedRef.current) {
+                   justDraggedRef.current = false;
+                   return;
+                 }
+                 if (!dragSelection || !dragSelection.isDragging) {
+                   const rect = e.currentTarget.getBoundingClientRect();
+                   const y = e.clientY - rect.top;
+                   const rawStartHour = (y / 80);
+                   const startHour = Math.floor(rawStartHour * 4) / 4; // snap to nearest 15 mins
+                   setDragSelection({
+                     day: d,
+                     startHour,
+                     endHour: startHour + 1, // default 1 hour
+                     isDragging: false
+                   });
+                   const formatTimeInput = (hour: number) => {
+                     const totalMins = Math.round(hour * 60);
+                     const h = Math.floor(totalMins / 60);
+                     const m = totalMins % 60;
+                     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                   };
+                   setModalStartTime(formatTimeInput(startHour));
+                   setModalEndTime(formatTimeInput(startHour + 1));
+                   setShowTaskModal(true);
+                 }
                }}
              />
           ))}
@@ -591,6 +686,22 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
             const startHour = ev.start.getHours() + ev.start.getMinutes() / 60;
             const duration = (ev.end.getTime() - ev.start.getTime()) / 3600000;
             const colorClass = COLORS[ev.subject] || COLORS['Default'];
+
+            // High-performance display calculations using local drag/resize offsets
+            let displayStart = ev.start;
+            let displayEnd = ev.end;
+            let displayStartHour = startHour;
+            let displayDuration = duration;
+
+            if (dragEventId === ev.id) {
+              displayStart = new Date(ev.start.getTime() + liveDragOffsetMins * 60000);
+              displayEnd = new Date(ev.end.getTime() + liveDragOffsetMins * 60000);
+              displayStartHour = displayStart.getHours() + displayStart.getMinutes() / 60;
+            } else if (resizingEventId === ev.id) {
+              const displayDurationMins = Math.max(15, (duration * 60) + liveResizeDeltaMins);
+              displayEnd = new Date(ev.start.getTime() + displayDurationMins * 60000);
+              displayDuration = displayDurationMins / 60;
+            }
             
             return (
               <div
@@ -602,6 +713,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   e.stopPropagation();
                   e.preventDefault();
                   
+                  let hasMoved = false;
                   const target = e.currentTarget;
                   target.setPointerCapture(e.pointerId);
                   
@@ -614,9 +726,14 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   const originalEndTime = ev.end.getTime();
                   const durationMilli = originalEndTime - originalStartTime;
                   
+                  let lastDeltaMins = 0;
+                  
                   const handlePointerMove = (moveEvent: PointerEvent) => {
                     moveEvent.preventDefault();
                     const deltaY = moveEvent.clientY - startY;
+                    if (Math.abs(deltaY) > 3) {
+                      hasMoved = true;
+                    }
                     const deltaMins = deltaY / (80 / 60);
                     
                     let newDeltaMins = Math.round(deltaMins);
@@ -627,12 +744,10 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     if (newDeltaMins < minDeltaMins) newDeltaMins = minDeltaMins;
                     if (newDeltaMins > maxDeltaMins) newDeltaMins = maxDeltaMins;
                     
-                    const newStart = new Date(originalStartTime + newDeltaMins * 60000);
-                    const newEnd = new Date(originalStartTime + newDeltaMins * 60000 + durationMilli);
-                    
-                    setTodos(prev => prev.map(t => 
-                      t.id === ev.id ? { ...t, startTime: newStart.toISOString(), endTime: newEnd.toISOString() } : t
-                    ));
+                    if (newDeltaMins !== lastDeltaMins) {
+                      lastDeltaMins = newDeltaMins;
+                      setLiveDragOffsetMins(newDeltaMins);
+                    }
                   };
                   
                   const handlePointerUp = () => {
@@ -643,17 +758,38 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     target.releasePointerCapture(e.pointerId);
                     target.removeEventListener('pointermove', handlePointerMove as EventListener);
                     target.removeEventListener('pointerup', handlePointerUp as EventListener);
+                    
+                    setLiveDragOffsetMins(0);
+                    
+                    if (!hasMoved) {
+                      setEditingEvent(ev);
+                    } else {
+                      const finalStart = new Date(originalStartTime + lastDeltaMins * 60000);
+                      const finalEnd = new Date(originalStartTime + lastDeltaMins * 60000 + durationMilli);
+                      
+                      setTodos(prev => prev.map(t => 
+                        t.id === ev.id ? { ...t, startTime: finalStart.toISOString(), endTime: finalEnd.toISOString() } : t
+                      ));
+
+                      if (ev.calendarEventId) {
+                        updateCalendarEventTime(ev.calendarEventId, finalStart, finalEnd).catch(console.error);
+                      }
+                    }
                   };
                   
                   target.addEventListener('pointermove', handlePointerMove as EventListener, { passive: false });
                   target.addEventListener('pointerup', handlePointerUp as EventListener);
                 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                }}
                 className={`absolute rounded-xl px-2 py-1 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? 'opacity-50 scale-[0.98] z-50 shadow-lg' : 'z-40 shadow-sm'} transition-transform group`}
                 style={{ 
                   left: `calc(${dayIndex * (100 / visibleDays.length)}% + 4px)`,
                   width: `calc(${100 / visibleDays.length}% - 8px)`,
-                  top: `${(startHour) * 80}px`,
-                  height: `${duration * 80 - 2}px`
+                  top: `${(displayStartHour) * 80}px`,
+                  height: `${displayDuration * 80 - 2}px`
                 }}
               >
                 
@@ -700,12 +836,17 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   {view !== 'Week' && (
                     <div className="mt-auto flex flex-col gap-0.5 opacity-90">
                       <p className="text-[9px] font-medium flex items-center gap-1">
-                        {format(ev.start, 'h:mm a')} <ArrowRight className="w-2 h-2" /> {format(ev.end, 'h:mm a')}
+                        {format(displayStart, 'h:mm a')} <ArrowRight className="w-2 h-2" /> {format(displayEnd, 'h:mm a')}
                       </p>
                       <p className="text-[9px] font-medium flex items-center gap-1">
                         <Clock className="w-2.5 h-2.5" /> 
-                        {Math.floor(duration) > 0 ? `${Math.floor(duration)}h ` : ''}{Math.round((duration % 1) * 60)}m 
-                        <span className="font-bold text-yellow-600 dark:text-yellow-400 ml-1">+{Math.round(duration * (ev.subject === 'Physics' ? 60 : ev.subject === 'Mathematics' ? 65 : ev.subject === 'Chemistry' ? 50 : ev.subject === 'Biology' ? 50 : 40))} XP</span>
+                        {(() => {
+                          const totalMins = Math.round(displayDuration * 60);
+                          const h = Math.floor(totalMins / 60);
+                          const m = totalMins % 60;
+                          return `${h > 0 ? `${h}h ` : ''}${m}m`;
+                        })()}
+                        <span className="font-bold text-yellow-600 dark:text-yellow-400 ml-1">+{Math.round(displayDuration * (ev.subject === 'Physics' ? 60 : ev.subject === 'Mathematics' ? 65 : ev.subject === 'Chemistry' ? 50 : ev.subject === 'Biology' ? 50 : 40))} XP</span>
                       </p>
                     </div>
                   )}
@@ -726,6 +867,8 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     const originalDurationMins = duration * 60;
                     setResizingEventId(ev.id);
                     
+                    let lastDurationMins = Math.round(originalDurationMins / 15) * 15;
+                    
                     const handlePointerMove = (moveEvent: PointerEvent | React.PointerEvent) => {
                       moveEvent.preventDefault();
                       const deltaY = moveEvent.clientY - startY;
@@ -738,13 +881,10 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                       const maxDurationMins = (24 - startHour) * 60;
                       if (newDurationMins > maxDurationMins) newDurationMins = maxDurationMins;
                       
-                      const newEnd = new Date(ev.start.getTime() + newDurationMins * 60000);
-                      
-                      setTodos(prev => {
-                        return prev.map(t => 
-                          t.id === ev.id ? { ...t, endTime: newEnd.toISOString() } : t
-                        );
-                      });
+                      if (newDurationMins !== lastDurationMins) {
+                        lastDurationMins = newDurationMins;
+                        setLiveResizeDeltaMins(newDurationMins - originalDurationMins);
+                      }
                     };
                     
                     const handlePointerUp = (upEvent: PointerEvent | React.PointerEvent) => {
@@ -754,6 +894,18 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                       target.releasePointerCapture(e.pointerId);
                       target.removeEventListener('pointermove', handlePointerMove as EventListener);
                       target.removeEventListener('pointerup', handlePointerUp as EventListener);
+                      
+                      setLiveResizeDeltaMins(0);
+                      
+                      const finalEnd = new Date(ev.start.getTime() + lastDurationMins * 60000);
+                      
+                      setTodos(prev => prev.map(t => 
+                        t.id === ev.id ? { ...t, endTime: finalEnd.toISOString() } : t
+                      ));
+
+                      if (ev.calendarEventId) {
+                        updateCalendarEventTime(ev.calendarEventId, ev.start, finalEnd).catch(console.error);
+                      }
                     };
                     
                     target.addEventListener('pointermove', handlePointerMove as EventListener, { passive: false });
@@ -817,6 +969,233 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
       </div>
     );
   };
+
+  const renderSidebarContents = () => (
+    <>
+      {/* Mini Calendar */}
+      <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
+         <div className="flex justify-between items-center mb-4">
+           <h3 className="font-bold text-sm text-white">{format(currentDate, 'MMMM yyyy')}</h3>
+           <div className="flex gap-1">
+             <button onClick={() => setCurrentDate(addMonths(currentDate, -1))} className="p-1 hover:bg-white/10 rounded-lg transition-colors"><ChevronLeft className="w-4 h-4 text-slate-400" /></button>
+             <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1 hover:bg-white/10 rounded-lg transition-colors"><ChevronRight className="w-4 h-4 text-slate-400" /></button>
+           </div>
+         </div>
+         <div className="grid grid-cols-7 gap-1 text-center text-xs">
+           {['S','M','T','W','T','F','S'].map((d, idx) => <div key={`${d}-${idx}`} className="text-slate-500 font-medium py-1">{d}</div>)}
+           {Array.from({ length: getDay(startOfMonth(currentDate)) }).map((_, i) => <div key={`empty-${i}`} />)}
+           {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+             const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1);
+             const isToday = isSameDay(dayDate, new Date());
+             const isSel = isSameDay(dayDate, currentDate);
+             return (
+               <button 
+                 key={i} 
+                 onClick={() => setCurrentDate(dayDate)}
+                 className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-all ${isSel ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-500/20' : isToday ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'text-slate-300 hover:bg-white/10'}`}
+               >
+                 {i + 1}
+               </button>
+             )
+           })}
+         </div>
+      </div>
+      
+      {/* Today's Progress */}
+      <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
+        <h3 className="font-bold text-sm mb-4 text-white">Today's Progress</h3>
+        <div className="flex items-center gap-4">
+          <div className="relative w-14 h-14 flex items-center justify-center flex-shrink-0">
+            <svg className="w-full h-full transform -rotate-90">
+              <circle cx="28" cy="28" r="24" className="stroke-slate-800" strokeWidth="4" fill="none" />
+              <circle cx="28" cy="28" r="24" className="stroke-indigo-500 transition-all duration-1000" strokeWidth="4" fill="none" strokeDasharray="150" strokeDashoffset={150 - (150 * Math.min(xpGainedToday / Math.max(dailyXpRequired, 1), 1))} />
+            </svg>
+            <span className="absolute text-xs font-bold text-white">{Math.min(Math.round((xpGainedToday / Math.max(dailyXpRequired, 1)) * 100), 100)}%</span>
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-sm text-white truncate">{Math.round(hoursStudiedToday * 10) / 10}h studied</p>
+            <p className="text-xs text-slate-400 mt-0.5">{xpGainedToday} / {dailyXpRequired} XP</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Calendars */}
+      <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
+         <div className="flex justify-between items-center mb-4">
+           <h3 className="font-bold text-sm text-white">Calendars</h3>
+         </div>
+         <div className="space-y-2">
+           {[
+             { name: 'General', color: 'bg-indigo-500' },
+             { name: 'Physics', color: 'bg-blue-500' },
+             { name: 'Chemistry', color: 'bg-emerald-500' },
+             { name: 'Mathematics', color: 'bg-amber-500' },
+             { name: 'Personal', color: 'bg-rose-500' }
+           ].map(cal => (
+             <div 
+               key={cal.name}
+               onClick={() => {
+                 if (['Physics', 'Chemistry', 'Mathematics'].includes(cal.name)) {
+                   setSelectedSubject(cal.name);
+                 }
+               }}
+               className={`flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer ${
+                 selectedSubject === cal.name && ['Physics', 'Chemistry', 'Mathematics'].includes(cal.name)
+                   ? 'bg-indigo-600/10 border border-indigo-500/30' 
+                   : 'border border-transparent hover:bg-white/[0.04]'
+               }`}
+             >
+               <label className="flex items-center gap-3 cursor-pointer flex-1" onClick={(e) => e.stopPropagation()}>
+                 <div className={`w-4 h-4 rounded shadow-sm border border-white/10 flex items-center justify-center transition-colors ${activeCalendars.includes(cal.name) ? cal.color : 'bg-transparent'}`}>
+                    {activeCalendars.includes(cal.name) && <CheckCircle2 className="w-3 h-3 text-white" />}
+                 </div>
+                 <span className="text-sm text-slate-300 group-hover:text-white transition-colors">{cal.name}</span>
+                 <input 
+                   type="checkbox" 
+                   className="hidden" 
+                   checked={activeCalendars.includes(cal.name)} 
+                   onChange={(e) => {
+                     if (e.target.checked) {
+                       setActiveCalendars([...activeCalendars, cal.name]);
+                     } else {
+                       setActiveCalendars(activeCalendars.filter(c => c !== cal.name));
+                     }
+                   }} 
+                 />
+               </label>
+               {['Physics', 'Chemistry', 'Mathematics'].includes(cal.name) && (
+                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                   selectedSubject === cal.name 
+                     ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                     : 'text-slate-500 hover:text-slate-400 bg-white/[0.02]'
+                 }`}>
+                   {selectedSubject === cal.name ? 'Active' : 'Select'}
+                 </span>
+               )}
+             </div>
+           ))}
+         </div>
+      </div>
+
+      {/* Chapters Tracker Card in Main Sidebar */}
+      {selectedSubject && ['Physics', 'Chemistry', 'Mathematics'].includes(selectedSubject) && (() => {
+        const currentCh = getCurrentChapterForSubject(selectedSubject);
+        const chapters = syllabus[selectedSubject as keyof typeof syllabus] || [];
+        
+        // Shifting logic: put current chapter first, followed by others in order
+        const shiftedChapters = [...chapters];
+        if (currentCh) {
+          const idx = shiftedChapters.findIndex(c => c.name === currentCh);
+          if (idx !== -1) {
+            const [found] = shiftedChapters.splice(idx, 1);
+            shiftedChapters.unshift(found);
+          }
+        }
+
+        return (
+          <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm flex flex-col min-h-[300px]">
+             <div className="flex justify-between items-center mb-3">
+               <h3 className="font-bold text-sm text-white flex items-center gap-1.5">
+                 <Zap className="w-4 h-4 text-amber-400 animate-pulse" />
+                 Syllabus Tracker
+               </h3>
+               <span className="text-[10px] font-mono text-indigo-400 px-1.5 py-0.5 rounded bg-indigo-500/10">
+                 {selectedSubject}
+               </span>
+             </div>
+
+             {/* List of Chapters */}
+             <div className="space-y-2 flex-1 overflow-y-auto max-h-[280px] pr-1 scrollbar-hide">
+               {shiftedChapters.map((ch) => {
+                 const isCurrent = ch.name === currentCh;
+                 const statusColor = ch.status === 'green' ? 'bg-emerald-500' : 
+                                     ch.status === 'yellow' ? 'bg-amber-500' : 
+                                     ch.status === 'red' ? 'bg-rose-500' : 'bg-slate-600';
+                 
+                 return (
+                   <div 
+                     key={ch.name}
+                     className={`group/chapter relative p-2.5 rounded-xl border transition-all duration-300 ${
+                       isCurrent 
+                         ? 'bg-gradient-to-r from-indigo-500/15 to-purple-500/5 border-indigo-500/40 shadow-md shadow-indigo-500/5' 
+                         : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.04]'
+                     }`}
+                   >
+                     {isCurrent && (
+                       <div className="absolute -top-2 right-2 px-1.5 py-0.5 bg-indigo-600 text-[8px] font-bold uppercase tracking-wider rounded text-white shadow-sm">
+                         📍 CURRENTLY ON
+                       </div>
+                     )}
+                     
+                     <div className="flex items-start justify-between gap-2">
+                       <div className="flex-1 min-w-0">
+                         <p className={`text-xs font-bold truncate ${isCurrent ? 'text-indigo-300' : 'text-slate-200'}`}>
+                           {ch.name}
+                         </p>
+                         <div className="flex items-center gap-2 mt-1">
+                           <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
+                           <span className="text-[10px] text-slate-400 font-medium">
+                             {ch.status === 'green' ? 'Completed' : 
+                              ch.status === 'yellow' ? 'Moderate' : 
+                              ch.status === 'red' ? 'Weak' : 'Not Started'}
+                           </span>
+                           <span className="text-[10px] text-slate-500">• Tier {ch.tier}</span>
+                         </div>
+                       </div>
+                       
+                       {/* Stats Badge */}
+                       <div className="text-right shrink-0">
+                         <span className="text-[10px] font-mono font-bold text-slate-300 block">
+                           {ch.accuracy}% Acc
+                         </span>
+                         <span className="text-[9px] text-slate-500 block">
+                           {ch.pyq}% PYQs
+                         </span>
+                       </div>
+                     </div>
+                   </div>
+                 );
+               })}
+             </div>
+          </div>
+        );
+      })()}
+      
+      {/* Upcoming */}
+      <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
+         <div className="flex justify-between items-center mb-4">
+           <h3 className="font-bold text-sm text-white">Upcoming</h3>
+         </div>
+         <div className="space-y-3">
+            {todos
+              .filter(t => t.startTime && t.endTime && !t.completed && new Date(t.endTime) > new Date())
+              .sort((a, b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime())
+              .slice(0, 3)
+              .map(t => {
+                const st = new Date(t.startTime!);
+                const colorMap: Record<string, string> = { Physics: 'bg-blue-500', Chemistry: 'bg-emerald-500', Mathematics: 'bg-amber-500', Personal: 'bg-rose-500' };
+                const color = colorMap[t.subject || ''] || 'bg-indigo-500';
+                let timeStr = format(st, 'h:mm a');
+                let dateStr = isSameDay(st, new Date()) ? 'Today' : isSameDay(st, addDays(new Date(), 1)) ? 'Tomorrow' : format(st, 'MMM d');
+                
+                return (
+                  <div key={t.id} className="flex items-center gap-3">
+                    <div className={`w-1 h-8 rounded-full ${color}`}></div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-xs font-bold text-slate-200 line-clamp-1">{t.text}</p>
+                      <p className="text-[10px] text-slate-500">{dateStr}, {timeStr}</p>
+                    </div>
+                  </div>
+                )
+              })
+            }
+            {todos.filter(t => t.startTime && t.endTime && !t.completed && new Date(t.endTime) > new Date()).length === 0 && (
+              <p className="text-xs text-slate-500 italic">No upcoming tasks.</p>
+            )}
+         </div>
+      </div>
+    </>
+  );
 
   return (
     <div className={onClose ? "fixed inset-0 z-[100] bg-white dark:bg-[#121212] flex items-center justify-center overflow-hidden" : "w-full h-full overflow-hidden"}>
@@ -1003,19 +1382,22 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                         return;
                       }
                       
+                      const finalStart = new Date(editingEvent.start);
+                      if (editStartTime) {
+                        const [sh, sm] = editStartTime.split(':').map(Number);
+                        finalStart.setHours(sh, sm, 0, 0);
+                      }
+                      const finalEnd = new Date(finalStart);
+                      if (editEndTime) {
+                        const [eh, em] = editEndTime.split(':').map(Number);
+                        finalEnd.setHours(eh, em, 0, 0);
+                      }
+                      if (finalEnd < finalStart) {
+                        finalEnd.setDate(finalEnd.getDate() + 1);
+                      }
+
                       const updatedTodos = todos.map(t => {
                         if (t.id === editingEvent.id) {
-                          const newStart = new Date(editingEvent.start);
-                          if (editStartTime) {
-                            const [sh, sm] = editStartTime.split(':').map(Number);
-                            newStart.setHours(sh, sm, 0, 0);
-                          }
-                          const newEnd = new Date(editingEvent.start);
-                          if (editEndTime) {
-                            const [eh, em] = editEndTime.split(':').map(Number);
-                            newEnd.setHours(eh, em, 0, 0);
-                          }
-                          
                           setUnsyncedChanges(true);
                           
                           return {
@@ -1025,13 +1407,24 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                             priority: taskPriority,
                             subject: taskSubject === 'General' ? undefined : taskSubject,
                             chapter: taskChapter || undefined,
-                            startTime: newStart.toISOString(),
-                            endTime: newEnd.toISOString()
+                            startTime: finalStart.toISOString(),
+                            endTime: finalEnd.toISOString()
                           };
                         }
                         return t;
                       });
+                      
                       setTodos(updatedTodos);
+
+                      if (editingEvent.calendarEventId) {
+                        updateCalendarEventTime(
+                          editingEvent.calendarEventId,
+                          finalStart,
+                          finalEnd,
+                          (taskName || '').trim()
+                        ).catch(console.error);
+                      }
+
                       setEditingEvent(null);
                       showToast("Event updated", "success");
                     }}
@@ -1048,250 +1441,417 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
         {/* Create Task Modal */}
         <AnimatePresence>
           {showTaskModal && dragSelection && !dragSelection.isDragging && (
-            <div className="absolute inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white dark:bg-[#1A1A1A] w-full max-w-lg rounded-2xl md:rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-2xl p-6 relative overflow-hidden flex flex-col max-h-[90vh]"
-              >
-                <button onClick={() => setShowTaskModal(false)} className="absolute right-4 top-4 p-2 bg-slate-100 dark:bg-white/5 rounded-full hover:bg-slate-200 dark:hover:bg-white/10 transition-colors z-10">
-                  <X className="w-5 h-5 text-slate-500" />
-                </button>
+            <div className="absolute inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+              <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-6 max-w-5xl w-full my-auto overflow-y-auto lg:overflow-visible max-h-[95vh] custom-scrollbar">
                 
-                <div className="mb-6 flex-shrink-0">
-                  <h3 className="text-xl font-bold mb-1 flex items-center gap-2">
-                    <CalendarIcon className="w-5 h-5 text-indigo-500" />
-                    New Study Session
-                  </h3>
-                  <p className="text-sm text-slate-500 mb-4">
-                    {format(dragSelection.day, 'MMMM d, yyyy')}
-                  </p>
-                  <div className="flex gap-4 items-center">
-                    <div className="flex-1">
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Time</label>
-                      <input 
-                        type="time" 
-                        value={modalStartTime || ""}
-                        onChange={(e) => setModalStartTime(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-                      />
-                    </div>
-                    <div className="text-slate-400 mt-5">to</div>
-                    <div className="flex-1">
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">End Time</label>
-                      <input 
-                        type="time" 
-                        value={modalEndTime || ""}
-                        onChange={(e) => setModalEndTime(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-                      />
+                {/* Floating Card 1: Task Creation Card (identical to previous versions) */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="bg-white dark:bg-[#1A1A1A] w-full max-w-lg rounded-2xl md:rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-2xl p-6 relative flex flex-col max-h-[90vh] md:max-h-[85vh] justify-between"
+                >
+                  <button onClick={() => setShowTaskModal(false)} className="absolute right-4 top-4 p-2 bg-slate-100 dark:bg-white/5 rounded-full hover:bg-slate-200 dark:hover:bg-white/10 transition-colors z-10">
+                    <X className="w-5 h-5 text-slate-500" />
+                  </button>
+                  
+                  <div className="mb-6 flex-shrink-0">
+                    <h3 className="text-xl font-bold mb-1 flex items-center gap-2">
+                      <CalendarIcon className="w-5 h-5 text-indigo-500" />
+                      New Study Session
+                    </h3>
+                    <p className="text-sm text-slate-500 mb-4">
+                      {format(dragSelection.day, 'MMMM d, yyyy')}
+                    </p>
+                    <div className="flex gap-4 items-center">
+                      <div className="flex-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Time</label>
+                        <input 
+                          type="time" 
+                          value={modalStartTime || ""}
+                          onChange={(e) => setModalStartTime(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                        />
+                      </div>
+                      <div className="text-slate-400 mt-5">to</div>
+                      <div className="flex-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">End Time</label>
+                        <input 
+                          type="time" 
+                          value={modalEndTime || ""}
+                          onChange={(e) => setModalEndTime(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-                
-                <div className="space-y-5 overflow-y-auto pr-2 scrollbar-hide flex-1">
                   
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Priority</label>
-                    <div className="flex gap-2">
-                      {(["Low", "Medium", "High"] as const).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setTaskPriority(p)}
-                          className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all border ${
-                            taskPriority === p 
-                              ? p === "High" ? "bg-rose-500/10 text-rose-600 border-rose-500/50" 
-                                : p === "Medium" ? "bg-amber-500/10 text-amber-600 border-amber-500/50" 
-                                : "bg-emerald-500/10 text-emerald-600 border-emerald-500/50"
-                              : "bg-transparent text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-white/5"
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      ))}
+                  <div className="space-y-5 overflow-y-auto pr-2 scrollbar-hide flex-1 min-h-0">
+                    
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Priority</label>
+                      <div className="flex gap-2">
+                        {(["Low", "Medium", "High"] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setTaskPriority(p)}
+                            className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all border ${
+                              taskPriority === p 
+                                ? p === "High" ? "bg-rose-500/10 text-rose-600 border-rose-500/50" 
+                                  : p === "Medium" ? "bg-amber-500/10 text-amber-600 border-amber-500/50" 
+                                  : "bg-emerald-500/10 text-emerald-600 border-emerald-500/50"
+                                : "bg-transparent text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-white/5"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Subject</label>
+                      <div className="flex flex-wrap gap-2">
+                        {['Physics', 'Chemistry', 'Mathematics', 'General', 'Personal'].map(s => (
+                          <button 
+                            key={s}
+                            onClick={() => {
+                              setTaskSubject(s);
+                              setTaskChapter("");
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${taskSubject === s ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'}`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <AnimatePresence mode="wait">
+                      {currentSubjectChapters.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="lg:hidden"
+                        >
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Chapter (Optional)</label>
+                          <div className="max-h-40 overflow-y-auto custom-scrollbar border dark:border-slate-700 border-slate-200 rounded-xl p-2 bg-slate-50 dark:bg-black/40 grid grid-cols-1 gap-1">
+                            <button
+                              onClick={() => { setTaskChapter(""); setHasEditedLecture(false); }}
+                              className={`text-left px-3 py-2 rounded-lg text-sm transition-all ${!taskChapter ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 font-bold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/5'}`}
+                            >
+                              No Chapter
+                            </button>
+                            {currentSubjectChapters.map(ch => (
+                              <button
+                                key={ch.name}
+                                onClick={() => { setTaskChapter(ch.name); setHasEditedLecture(false); }}
+                                className={`text-left px-3 py-2 rounded-lg text-sm transition-all truncate ${taskChapter === ch.name ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 font-bold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/5'}`}
+                              >
+                                {ch.name}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Task Type</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Lecture', 'Notes', 'Practice', 'DPP', 'Revision', 'PYQs', 'Custom'].map(t => (
+                          <button 
+                            key={t}
+                            onClick={() => setTaskType(t)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${taskType === t ? 'bg-cyan-600/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/50' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'}`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {taskType === 'Lecture' && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Lecture Number (Optional)</label>
+                        <input 
+                          type="number"
+                          placeholder="e.g. 4"
+                          value={(hasEditedLecture ? lectureNumberInput : predictNextLecture(taskSubject || '', taskChapter || '', todos, history, syllabus)) || ''}
+                          onChange={(e) => { setLectureNumberInput(e.target.value); setHasEditedLecture(true); }}
+                          className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                        />
+                      </motion.div>
+                    )}
+                    {taskType === 'Custom' && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Custom Task Name</label>
+                        <input 
+                          type="text"
+                          autoFocus
+                          value={taskName || ""}
+                          onChange={(e) => setTaskName(e.target.value)}
+                          placeholder="Enter task name..."
+                          className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                        />
+                      </motion.div>
+                    )}
+                    
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Subject</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['Physics', 'Chemistry', 'Mathematics', 'General', 'Personal'].map(s => (
-                        <button 
-                          key={s}
-                          onClick={() => {
-                            setTaskSubject(s);
-                            setTaskChapter("");
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${taskSubject === s ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'}`}
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="pt-4 flex gap-3 flex-shrink-0 border-t border-slate-100 dark:border-white/5 mt-4">
+                    <button 
+                      onClick={() => setShowTaskModal(false)}
+                      className="flex-1 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-sm font-bold transition-colors text-slate-700 dark:text-slate-300"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        let finalName = "";
+                        if (taskType === 'Custom') {
+                          if (!(taskName || '').trim()) {
+                            showToast("Please enter a custom task name", "error");
+                            return;
+                          }
+                          finalName = (taskName || '').trim();
+                        } else {
+                          let baseName = taskType;
+                          if (taskType === 'Lecture') {
+                            const lecNum = (hasEditedLecture ? lectureNumberInput : predictNextLecture(taskSubject || '', taskChapter || '', todos, history, syllabus));
+                            if (lecNum) baseName = `Lecture ${lecNum}`;
+                          }
+                          finalName = `${baseName}${taskChapter ? ` - ${taskChapter}` : ''}`;
+                        }
+                        
+                        const start = new Date(dragSelection.day);
+                        if (modalStartTime) {
+                          const [sh, sm] = modalStartTime.split(':').map(Number);
+                          start.setHours(sh, sm, 0, 0);
+                        } else {
+                          const startMinsTotal = Math.round(dragSelection.startHour * 60);
+                          let sh = Math.floor(startMinsTotal / 60);
+                          let sm = startMinsTotal % 60;
+                          if (sh >= 24) { sh = 23; sm = 59; }
+                          start.setHours(sh, sm, 0, 0);
+                        }
+                        
+                        const end = new Date(dragSelection.day);
+                        if (modalEndTime) {
+                          const [eh, em] = modalEndTime.split(':').map(Number);
+                          end.setHours(eh, em, 0, 0);
+                        } else {
+                          const endMinsTotal = Math.round(dragSelection.endHour * 60);
+                          let eh = Math.floor(endMinsTotal / 60);
+                          let em = endMinsTotal % 60;
+                          if (eh >= 24) { eh = 23; em = 59; }
+                          end.setHours(eh, em, 0, 0);
+                        }
+                        if (end < start) {
+                          end.setDate(end.getDate() + 1);
+                        }
+                        
+                        const durationMins = Math.round((dragSelection.endHour - dragSelection.startHour) * 60);
+                        let reward = Math.max(10, Math.round(durationMins * 0.8));
+                        
+                        // Priority multiplier
+                        if (taskPriority === 'High') reward = Math.round(reward * 1.5);
+                        else if (taskPriority === 'Low') reward = Math.round(reward * 0.8);
+                        
+                        let lecNumParsed: number | undefined = undefined;
+                        if (taskType === 'Lecture') {
+                          const lecNumStr = hasEditedLecture ? lectureNumberInput : predictNextLecture(taskSubject || '', taskChapter || '', todos, history, syllabus);
+                          if (lecNumStr) lecNumParsed = parseInt(lecNumStr);
+                        }
+                        
+                        const newTask = {
+                          id: Date.now(),
+                          text: finalName,
+                          completed: false,
+                          xpReward: reward,
+                          type: taskType,
+                          subject: taskSubject === 'General' || taskSubject === 'Personal' ? undefined : taskSubject,
+                          chapter: taskChapter || undefined,
+                          lectureNumber: lecNumParsed,
+                          startTime: start.toISOString(),
+                          endTime: end.toISOString(),
+                          priority: taskPriority
+                        };
+                        
+                        const updatedTodos = [...todos, newTask];
+                        setTodos(updatedTodos);
+                        setShowTaskModal(false);
+                        setDragSelection(null);
+                        setTaskName("");
+                        showToast("Session created!", "success");
+                        
+                        setUnsyncedChanges(true);
+                      }}
+                      className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all"
+                    >
+                      Create Session
+                    </button>
                   </div>
-                  
-                  <AnimatePresence mode="wait">
-                    {currentSubjectChapters.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
+                </motion.div>
+
+                {/* Floating Card 2: Dedicated Chapters Card (showing next to it when Physics/Chemistry/Maths is selected) */}
+                {['Physics', 'Chemistry', 'Mathematics'].includes(taskSubject || '') && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, x: 20 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, x: 20 }}
+                    className="hidden lg:flex bg-white dark:bg-[#1A1A1A] w-full max-w-sm rounded-2xl md:rounded-[32px] border border-slate-200 dark:border-slate-800 shadow-2xl p-6 relative flex-col max-h-[90vh] md:max-h-[85vh] justify-between"
+                  >
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="font-bold text-md text-slate-800 dark:text-white flex items-center gap-1.5">
+                          <Zap className="w-5 h-5 text-amber-500 animate-pulse" />
+                          Chapters: {taskSubject}
+                        </h4>
+                        <span className="text-xs font-mono font-bold text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded">
+                          Track & Select
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Chapters shifted with active study chapter at the top. Selecting a chapter updates the session on the left.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 flex-1 overflow-y-auto pr-1 scrollbar-hide min-h-0">
+                      {/* No Chapter option */}
+                      <button
+                        onClick={() => { setTaskChapter(""); setHasEditedLecture(false); }}
+                        className={`w-full text-left p-3 rounded-xl border text-xs font-bold transition-all ${
+                          !taskChapter 
+                            ? 'bg-indigo-600/10 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold' 
+                            : 'bg-transparent border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                        }`}
                       >
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Chapter (Optional)</label>
-                        <div className="max-h-40 overflow-y-auto custom-scrollbar border dark:border-slate-700 border-slate-200 rounded-xl p-2 bg-slate-50 dark:bg-black/40 grid grid-cols-1 gap-1">
-                          <button
-                            onClick={() => { setTaskChapter(""); setHasEditedLecture(false); }}
-                            className={`text-left px-3 py-2 rounded-lg text-sm transition-all ${!taskChapter ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 font-bold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/5'}`}
-                          >
-                            No Chapter
-                          </button>
-                          {currentSubjectChapters.map(ch => (
+                        No Chapter (General Session)
+                      </button>
+
+                      {(() => {
+                        const currentChName = getCurrentChapterForSubject(taskSubject || '');
+                        const chapters = syllabus[(taskSubject || '') as keyof typeof syllabus] || [];
+                        const shiftedChapters = [...chapters];
+                        if (currentChName) {
+                          const idx = shiftedChapters.findIndex(c => c.name === currentChName);
+                          if (idx !== -1) {
+                            const [found] = shiftedChapters.splice(idx, 1);
+                            shiftedChapters.unshift(found);
+                          }
+                        }
+
+                        return shiftedChapters.map((ch) => {
+                          const isCurrent = ch.name === currentChName;
+                          const isSelected = taskChapter === ch.name;
+                          const statusColor = ch.status === 'green' ? 'bg-emerald-500' : 
+                                              ch.status === 'yellow' ? 'bg-amber-500' : 
+                                              ch.status === 'red' ? 'bg-rose-500' : 'bg-slate-400';
+                          
+                          return (
                             <button
                               key={ch.name}
                               onClick={() => { setTaskChapter(ch.name); setHasEditedLecture(false); }}
-                              className={`text-left px-3 py-2 rounded-lg text-sm transition-all truncate ${taskChapter === ch.name ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 font-bold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/5'}`}
+                              className={`w-full text-left relative p-3 rounded-xl border transition-all duration-300 flex flex-col ${
+                                isSelected
+                                  ? 'bg-indigo-600/15 dark:bg-indigo-600/20 border-indigo-500 shadow-md shadow-indigo-500/5'
+                                  : 'bg-white/[0.02] dark:bg-black/10 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:bg-white/5 hover:bg-white/[0.04]'
+                              }`}
                             >
-                              {ch.name}
+                              {isCurrent && (
+                                <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-indigo-600 text-[8px] font-bold uppercase tracking-wider rounded text-white shadow-sm">
+                                  📍 CURRENTLY ON
+                                </div>
+                              )}
+                              
+                              <div className="flex items-start justify-between gap-2 w-full">
+                                <div className="flex-1 min-w-0 text-left">
+                                  <p className={`text-xs font-bold truncate pr-16 ${isSelected ? 'text-indigo-600 dark:text-indigo-400 font-bold' : 'text-slate-700 dark:text-slate-200'}`}>
+                                    {ch.name}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-1">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                      {ch.status === 'green' ? 'Completed' : 
+                                       ch.status === 'yellow' ? 'Moderate' : 
+                                       ch.status === 'red' ? 'Weak' : 'Not Started'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">• Tier {ch.tier}</span>
+                                  </div>
+                                </div>
+                                
+                                <div className="text-right shrink-0">
+                                  <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300 block">
+                                    {ch.accuracy}% Acc
+                                  </span>
+                                </div>
+                              </div>
                             </button>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Task Type</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {['Lecture', 'Notes', 'Practice', 'DPP', 'Revision', 'PYQs', 'Custom'].map(t => (
-                        <button 
-                          key={t}
-                          onClick={() => setTaskType(t)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${taskType === t ? 'bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/50' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'}`}
-                        >
-                          {t}
-                        </button>
-                      ))}
+                          );
+                        });
+                      })()}
                     </div>
-                  </div>
+                  </motion.div>
+                )}
 
-                  {taskType === 'Lecture' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Lecture Number (Optional)</label>
-                      <input 
-                        type="number"
-                        placeholder="e.g. 4"
-                        value={(hasEditedLecture ? lectureNumberInput : predictNextLecture(taskSubject || '', taskChapter || '', todos, history, syllabus)) || ''}
-                        onChange={(e) => { setLectureNumberInput(e.target.value); setHasEditedLecture(true); }}
-                        className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-                      />
-                    </motion.div>
-                  )}
-                  {taskType === 'Custom' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Custom Task Name</label>
-                      <input 
-                        type="text"
-                        autoFocus
-                        value={taskName || ""}
-                        onChange={(e) => setTaskName(e.target.value)}
-                        placeholder="Enter task name..."
-                        className="w-full bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
-                      />
-                    </motion.div>
-                  )}
-                  
-                </div>
+              </div>
+            </div>
+          )}
+        </AnimatePresence>
 
-                <div className="pt-4 flex gap-3 flex-shrink-0 border-t border-slate-100 dark:border-white/5 mt-2">
-                  <button 
-                    onClick={() => setShowTaskModal(false)}
-                    className="flex-1 py-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-sm font-bold transition-colors text-slate-700 dark:text-slate-300"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      let finalName = "";
-                      if (taskType === 'Custom') {
-                        if (!(taskName || '').trim()) {
-                          showToast("Please enter a custom task name", "error");
-                          return;
-                        }
-                        finalName = (taskName || '').trim();
-                      } else {
-                        let baseName = taskType;
-                        if (taskType === 'Lecture') {
-                          const lecNum = (hasEditedLecture ? lectureNumberInput : predictNextLecture(taskSubject || '', taskChapter || '', todos, history, syllabus));
-                          if (lecNum) baseName = `Lecture ${lecNum}`;
-                        }
-                        finalName = `${baseName}${taskChapter ? ` - ${taskChapter}` : ''}`;
-                      }
-                      
-                      const start = new Date(dragSelection.day);
-                      if (modalStartTime) {
-                        const [sh, sm] = modalStartTime.split(':').map(Number);
-                        start.setHours(sh, sm, 0, 0);
-                      } else {
-                        start.setHours(Math.floor(dragSelection.startHour), Math.round((dragSelection.startHour % 1) * 60), 0, 0);
-                      }
-                      
-                      const end = new Date(dragSelection.day);
-                      if (modalEndTime) {
-                        const [eh, em] = modalEndTime.split(':').map(Number);
-                        end.setHours(eh, em, 0, 0);
-                      } else {
-                        end.setHours(Math.floor(dragSelection.endHour), Math.round((dragSelection.endHour % 1) * 60), 0, 0);
-                      }
-                      
-                      const durationMins = Math.round((dragSelection.endHour - dragSelection.startHour) * 60);
-                      let reward = Math.max(10, Math.round(durationMins * 0.8));
-                      
-                      // Priority multiplier
-                      if (taskPriority === 'High') reward = Math.round(reward * 1.5);
-                      else if (taskPriority === 'Low') reward = Math.round(reward * 0.8);
-                      
-                      let lecNumParsed: number | undefined = undefined;
-                      if (taskType === 'Lecture') {
-                        const lecNumStr = hasEditedLecture ? lectureNumberInput : predictNextLecture(taskSubject || '', taskChapter || '', todos, history, syllabus);
-                        if (lecNumStr) lecNumParsed = parseInt(lecNumStr);
-                      }
-                      
-                      const newTask = {
-                        id: Date.now(),
-                        text: finalName,
-                        completed: false,
-                        xpReward: reward,
-                        type: taskType,
-                        subject: taskSubject === 'General' || taskSubject === 'Personal' ? undefined : taskSubject,
-                        chapter: taskChapter || undefined,
-                        lectureNumber: lecNumParsed,
-                        startTime: start.toISOString(),
-                        endTime: end.toISOString(),
-                        priority: taskPriority
-                      };
-                      
-                      const updatedTodos = [...todos, newTask];
-                      setTodos(updatedTodos);
-                      setShowTaskModal(false);
-                      setDragSelection(null);
-                      setTaskName("");
-                      showToast("Session created!", "success");
-                      
-                      setUnsyncedChanges(true);
-                    }}
-                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all"
-                  >
-                    Create Session
+        {/* Mobile Sidebar (Slide-over drawer) */}
+        <AnimatePresence>
+          {showMobileSidebar && (
+            <div className="fixed inset-0 z-[120] flex md:hidden">
+              {/* Overlay */}
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowMobileSidebar(false)}
+                className="fixed inset-0 bg-black/60 backdrop-blur-md"
+              />
+              {/* Drawer Content */}
+              <motion.div 
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+                className="relative flex flex-col w-80 max-w-xs h-full dark:bg-[#080d16] bg-white border-r border-slate-200 dark:border-slate-800/60 p-6 overflow-y-auto shadow-2xl z-10 scrollbar-hide space-y-6"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h1 className="text-xl font-bold flex items-center gap-2 tracking-tight text-indigo-600 dark:text-indigo-400">
+                    <CalendarIcon className="w-5 h-5" />
+                    Schedule
+                  </h1>
+                  <button onClick={() => setShowMobileSidebar(false)} className="p-1.5 dark:bg-white/5 bg-slate-100 hover:bg-slate-200 dark:hover:bg-white/10 rounded-full transition-colors">
+                    <X className="w-5 h-5 text-slate-500 dark:text-slate-400 hover:dark:text-white" />
                   </button>
                 </div>
+                
+                {renderSidebarContents()}
               </motion.div>
             </div>
           )}
         </AnimatePresence>
 
-        {/* Sidebar (Bottom on mobile, Left on Desktop) */}
-        <div className="w-full md:w-64 h-[40vh] md:h-auto border-t md:border-t-0 md:border-r border-slate-200 dark:border-white/5 flex flex-col flex-shrink-0 bg-[#0A0A0A] dark:bg-[#111111] text-white order-2 md:order-1">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:flex w-64 border-r border-slate-200 dark:border-white/5 flex-col flex-shrink-0 dark:bg-[#070b12] bg-slate-50 order-2 md:order-1 h-full min-h-0">
+          <div className="p-6 pb-2 flex-shrink-0">
+            <h1 className="text-xl font-bold flex items-center gap-2 tracking-tight text-indigo-600 dark:text-indigo-400">
+              <CalendarIcon className="w-5 h-5" />
+              Schedule
+            </h1>
+          </div>
+          <div className="p-6 flex-1 overflow-y-auto space-y-6 scrollbar-hide min-h-0">
+            {renderSidebarContents()}
+          </div>
+        </div>
+
+        {/* Deprecated Inline Sidebar (Hidden) */}
+        <div className="hidden">
           <div className="p-6 pb-2">
             <h1 className="text-xl font-bold flex items-center gap-2 tracking-tight text-indigo-400">
               <CalendarIcon className="w-6 h-6" />
@@ -1354,7 +1914,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                  <h3 className="font-bold text-sm text-white">Calendars</h3>
                  <button className="text-slate-400 hover:text-white transition-colors"><Plus className="w-4 h-4" /></button>
                </div>
-               <div className="space-y-3">
+               <div className="space-y-2">
                  {[
                    { name: 'General', color: 'bg-indigo-500' },
                    { name: 'Physics', color: 'bg-blue-500' },
@@ -1362,27 +1922,134 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                    { name: 'Mathematics', color: 'bg-amber-500' },
                    { name: 'Personal', color: 'bg-rose-500' }
                  ].map(cal => (
-                   <label key={cal.name} className="flex items-center gap-3 cursor-pointer group">
-                     <div className={`w-4 h-4 rounded shadow-sm border border-white/10 flex items-center justify-center transition-colors ${activeCalendars.includes(cal.name) ? cal.color : 'bg-transparent'}`}>
-                        {activeCalendars.includes(cal.name) && <CheckCircle2 className="w-3 h-3 text-white" />}
-                     </div>
-                     <span className="text-sm text-slate-300 group-hover:text-white transition-colors">{cal.name}</span>
-                     <input 
-                       type="checkbox" 
-                       className="hidden" 
-                       checked={activeCalendars.includes(cal.name)} 
-                       onChange={(e) => {
-                         if (e.target.checked) {
-                           setActiveCalendars([...activeCalendars, cal.name]);
-                         } else {
-                           setActiveCalendars(activeCalendars.filter(c => c !== cal.name));
-                         }
-                       }} 
-                     />
-                   </label>
+                   <div 
+                     key={cal.name}
+                     onClick={() => {
+                       if (['Physics', 'Chemistry', 'Mathematics'].includes(cal.name)) {
+                         setSelectedSubject(cal.name);
+                       }
+                     }}
+                     className={`flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer ${
+                       selectedSubject === cal.name && ['Physics', 'Chemistry', 'Mathematics'].includes(cal.name)
+                         ? 'bg-indigo-600/10 border border-indigo-500/30' 
+                         : 'border border-transparent hover:bg-white/[0.04]'
+                     }`}
+                   >
+                     <label className="flex items-center gap-3 cursor-pointer flex-1" onClick={(e) => e.stopPropagation()}>
+                       <div className={`w-4 h-4 rounded shadow-sm border border-white/10 flex items-center justify-center transition-colors ${activeCalendars.includes(cal.name) ? cal.color : 'bg-transparent'}`}>
+                          {activeCalendars.includes(cal.name) && <CheckCircle2 className="w-3 h-3 text-white" />}
+                       </div>
+                       <span className="text-sm text-slate-300 group-hover:text-white transition-colors">{cal.name}</span>
+                       <input 
+                         type="checkbox" 
+                         className="hidden" 
+                         checked={activeCalendars.includes(cal.name)} 
+                         onChange={(e) => {
+                           if (e.target.checked) {
+                             setActiveCalendars([...activeCalendars, cal.name]);
+                           } else {
+                             setActiveCalendars(activeCalendars.filter(c => c !== cal.name));
+                           }
+                         }} 
+                       />
+                     </label>
+                     {['Physics', 'Chemistry', 'Mathematics'].includes(cal.name) && (
+                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                         selectedSubject === cal.name 
+                           ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                           : 'text-slate-500 hover:text-slate-400 bg-white/[0.02]'
+                       }`}>
+                         {selectedSubject === cal.name ? 'Active' : 'Select'}
+                       </span>
+                     )}
+                   </div>
                  ))}
                </div>
             </div>
+
+            {/* Chapters Tracker Card in Main Sidebar */}
+            {selectedSubject && ['Physics', 'Chemistry', 'Mathematics'].includes(selectedSubject) && (() => {
+              const currentCh = getCurrentChapterForSubject(selectedSubject);
+              const chapters = syllabus[selectedSubject as keyof typeof syllabus] || [];
+              
+              // Shifting logic: put current chapter first, followed by others in order
+              const shiftedChapters = [...chapters];
+              if (currentCh) {
+                const idx = shiftedChapters.findIndex(c => c.name === currentCh);
+                if (idx !== -1) {
+                  const [found] = shiftedChapters.splice(idx, 1);
+                  shiftedChapters.unshift(found);
+                }
+              }
+
+              return (
+                <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm flex flex-col min-h-[300px]">
+                   <div className="flex justify-between items-center mb-3">
+                     <h3 className="font-bold text-sm text-white flex items-center gap-1.5">
+                       <Zap className="w-4 h-4 text-amber-400 animate-pulse" />
+                       Syllabus Tracker
+                     </h3>
+                     <span className="text-[10px] font-mono text-indigo-400 px-1.5 py-0.5 rounded bg-indigo-500/10">
+                       {selectedSubject}
+                     </span>
+                   </div>
+
+                   {/* List of Chapters */}
+                   <div className="space-y-2 flex-1 overflow-y-auto max-h-[280px] pr-1 scrollbar-hide">
+                     {shiftedChapters.map((ch, index) => {
+                       const isCurrent = ch.name === currentCh;
+                       const statusColor = ch.status === 'green' ? 'bg-emerald-500' : 
+                                           ch.status === 'yellow' ? 'bg-amber-500' : 
+                                           ch.status === 'red' ? 'bg-rose-500' : 'bg-slate-600';
+                       
+                       return (
+                         <div 
+                           key={ch.name}
+                           className={`group/chapter relative p-2.5 rounded-xl border transition-all duration-300 ${
+                             isCurrent 
+                               ? 'bg-gradient-to-r from-indigo-500/15 to-purple-500/5 border-indigo-500/40 shadow-md shadow-indigo-500/5' 
+                               : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.04]'
+                           }`}
+                         >
+                           {isCurrent && (
+                             <div className="absolute -top-2 right-2 px-1.5 py-0.5 bg-indigo-600 text-[8px] font-bold uppercase tracking-wider rounded text-white shadow-sm">
+                               📍 CURRENTLY ON
+                             </div>
+                           )}
+                           
+                           <div className="flex items-start justify-between gap-2">
+                             <div className="flex-1 min-w-0">
+                               <p className={`text-xs font-bold truncate ${isCurrent ? 'text-indigo-300' : 'text-slate-200'}`}>
+                                 {ch.name}
+                               </p>
+                               <div className="flex items-center gap-2 mt-1">
+                                 <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
+                                 <span className="text-[10px] text-slate-400 font-medium">
+                                   {ch.status === 'green' ? 'Completed' : 
+                                    ch.status === 'yellow' ? 'Moderate' : 
+                                    ch.status === 'red' ? 'Weak' : 'Not Started'}
+                                 </span>
+                                 <span className="text-[10px] text-slate-500">• Tier {ch.tier}</span>
+                               </div>
+                             </div>
+                             
+                             {/* Stats Badge */}
+                             <div className="text-right shrink-0">
+                               <span className="text-[10px] font-mono font-bold text-slate-300 block">
+                                 {ch.accuracy}% Acc
+                               </span>
+                               <span className="text-[9px] text-slate-500 block">
+                                 {ch.pyq}% PYQs
+                               </span>
+                             </div>
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                </div>
+              );
+            })()}
             
             {/* Upcoming */}
             <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
@@ -1423,11 +2090,18 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
         </div>
         
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col bg-white dark:bg-[#121212] order-1 md:order-2 h-[60vh] md:h-auto">
+        <div className="flex-1 flex flex-col bg-white dark:bg-[#121212] order-1 md:order-2 h-full md:h-auto min-h-0">
           
           {/* Header */}
           <div className="min-h-[80px] py-4 md:py-0 border-b border-slate-200 dark:border-white/10 flex flex-wrap items-center justify-between px-4 md:px-6 bg-white dark:bg-[#1A1A1A] gap-4 shrink-0">
             <div className="flex items-center gap-2 md:gap-4">
+              <button 
+                onClick={() => setShowMobileSidebar(true)} 
+                className="md:hidden p-2 bg-slate-100 dark:bg-white/5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 transition-colors mr-1"
+                title="Open Schedule Sidebar"
+              >
+                <Menu className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+              </button>
               <button onClick={() => setCurrentDate(new Date())} className="hidden sm:block px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
                 Today
               </button>
@@ -1447,7 +2121,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
             
             <div className="flex items-center gap-4">
               <button
-                onClick={handleCalendarSync}
+                onClick={() => handleCalendarSync(true)}
                 disabled={isSyncing}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-md disabled:opacity-50 disabled:animate-none ${
                   unsyncedChanges 
@@ -1472,7 +2146,20 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
           </div>
           
           {/* Calendar Body */}
-          {view === 'Month' ? renderMonthGrid() : renderTimeline()}
+          <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={view + '-' + currentDate.toISOString()}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.2 }}
+                className="flex-1 flex flex-col min-h-0"
+              >
+                {view === 'Month' ? renderMonthGrid() : renderTimeline()}
+              </motion.div>
+            </AnimatePresence>
+          </div>
           
         </div>
 

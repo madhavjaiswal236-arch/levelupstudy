@@ -295,6 +295,40 @@ export default function Dashboard() {
  setTimeout(() => setToastMessage(""), 5000);
  };
 
+ // Helper to determine what chapter the user is currently on based on created tasks and recent history
+ const getCurrentChapterForSubject = (subj: string) => {
+   if (!subj || !['Physics', 'Chemistry', 'Mathematics'].includes(subj)) return null;
+
+   // 1. Look in active/upcoming/recent todos
+   const matchingTodos = todos
+     .filter(t => t.subject === subj && t.chapter)
+     .sort((a, b) => b.id - a.id); // higher ID means more recent
+     
+   if (matchingTodos.length > 0) {
+     return matchingTodos[0].chapter;
+   }
+   
+   // 2. Look in history (recent logs)
+   if (history && history.length > 0) {
+     const sortedHistory = [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+     for (const entry of sortedHistory) {
+       if (entry.completedTasks) {
+         const matched = entry.completedTasks.find(t => t.subject === subj && t.chapter);
+         if (matched && matched.chapter) {
+           return matched.chapter;
+         }
+       }
+     }
+   }
+   
+   // 3. Fallback to first chapter in syllabus
+   const chapters = syllabus[subj as keyof typeof syllabus] || [];
+   if (chapters.length > 0) {
+     return chapters[0].name;
+   }
+   return null;
+ };
+
  // Study Session Timer State
  const [isSessionActive, setIsSessionActive] = useState(false);
  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
@@ -2570,20 +2604,28 @@ export default function Dashboard() {
    )}
  </div>
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
- {["Physics", "Chemistry", "Mathematics"].map((sub) => (
- <Button
- key={sub}
- variant="outline"
- className="dark:border-slate-700 border-slate-300 hover:border-cyan-500 hover:dark:text-cyan-400 text-cyan-700 dark:text-slate-300 text-slate-900 dark:bg-black bg-white"
- onClick={() => {
- setSelectedSubject(sub);
- setSelectedChapter(null);
- setTaskStep(2 as any);
- }}
- >
- {sub}
- </Button>
- ))}
+ {["Physics", "Chemistry", "Mathematics"].map((sub) => {
+   const suggested = getCurrentChapterForSubject(sub);
+   return (
+     <Button
+       key={sub}
+       variant="outline"
+       className="dark:border-slate-700 border-slate-300 hover:border-cyan-500 hover:dark:text-cyan-400 text-cyan-700 dark:text-slate-300 text-slate-900 dark:bg-black bg-white flex flex-col items-center justify-center py-4 h-auto gap-1"
+       onClick={() => {
+         setSelectedSubject(sub);
+         setSelectedChapter(suggested);
+         setTaskStep(suggested ? 3 : 2 as any);
+       }}
+     >
+       <span className="font-bold">{sub}</span>
+       {suggested && (
+         <span className="text-[10px] dark:text-cyan-400/80 text-cyan-700/80 font-medium truncate max-w-full px-1">
+           {suggested.substring(0, 15)}{suggested.length > 15 ? '...' : ''}
+         </span>
+       )}
+     </Button>
+   );
+ })}
  </div>
  <Button
  variant="outline"
@@ -2622,21 +2664,29 @@ export default function Dashboard() {
  </div>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
  {syllabus[selectedSubject as keyof SyllabusData].map(
- (chap) => (
- <Button
- key={chap.name}
- variant="outline"
- className="justify-start text-left h-auto py-2 dark:border-slate-700 border-slate-300 hover:border-cyan-500 dark:text-slate-300 text-slate-900 dark:bg-black bg-white hover:dark:text-cyan-400 text-cyan-700"
- onClick={() => {
- setSelectedChapter(chap.name);
- setTaskStep(3);
- setHasEditedLecture(false);
- setLectureNumberInput("");
- }}
- >
- <span className="truncate">{chap.name}</span>
- </Button>
- ),
+ (chap) => {
+   const isRecommended = getCurrentChapterForSubject(selectedSubject) === chap.name;
+   return (
+     <Button
+       key={chap.name}
+       variant="outline"
+       className={`justify-between text-left h-auto py-2.5 px-3 border flex items-center w-full ${isRecommended ? 'border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10 hover:border-cyan-500 hover:dark:text-cyan-400 text-cyan-700' : 'dark:border-slate-700 border-slate-300 hover:border-cyan-500 dark:text-slate-300 text-slate-900 dark:bg-black bg-white hover:dark:text-cyan-400 text-cyan-700'}`}
+       onClick={() => {
+         setSelectedChapter(chap.name);
+         setTaskStep(3);
+         setHasEditedLecture(false);
+         setLectureNumberInput("");
+       }}
+     >
+       <span className="truncate">{chap.name}</span>
+       {isRecommended && (
+         <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ml-2">
+           Current
+         </span>
+       )}
+     </Button>
+   );
+ }
  )}
  </div>
  </div>

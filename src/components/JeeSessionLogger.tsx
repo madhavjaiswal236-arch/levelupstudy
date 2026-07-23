@@ -26,6 +26,40 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  const { syllabus, addXp, setHoursStudiedToday, updateChapterStats, setQuestionsSolved, todos, setTodos, loggedTasksToday, setLoggedTasksToday, getStreakMultiplier, activeBoost, setPendingTasks, history } = useAppContext();
  const { hapticSuccess } = useHaptic();
  
+ // Helper to determine what chapter the user is currently on based on created tasks and recent history
+ const getCurrentChapterForSubject = (subj: string) => {
+   if (!subj || !['Physics', 'Chemistry', 'Mathematics'].includes(subj)) return null;
+
+   // 1. Look in active/upcoming/recent todos
+   const matchingTodos = todos
+     .filter(t => t.subject === subj && t.chapter)
+     .sort((a, b) => b.id - a.id); // higher ID means more recent
+     
+   if (matchingTodos.length > 0) {
+     return matchingTodos[0].chapter;
+   }
+   
+   // 2. Look in history (recent logs)
+   if (history && history.length > 0) {
+     const sortedHistory = [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+     for (const entry of sortedHistory) {
+       if (entry.completedTasks) {
+         const matched = entry.completedTasks.find(t => t.subject === subj && t.chapter);
+         if (matched && matched.chapter) {
+           return matched.chapter;
+         }
+       }
+     }
+   }
+   
+   // 3. Fallback to first chapter in syllabus
+   const chapters = syllabus[subj as keyof typeof syllabus] || [];
+   if (chapters.length > 0) {
+     return chapters[0].name;
+   }
+   return null;
+ };
+ 
  const [isExpanded, setIsExpanded] = useState(false);
  const [pendingTaskId, setPendingTaskId] = useState<number | null>(null);
  const [subject, setSubject] = useState<Subject | null>(null);
@@ -293,19 +327,26 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  <div>
  <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider mb-3 block">Subject</label>
  <div className="grid grid-cols-3 gap-2">
- {(['Physics', 'Chemistry', 'Mathematics'] as Subject[]).map(s => (
- <button
- key={s}
- onClick={() => { 
- setSubject(s); 
- setChapter(null); 
- setIsChapterModalOpen(true); 
- }}
- className={`py-3 px-2 rounded-lg text-sm font-bold transition-all border ${subject === s ? 'bg-cyan-500/20 border-cyan-400 dark:text-cyan-300 dark:text-cyan-400 text-cyan-700 shadow-md' : 'dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500'}`}
- >
- {s}
- </button>
- ))}
+ {(['Physics', 'Chemistry', 'Mathematics'] as Subject[]).map(s => {
+   const suggested = getCurrentChapterForSubject(s);
+   return (
+     <button
+       key={s}
+       onClick={() => { 
+         setSubject(s); 
+         setChapter(suggested); 
+       }}
+       className={`py-2.5 px-2 rounded-lg text-sm font-bold transition-all border flex flex-col items-center justify-center gap-1 ${subject === s ? 'bg-cyan-500/20 border-cyan-400 dark:text-cyan-300 dark:text-cyan-400 text-cyan-700 shadow-md' : 'dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500'}`}
+     >
+       <span>{s}</span>
+       {suggested && (
+         <span className="text-[10px] dark:text-cyan-500/80 text-cyan-700/80 font-medium truncate max-w-full px-1">
+           {suggested.substring(0, 10)}{suggested.length > 10 ? '...' : ''}
+         </span>
+       )}
+     </button>
+   );
+ })}
  </div>
  </div>
  
@@ -336,7 +377,14 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  {chapter ? (
  <div className="flex items-center gap-3">
  <BookOpen className="w-5 h-5 dark:text-blue-400 text-blue-700" />
+ <div className="flex flex-col sm:flex-row sm:items-center gap-2">
  <span className="text-lg font-heading font-bold dark:text-white text-slate-900">{chapter}</span>
+ {chapter === getCurrentChapterForSubject(subject) && (
+ <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full w-max">
+ Current Chapter
+ </span>
+ )}
+ </div>
  </div>
  ) : (
  <span className="dark:text-slate-500 text-slate-600 italic">Click to select a chapter...</span>
@@ -678,22 +726,32 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  
  <div className="overflow-y-auto custom-scrollbar pr-2 flex-1">
  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
- {syllabus[subject].map(c => (
- <button
- key={c.name}
- onClick={() => { 
- setChapter(c.name); 
- setIsChapterModalOpen(false); 
- }}
- className={`p-4 rounded-xl text-left transition-all border flex flex-col gap-2 ${chapter === c.name ? 'bg-cyan-500/20 border-cyan-400 shadow-md' : 'dark:bg-black bg-slate-50 dark:border-slate-800 border-slate-200 hover:border-cyan-500/50 hover:dark:bg-slate-900 bg-white'}`}
- >
- <span className="text-sm font-bold dark:text-slate-200 text-slate-900 leading-tight">{c.name}</span>
- <div className="flex gap-2 mt-auto pt-2">
- <span className="text-[10px] px-2 py-1 rounded dark:bg-slate-800 bg-slate-100 dark:text-slate-400 text-slate-600 font-mono">Lec: {c.lectures}%</span>
- <span className="text-[10px] px-2 py-1 rounded dark:bg-slate-800 bg-slate-100 dark:text-slate-400 text-slate-600 font-mono">PYQ: {c.pyq}%</span>
- </div>
- </button>
- ))}
+ {syllabus[subject].map(c => {
+   const isRecommended = getCurrentChapterForSubject(subject) === c.name;
+   return (
+     <button
+       key={c.name}
+       onClick={() => { 
+         setChapter(c.name); 
+         setIsChapterModalOpen(false); 
+       }}
+       className={`p-4 rounded-xl text-left transition-all border flex flex-col gap-2 relative overflow-hidden ${chapter === c.name ? 'bg-cyan-500/20 border-cyan-400 shadow-md' : isRecommended ? 'border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10 hover:border-cyan-500/50' : 'dark:bg-black bg-slate-50 dark:border-slate-800 border-slate-200 hover:border-cyan-500/50 hover:dark:bg-slate-900 bg-white'}`}
+     >
+       <div className="flex items-center justify-between w-full">
+         <span className={`text-sm font-bold leading-tight ${chapter === c.name ? 'dark:text-cyan-400 text-cyan-700' : isRecommended ? 'dark:text-emerald-400 text-emerald-700 font-bold' : 'dark:text-slate-200 text-slate-900'}`}>{c.name}</span>
+         {isRecommended && (
+           <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 animate-pulse">
+             Current
+           </span>
+         )}
+       </div>
+       <div className="flex gap-2 mt-auto pt-2">
+         <span className="text-[10px] px-2 py-1 rounded dark:bg-slate-800 bg-slate-100 dark:text-slate-400 text-slate-600 font-mono">Lec: {c.lectures}%</span>
+         <span className="text-[10px] px-2 py-1 rounded dark:bg-slate-800 bg-slate-100 dark:text-slate-400 text-slate-600 font-mono">PYQ: {c.pyq}%</span>
+       </div>
+     </button>
+   );
+ })}
  </div>
  </div>
  </motion.div>

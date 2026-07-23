@@ -94,6 +94,8 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --grid-dot-color: rgba(0, 0, 0, 0.02);
+  --grid-line-color: rgba(0, 0, 0, 0.008);
 }
 
 .dark {
@@ -128,6 +130,8 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --grid-dot-color: rgba(255, 255, 255, 0.02);
+  --grid-line-color: rgba(255, 255, 255, 0.006);
 }
 
 @layer base {
@@ -433,3 +437,13 @@
 .neon-checkbox-container:hover .neon-checkbox-label {
   transform: translateX(4px);
 }
+
+/* Subtle background grid texture */
+.subtle-bg-grid {
+  background-image: 
+    radial-gradient(circle at 1px 1px, var(--grid-dot-color) 1px, transparent 0),
+    linear-gradient(to right, var(--grid-line-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line-color) 1px, transparent 1px);
+  background-size: 20px 20px, 80px 80px, 80px 80px;
+}
+

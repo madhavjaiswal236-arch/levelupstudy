@@ -1,7 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 const app = express();
@@ -254,6 +253,7 @@ Make it brutal and direct. If their questions are low but hours are high, scold 
 async function startServer() {
   // Vite development middleware vs Static file server
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
