@@ -745,8 +745,7 @@ export default function Dashboard() {
    // Schedule it with calendar
   try {
     let token = await getAccessToken();
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (!token && !isMobile) {
+    if (!token) {
       try {
         showToast("Google Calendar not loaded. Opening login page...", "success");
         const loginRes = await googleSignIn();
@@ -799,9 +798,62 @@ export default function Dashboard() {
  );
  } else if (taskResult) {
  showToast("Scheduled on Calendar & Tasks!", "success");
+ } else {
+ showToast("Scheduled on Calendar!", "success");
  }
  }
  } catch (e: any) {
+    const errorMsg = (e.message || "").toLowerCase();
+    if (errorMsg.includes("access token") || errorMsg.includes("login") || errorMsg.includes("auth") || errorMsg.includes("unauthorized") || errorMsg.includes("401")) {
+      try {
+        showToast("Authentication needed. Opening Google login...", "success");
+        const loginRes = await googleSignIn();
+        if (loginRes) {
+          const result = await createCalendarEvent(
+            text,
+            durationMinutes,
+            type || "Lecture",
+            false,
+            todos
+          );
+          if (result && result.id) {
+            let taskResult = null;
+            try {
+              taskResult = result.endTime
+                ? await createGoogleTask(text, new Date(result.endTime))
+                : null;
+            } catch (taskErr: any) {
+              console.error("Task creation failed during retry:", taskErr);
+              showToast("Event created, but failed to sync Task. (Enable Tasks API in Cloud Console)");
+            }
+            setTodos((prev) =>
+              prev.map((t) =>
+                t.id === taskId
+                  ? {
+                      ...t,
+                      calendarSynced: true,
+                      calendarEventId: result.id,
+                      calendarTaskId: taskResult ? taskResult.id : undefined,
+                      startTime: result.startTime,
+                      endTime: result.endTime,
+                    }
+                  : t
+              )
+            );
+            if (result.hasConflict) {
+              showToast("Warning: This task overlaps with an existing calendar event!");
+            } else if (taskResult) {
+              showToast("Scheduled on Calendar & Tasks!", "success");
+            } else {
+              showToast("Scheduled on Calendar!", "success");
+            }
+            return;
+          }
+        }
+      } catch (retryErr: any) {
+        console.error("Retry failed:", retryErr);
+      }
+    }
  showToast(
  `Added locally. Calendar error: ${e.message || "Unknown error"}`,
  );
@@ -816,8 +868,7 @@ export default function Dashboard() {
    // 2. Schedule it with calendar
   try {
     let token = await getAccessToken();
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (!token && !isMobile) {
+    if (!token) {
       try {
         showToast("Google Calendar not loaded. Opening login page...", "success");
         const loginRes = await googleSignIn();
@@ -888,6 +939,67 @@ export default function Dashboard() {
  showToast("Started backlog, but failed to sync to calendar.");
  }
  } catch (e: any) {
+    const errorMsg = (e.message || "").toLowerCase();
+    if (errorMsg.includes("access token") || errorMsg.includes("login") || errorMsg.includes("auth") || errorMsg.includes("unauthorized") || errorMsg.includes("401")) {
+      try {
+        showToast("Authentication needed. Opening Google login...", "success");
+        const loginRes = await googleSignIn();
+        if (loginRes) {
+          let durationMinutes = 105;
+          if (
+            task.type === "Practice" ||
+            task.type === "Custom" ||
+            task.type === "Revision"
+          ) {
+            durationMinutes = 60;
+          } else if (task.type === "Chapter Test") {
+            durationMinutes = 120;
+          }
+          const result = await createCalendarEvent(
+            task.text,
+            durationMinutes,
+            task.type || "Lecture",
+            false,
+            todos,
+          );
+          if (result && result.id) {
+            let taskResult = null;
+            try {
+              taskResult = result.endTime
+                ? await createGoogleTask(task.text, new Date(result.endTime))
+                : null;
+            } catch (taskErr: any) {
+              console.error("Task creation failed during retry:", taskErr);
+              showToast("Event created, but failed to sync Task. (Enable Tasks API in Cloud Console)");
+            }
+            setTodos((prev) =>
+              prev.map((t) =>
+                t.id === task.id
+                  ? {
+                      ...t,
+                      calendarSynced: true,
+                      calendarEventId: result.id,
+                      calendarTaskId: taskResult ? taskResult.id : undefined,
+                      startTime: result.startTime,
+                      endTime: result.endTime,
+                    }
+                  : t
+              )
+            );
+            if (result.hasConflict) {
+              showToast("Warning: This task overlaps with an existing calendar event!");
+            } else if (taskResult) {
+              showToast("Backlog scheduled on Calendar & Tasks!", "success");
+            } else {
+              showToast("Backlog scheduled on Calendar only.", "success");
+            }
+            return;
+          }
+        }
+      } catch (retryErr: any) {
+        console.error("Retry failed:", retryErr);
+      }
+    }
  showToast(
  `Started locally. Calendar error: ${e.message || "Unknown error"}`,
  );

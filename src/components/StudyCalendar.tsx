@@ -253,9 +253,8 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
 
   const ensureCalendarAuth = async (isManual: boolean = false) => {
     let token = await getAccessToken();
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     if (!token) {
-      if (isManual && !isMobile) {
+      if (isManual) {
         showToast("Google Calendar not loaded. Opening login page...", "success");
         const loginRes = await googleSignIn();
         if (!loginRes) {
