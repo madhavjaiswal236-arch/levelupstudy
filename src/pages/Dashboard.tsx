@@ -301,6 +301,7 @@ export default function Dashboard() {
  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
 
  const [showLogSessionModal, setShowLogSessionModal] = useState(false);
+ const [logSessionDeepFocus, setLogSessionDeepFocus] = useState(false);
  const [logSessionHours, setLogSessionHours] = useState(0);
  const [logSessionMins, setLogSessionMins] = useState(0);
  const [maxSessionDuration, setMaxSessionDuration] = useState(0);
@@ -533,6 +534,7 @@ export default function Dashboard() {
  window.open("https://pw.live", "_blank");
  setIsSessionActive(true);
  setSessionStartTime(Date.now());
+ setLogSessionDeepFocus(false);
  };
 
  const handleStartImmersiveTimer = () => {
@@ -557,6 +559,7 @@ export default function Dashboard() {
  setImmersiveInitialSeconds(seconds);
  setIsImmersiveTimerActive(true);
  setShowConfigTimer(false);
+ setLogSessionDeepFocus(timerMode === "deepwork");
  };
 
  const handleImmersiveComplete = (
@@ -582,6 +585,7 @@ export default function Dashboard() {
  setMaxSessionDuration(exactMins);
  setLogSessionHours(h);
  setLogSessionMins(m);
+ setLogSessionDeepFocus(timerMode === "deepwork");
  setShowLogSessionModal(true);
  if (taskId) {
  // Find the task and set it as completed
@@ -613,6 +617,7 @@ export default function Dashboard() {
  setMaxSessionDuration(exactMins);
  setLogSessionHours(h);
  setLogSessionMins(m);
+ setLogSessionDeepFocus(timerMode === "deepwork");
  setShowLogSessionModal(true);
  };
 
@@ -625,6 +630,7 @@ export default function Dashboard() {
  setMaxSessionDuration(exactMins);
  setLogSessionHours(h);
  setLogSessionMins(m);
+ setLogSessionDeepFocus(false);
  setShowLogSessionModal(true);
  } else {
  setIsSessionActive(false);
@@ -646,7 +652,7 @@ export default function Dashboard() {
 
  if (finalMins > 0) {
  hapticSuccess();
- logFocusSession(finalMins, finalMins >= 90);
+ logFocusSession(finalMins, logSessionDeepFocus);
  }
  setShowLogSessionModal(false);
  setIsSessionActive(false);
@@ -1237,601 +1243,636 @@ export default function Dashboard() {
  </AnimatePresence>
 
  {createPortal(
+  <AnimatePresence>
+   {!isClass11SetupDone && (
+    <motion.div
+     key="class11SetupModalPortal"
+     initial={{ opacity: 0 }}
+     animate={{ opacity: 1 }}
+     exit={{ opacity: 0 }}
+     className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
+    >
+     <motion.div
+      initial={{ scale: 0.9, y: 20 }}
+      animate={{ scale: 1, y: 0 }}
+      exit={{ scale: 0.9, y: 20 }}
+      className="dark:bg-slate-900 bg-white border dark:border-slate-800 border-slate-200 p-8 rounded-2xl max-w-md w-full shadow-lg"
+     >
+      <h2 className="text-2xl font-black dark:text-white text-slate-900 mb-2">
+       INITIALIZE TRACKER
+      </h2>
+      <p className="dark:text-slate-400 text-slate-600 mb-6 text-sm">
+       Please enter the end date of your Class 11th academic year to
+       calibrate the time tracking system.
+      </p>
+      <form onSubmit={handleSetDate} className="space-y-6">
+       <div>
+        <label
+         htmlFor="endDateInput"
+         className="block text-xs font-bold dark:text-slate-500 text-slate-600 uppercase tracking-wider mb-2"
+        >
+         End Date
+        </label>
+        <input
+         id="endDateInput"
+         type="date"
+         required
+         value={tempDate}
+         onChange={(e) => setTempDate(e.target.value)}
+         className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 focus:border-cyan-500 outline-none transition-colors"
+        />
+       </div>
+       <div className="flex gap-3">
+        <Button
+         type="button"
+         variant="outline"
+         onClick={handleSkipSetup}
+         className="w-1/3 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:text-white hover:dark:bg-slate-800 bg-slate-100"
+        >
+         SKIP
+        </Button>
+        <Button
+         type="submit"
+         variant="default"
+         className="w-2/3 bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500"
+        >
+         CALIBRATE
+        </Button>
+       </div>
+      </form>
+     </motion.div>
+    </motion.div>
+   )}
+  </AnimatePresence>,
+  document.body,
+ )}
+
+ {createPortal(
+  <AnimatePresence>
+   {isClass11SetupDone &&
+   class11EndDate &&
+   hasSeenRules &&
+   !hasSeenReminder && (
+    <motion.div
+     key="hasSeenReminderModalPortal"
+     initial={{ opacity: 0 }}
+     animate={{ opacity: 1 }}
+     exit={{ opacity: 0 }}
+     className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
+    >
+     <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: "spring", bounce: 0.5 }}
+      className="bg-red-950/20 border border-red-500/30 p-8 md:p-16 rounded-3xl max-w-3xl w-full text-center shadow-md relative overflow-hidden"
+     >
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-50" />
+      <h2 className="text-2xl md:text-3xl font-bold dark:text-red-400 text-red-700 mb-2 uppercase tracking-widest flex items-center justify-center gap-3">
+       <motion.div
+        whileHover={{ scale: 1.2, rotate: 15 }}
+        transition={{ type: "spring", stiffness: 300 }}
+        className="relative"
+       >
+        <Clock className="w-8 h-8 relative z-10 drop-shadow-md" />
+       </motion.div>
+       Time is Ticking
+      </h2>
+      <div className="text-[8rem] md:text-[12rem] leading-none font-black dark:text-white text-slate-900 mb-4 drop-shadow-md">
+       {daysLeft > 0 ? daysLeft : 0}
+      </div>
+      <p className="text-2xl md:text-4xl dark:text-red-400 text-red-700 font-mono mb-6 uppercase tracking-widest">
+       {daysLeft > 0 ? "Days Remaining" : "Time is Up"}
+      </p>
+
+      {pendingTasks.length > 0 && (
+       <div className="mb-10 p-6 bg-red-950/40 border border-red-500/30 rounded-xl max-w-xl mx-auto text-left">
+        <h3 className="dark:text-red-400 text-red-700 font-bold uppercase tracking-wider flex items-center gap-2 mb-3">
+         <Shield className="w-5 h-5" /> Pending Backlogs Alert
+        </h3>
+        <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+         {Array.from(
+          new Map(pendingTasks.map((t) => [t.id, t])).values(),
+         ).map((pt: any, i) => (
+          <div
+           key={pt.id || `pt-${i}`}
+           className="flex flex-col gap-1 p-2 rounded-lg bg-red-900/10 border border-red-800/50"
+          >
+           <span className="text-red-200 font-medium text-sm drop-shadow-md">
+            {pt.text}
+           </span>
+           <span className="text-[10px] dark:text-red-400 text-red-700/80 font-mono uppercase">
+            Incomplete Goal
+           </span>
+          </div>
+         ))}
+        </div>
+       </div>
+      )}
+
+      <Button
+       size="lg"
+       onClick={() => setHasSeenReminder(true)}
+       className="bg-red-600 hover:bg-red-500 text-white text-xl px-12 py-8 h-auto rounded-2xl font-black tracking-widest shadow-md hover:shadow-md transition-all hover:scale-105"
+      >
+       ACKNOWLEDGE
+      </Button>
+     </motion.div>
+    </motion.div>
+   )}
+  </AnimatePresence>,
+  document.body,
+ )}
+
  <AnimatePresence>
- {!isClass11SetupDone && (
- <motion.div
- initial={{ opacity: 0 }}
- animate={{ opacity: 1 }}
- exit={{ opacity: 0 }}
- className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
- >
- <motion.div
- initial={{ scale: 0.9, y: 20 }}
- animate={{ scale: 1, y: 0 }}
- exit={{ scale: 0.9, y: 20 }}
- className="dark:bg-slate-900 bg-white border dark:border-slate-800 border-slate-200 p-8 rounded-2xl max-w-md w-full shadow-lg"
- >
- <h2 className="text-2xl font-black dark:text-white text-slate-900 mb-2">
- INITIALIZE TRACKER
- </h2>
- <p className="dark:text-slate-400 text-slate-600 mb-6 text-sm">
- Please enter the end date of your Class 11th academic year to
- calibrate the time tracking system.
- </p>
- <form onSubmit={handleSetDate} className="space-y-6">
- <div>
- <label
- htmlFor="endDateInput"
- className="block text-xs font-bold dark:text-slate-500 text-slate-600 uppercase tracking-wider mb-2"
- >
- End Date
- </label>
- <input
- id="endDateInput"
- type="date"
- required
- value={tempDate}
- onChange={(e) => setTempDate(e.target.value)}
- className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 focus:border-cyan-500 outline-none transition-colors"
- />
- </div>
- <div className="flex gap-3">
- <Button
- type="button"
- variant="outline"
- onClick={handleSkipSetup}
- className="w-1/3 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:text-white hover:dark:bg-slate-800 bg-slate-100"
- >
- SKIP
- </Button>
- <Button
- type="submit"
- variant="default"
- className="w-2/3 bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500"
- >
- CALIBRATE
- </Button>
- </div>
- </form>
- </motion.div>
- </motion.div>
- )}
-
- {isClass11SetupDone &&
- class11EndDate &&
- hasSeenRules &&
- !hasSeenReminder && (
- <motion.div
- initial={{ opacity: 0 }}
- animate={{ opacity: 1 }}
- exit={{ opacity: 0 }}
- className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
- >
- <motion.div
- initial={{ scale: 0.8, opacity: 0 }}
- animate={{ scale: 1, opacity: 1 }}
- transition={{ type: "spring", bounce: 0.5 }}
- className="bg-red-950/20 border border-red-500/30 p-8 md:p-16 rounded-3xl max-w-3xl w-full text-center shadow-md relative overflow-hidden"
- >
- <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-50" />
- <h2 className="text-2xl md:text-3xl font-bold dark:text-red-400 text-red-700 mb-2 uppercase tracking-widest flex items-center justify-center gap-3">
- <motion.div
- whileHover={{ scale: 1.2, rotate: 15 }}
- transition={{ type: "spring", stiffness: 300 }}
- className="relative"
- >
- <Clock className="w-8 h-8 relative z-10 drop-shadow-md" />
- </motion.div>
- Time is Ticking
- </h2>
- <div className="text-[8rem] md:text-[12rem] leading-none font-black dark:text-white text-slate-900 mb-4 drop-shadow-md">
- {daysLeft > 0 ? daysLeft : 0}
- </div>
- <p className="text-2xl md:text-4xl dark:text-red-400 text-red-700 font-mono mb-6 uppercase tracking-widest">
- {daysLeft > 0 ? "Days Remaining" : "Time is Up"}
- </p>
-
- {pendingTasks.length > 0 && (
- <div className="mb-10 p-6 bg-red-950/40 border border-red-500/30 rounded-xl max-w-xl mx-auto text-left">
- <h3 className="dark:text-red-400 text-red-700 font-bold uppercase tracking-wider flex items-center gap-2 mb-3">
- <Shield className="w-5 h-5" /> Pending Backlogs Alert
- </h3>
- <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
- {Array.from(
- new Map(pendingTasks.map((t) => [t.id, t])).values(),
- ).map((pt: any, i) => (
- <div
- key={pt.id || `pt-${i}`}
- className="flex flex-col gap-1 p-2 rounded-lg bg-red-900/10 border border-red-800/50"
- >
- <span className="text-red-200 font-medium text-sm drop-shadow-md">
- {pt.text}
- </span>
- <span className="text-[10px] dark:text-red-400 text-red-700/80 font-mono uppercase">
- Incomplete Goal
- </span>
- </div>
- ))}
- </div>
- </div>
- )}
-
- <Button
- size="lg"
- onClick={() => setHasSeenReminder(true)}
- className="bg-red-600 hover:bg-red-500 text-white text-xl px-12 py-8 h-auto rounded-2xl font-black tracking-widest shadow-md hover:shadow-md transition-all hover:scale-105"
- >
- ACKNOWLEDGE
- </Button>
- </motion.div>
- </motion.div>
- )}
-
- {isSessionActive && sessionStartTime && (
- <DeepFocusOverlay
- sessionStartTime={sessionStartTime}
- onStop={handleStopSession}
- />
- )}
-
- {isImmersiveTimerActive && (
- <ImmersiveTimer
- initialSeconds={immersiveInitialSeconds}
- taskId={timerTaskId}
- taskName={
- timerTaskId
- ? todos.find((t) => t.id === timerTaskId)?.text
- : undefined
- }
- isStrictMode={isStrictMode}
- onComplete={handleImmersiveComplete}
- onExitEarly={handleImmersiveExitEarly}
- />
- )}
-
- {showLogSessionModal && (
- <motion.div
- initial={{ opacity: 0 }}
- animate={{ opacity: 1 }}
- exit={{ opacity: 0 }}
- className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
- >
- <motion.div
- initial={{ scale: 0.9, y: 20 }}
- animate={{ scale: 1, y: 0 }}
- className="dark:bg-slate-900 bg-white border dark:border-slate-800 border-slate-200 p-8 rounded-2xl max-w-md w-full shadow-lg"
- >
- <h2 className="text-2xl font-black dark:text-white text-slate-900 mb-2">
- LOG SESSION XP
- </h2>
- <p className="dark:text-slate-400 text-slate-600 mb-6 text-sm">
- Verify the duration of your study session. You can reduce the
- logged time, but cannot exceed the tracked session time.
- </p>
- <div className="space-y-6">
- <div className="grid grid-cols-2 gap-4">
- <div>
- <label className="block text-xs font-bold dark:text-slate-500 text-slate-600 uppercase tracking-wider mb-2">
- Hours
- </label>
- <input
- type="number"
- min="0"
- max={Math.floor(maxSessionDuration / 60)}
- value={logSessionHours}
- onChange={(e) =>
- setLogSessionHours(
- Math.max(
- 0,
- Math.min(
- Math.floor(maxSessionDuration / 60),
- parseInt(e.target.value) || 0,
- ),
- ),
- )
- }
- className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 focus:border-cyan-500 outline-none transition-colors"
- />
- </div>
- <div>
- <label className="block text-xs font-bold dark:text-slate-500 text-slate-600 uppercase tracking-wider mb-2">
- Minutes
- </label>
- <input
- type="number"
- min="0"
- max="59"
- value={logSessionMins}
- onChange={(e) => {
- let m = parseInt(e.target.value) || 0;
- if (
- logSessionHours >=
- Math.floor(maxSessionDuration / 60)
- ) {
- m = Math.min(maxSessionDuration % 60, m);
- } else {
- m = Math.min(59, m);
- }
- setLogSessionMins(Math.max(0, m));
- }}
- className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 focus:border-cyan-500 outline-none transition-colors"
- />
- </div>
- </div>
- <div className="dark:bg-slate-800 bg-slate-100/50 p-4 rounded-lg flex justify-between items-center border dark:border-slate-700 border-slate-300">
- <span className="dark:text-slate-400 text-slate-600 font-bold">
- XP to Earn:
- </span>
- <span className="dark:text-cyan-400 text-cyan-700 font-black text-xl">
- {(() => {
- const mins = logSessionHours * 60 + logSessionMins;
- let base = mins * 5;
- if (mins >= 90) base += 500;
- let mult = getStreakMultiplier();
- if (activeBoost && activeBoost.expiresAt > Date.now())
- mult *= activeBoost.multiplier;
- return Math.round(base * mult);
- })()}{" "}
- XP
- </span>
- </div>
- <div className="flex gap-3">
- <Button
- type="button"
- variant="outline"
- onClick={() => setShowLogSessionModal(false)}
- className="w-1/3 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:text-white hover:dark:bg-slate-800 bg-slate-100"
- >
- CANCEL
- </Button>
- <Button
- onClick={handleConfirmLogSession}
- variant="default"
- className="w-2/3 bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500"
- >
- CLAIM XP
- </Button>
- </div>
- </div>
- </motion.div>
- </motion.div>
- )}
-
- {/* Config Timer Modal */}
- {showConfigTimer && (
- <motion.div
- initial={{ opacity: 0 }}
- animate={{ opacity: 1 }}
- exit={{ opacity: 0 }}
- className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
- >
- <motion.div
- initial={{ scale: 0.9, y: 30, opacity: 0 }}
- animate={{ scale: 1, y: 0, opacity: 1 }}
- transition={{ type: "spring", bounce: 0.4 }}
- className="dark:bg-slate-900 bg-white border border-purple-500/30 p-8 rounded-3xl max-w-lg w-full shadow-md relative overflow-hidden"
- >
- <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-50" />
-
- <button
- onClick={() => setShowConfigTimer(false)}
- className="absolute top-6 right-6 dark:text-slate-500 text-slate-600 hover:dark:text-white text-slate-900"
- >
- ✕
- </button>
-
- <h2 className="text-2xl font-black dark:text-white text-slate-900 uppercase tracking-widest mb-6 flex items-center justify-center gap-3">
- <motion.div
- whileHover={{ scale: 1.2, rotate: 10 }}
- transition={{ duration: 0.5 }}
- className="relative z-20"
- >
- <div className="absolute inset-0 bg-purple-400/40 rounded-full  opacity-50" />
- <Timer className="w-6 h-6 dark:text-purple-400 text-purple-700 drop-shadow-md relative z-10" />
- </motion.div>
- Configure Timer
- </h2>
-
- <div className="space-y-6">
- <div className="relative">
- <div className="space-y-6">
- <div>
- <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-widest block mb-3">
- Duration Mode
- </label>
- <div className="grid grid-cols-3 gap-2">
- <button
- onClick={() => setTimerMode("pomodoro")}
- className={`py-3 rounded-lg border font-mono text-sm transition-all ${timerMode === "pomodoro" ? "bg-purple-500/20 border-purple-500 dark:text-white text-slate-900" : "dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500"}`}
- >
- POMODORO
- <br />
- <span className="text-[10px] opacity-70">25m</span>
- </button>
- <button
- onClick={() => setTimerMode("deepwork")}
- className={`py-3 rounded-lg border font-mono text-sm transition-all ${timerMode === "deepwork" ? "bg-purple-500/20 border-purple-500 dark:text-white text-slate-900" : "dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500"}`}
- >
- DEEP WORK
- <br />
- <span className="text-[10px] opacity-70">50m</span>
- </button>
- <button
- onClick={() => setTimerMode("custom")}
- className={`py-3 rounded-lg border font-mono text-sm transition-all ${timerMode === "custom" ? "bg-purple-500/20 border-purple-500 dark:text-white text-slate-900" : "dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500"}`}
- >
- CUSTOM
- <br />
- <span className="text-[10px] opacity-70">SET</span>
- </button>
- </div>
-
- {timerMode === "custom" && (
- <motion.div
- initial={{ height: 0, opacity: 0 }}
- animate={{ height: "auto", opacity: 1 }}
- className="mt-3"
- >
- <input
- type="number"
- min="1"
- max="180"
- value={customMins}
- onChange={(e) =>
- setCustomMins(
- Math.max(
- 1,
- Math.min(
- 180,
- parseInt(e.target.value) || 1,
- ),
- ),
- )
- }
- className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 text-center text-xl focus:border-purple-500 outline-none"
- />
- </motion.div>
- )}
- </div>
-
- <div>
- <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-widest flex items-center gap-2 mb-3 group/label w-max cursor-pointer">
- <motion.div
- whileHover={{ scale: 1.3, rotate: 15 }}
- className="relative"
- >
- <div className="absolute inset-0 bg-cyan-400/30 rounded-full  opacity-0 group-hover/label:opacity-100 transition-opacity" />
- <Target className="w-5 h-5 dark:text-cyan-400 text-cyan-700 drop-shadow-md relative z-10" />
- </motion.div>
- Link Mission
- </label>
- <div className="dark:bg-black bg-white border dark:border-slate-700 border-slate-300/80 hover:border-cyan-500/40 rounded-xl overflow-hidden relative group transition-all duration-300 shadow-md">
- <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
- <div className="max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-2 relative z-10">
- <button
- onClick={() => setTimerTaskId(null)}
- className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all flex items-center group/btn relative overflow-hidden ${!timerTaskId ? "bg-purple-900/30 text-purple-200 border border-purple-500/50 shadow-md" : "dark:bg-black bg-white dark:text-slate-400 text-slate-600 hover:dark:text-slate-200 text-slate-900 border border-transparent hover:dark:border-white/10 border-black/10 hover:bg-white"}`}
- >
- {!timerTaskId && (
- <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-transparent pointer-events-none" />
- )}
- <motion.div
- whileHover={{ scale: 1.2, rotate: -15 }}
- className="relative"
- >
- <Shield
- className={`w-5 h-5 mr-3 transition-colors ${!timerTaskId ? "dark:text-purple-400 text-purple-700 drop-shadow-md" : "opacity-50 group-hover/btn:dark:text-purple-300 dark:text-purple-400 text-purple-700 group-hover/btn:opacity-100 group-hover/btn:drop-shadow-md"}`}
- />
- </motion.div>
- <div className="flex flex-col">
- <span className="font-bold tracking-wide">
- Free Flow
- </span>
- <span className="text-xs opacity-60 font-mono">
- Unlinked Session
- </span>
- </div>
- </button>
- {Array.from(
- new Map(
- todos
- .filter((t) => !t.completed)
- .map((t) => [t.id, t]),
- ).values(),
- ).map((task: any) => (
- <button
- key={task.id}
- onClick={() => setTimerTaskId(task.id)}
- className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all flex items-center group/btn relative overflow-hidden ${timerTaskId === task.id ? "bg-cyan-900/30 text-cyan-100 border border-cyan-500/50 shadow-md" : "dark:bg-black bg-white dark:text-slate-300 text-slate-900 hover:dark:text-cyan-300 dark:text-cyan-400 text-cyan-700 border border-transparent hover:border-cyan-500/20 hover:bg-cyan-950/20"}`}
- >
- {timerTaskId === task.id && (
- <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-transparent pointer-events-none" />
- )}
- <motion.div
- whileHover={{ scale: 1.2, rotate: 15 }}
- className="relative flex-shrink-0"
- >
- <Target
- className={`w-5 h-5 mr-3 transition-colors ${timerTaskId === task.id ? "dark:text-cyan-400 text-cyan-700 animate-pulse drop-shadow-md" : "opacity-50 group-hover/btn:dark:text-cyan-400 text-cyan-700 group-hover/btn:opacity-100 group-hover/btn:drop-shadow-md"}`}
- />
- </motion.div>
- <div className="flex flex-col overflow-hidden">
- <span className="font-bold tracking-wide truncate pr-4">
- {task.text}
- </span>
- <span className="text-[10px] dark:text-slate-500 text-slate-600 font-mono tracking-wider mt-0.5 uppercase flex items-center gap-1">
- EXP:{" "}
- <span className="dark:text-amber-400 text-amber-700 font-bold">
- +{task.xpReward} XP
- </span>
- </span>
- </div>
- </button>
- ))}
- </div>
- </div>
- </div>
- </div>
-
- {/* Strict Mode Glassmorphism Overlay */}
- <AnimatePresence>
- {isStrictMode && (
- <motion.div
- initial={{ opacity: 0 }}
- animate={{ opacity: 1 }}
- exit={{ opacity: 0 }}
- className="absolute -inset-4 z-20 flex flex-col items-center justify-center bg-slate-950/70 rounded-2xl border border-red-900/30 shadow-md overflow-hidden "
- >
- {/* Ambient Soft Glow */}
- <motion.div
- animate={{
- scale: [1, 1.1, 1],
- opacity: [0.3, 0.5, 0.3],
- }}
- transition={{
- duration: 4,
- repeat: Infinity,
- ease: "easeInOut",
- }}
- className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-[radial-gradient(ellipse_at_center,rgba(225,29,72,0.15)_0%,transparent_60%)] pointer-events-none"
- />
-
- <motion.div
- initial={{ y: -10, opacity: 0 }}
- animate={{ y: 0, opacity: 1 }}
- transition={{ delay: 0.1 }}
- className="relative z-10 flex flex-col items-center mb-4 mt-2"
- >
- <ShieldAlert
- className="w-8 h-8 dark:text-rose-400 text-rose-700 mb-2 drop-shadow-md"
- strokeWidth={1.5}
- />
- <h3 className="text-lg font-black text-rose-50 uppercase tracking-[0.2em]">
- Strict Protocol
- </h3>
- </motion.div>
-
- <div className="space-y-3 w-full px-8 text-left relative z-10 pb-2">
- <motion.div
- initial={{ opacity: 0, x: -15 }}
- animate={{ opacity: 1, x: 0 }}
- transition={{ delay: 0.2 }}
- className="flex items-center gap-3"
- >
- <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
- <Maximize className="w-3 h-3 dark:text-rose-400 text-rose-700" />
- </div>
- <div className="flex flex-col">
- <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
- Fullscreen
- </span>
- <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
- Mandatory Focus
- </span>
- </div>
- </motion.div>
-
- <motion.div
- initial={{ opacity: 0, x: -15 }}
- animate={{ opacity: 1, x: 0 }}
- transition={{ delay: 0.3 }}
- className="flex items-center gap-3"
- >
- <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
- <EyeOff className="w-3 h-3 dark:text-rose-400 text-rose-700" />
- </div>
- <div className="flex flex-col">
- <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
- Tab Guard
- </span>
- <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
- Breach Logic Armed
- </span>
- </div>
- </motion.div>
-
- <motion.div
- initial={{ opacity: 0, x: -15 }}
- animate={{ opacity: 1, x: 0 }}
- transition={{ delay: 0.4 }}
- className="flex items-center gap-3"
- >
- <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
- <LockIcon className="w-3 h-3 dark:text-rose-400 text-rose-700" />
- </div>
- <div className="flex flex-col">
- <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
- 15 Min Lock
- </span>
- <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
- Minimum To Save
- </span>
- </div>
- </motion.div>
-
- <motion.div
- initial={{ opacity: 0, x: -15 }}
- animate={{ opacity: 1, x: 0 }}
- transition={{ delay: 0.5 }}
- className="flex items-center gap-3"
- >
- <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
- <MousePointerClick className="w-3 h-3 dark:text-rose-400 text-rose-700" />
- </div>
- <div className="flex flex-col">
- <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
- 20s Abort
- </span>
- <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
- Hold To Exit
- </span>
- </div>
- </motion.div>
- </div>
- </motion.div>
- )}
+  {isSessionActive && sessionStartTime && (
+   <DeepFocusOverlay
+    key="deepFocusOverlay"
+    sessionStartTime={sessionStartTime}
+    onStop={handleStopSession}
+   />
+  )}
  </AnimatePresence>
- </div>
 
- <div className="flex items-center justify-between p-4 dark:bg-black bg-slate-50 border dark:border-slate-800 border-slate-200 rounded-xl relative z-30">
- <div>
- <h4 className="dark:text-white text-slate-900 font-bold text-sm tracking-wider uppercase flex items-center gap-2 group/strict">
- <motion.div
- whileHover={{ scale: 1.2, rotate: 15 }}
- className="relative"
- >
- <Shield
- className={`w-4 h-4 transition-all ${isStrictMode ? "dark:text-red-400 text-red-700 drop-shadow-md" : "dark:text-emerald-400 text-emerald-700 group-hover/strict:drop-shadow-md"}`}
- />
- </motion.div>{" "}
- Strict Mode
- </h4>
- <p className="text-xs dark:text-slate-400 text-slate-600 font-mono mt-1">
- Disables easy exit & enforces fullscreen focus.
- </p>
- </div>
- <button
- onClick={() => setIsStrictMode(!isStrictMode)}
- className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${isStrictMode ? "bg-red-600" : "bg-slate-700"}`}
- >
- <div
- className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${isStrictMode ? "left-7" : "left-1"}`}
- />
- </button>
- </div>
+ <AnimatePresence>
+  {isImmersiveTimerActive && (
+   <ImmersiveTimer
+    key="immersiveTimer"
+    initialSeconds={immersiveInitialSeconds}
+    taskId={timerTaskId}
+    taskName={
+     timerTaskId
+      ? todos.find((t) => t.id === timerTaskId)?.text
+      : undefined
+    }
+    isStrictMode={isStrictMode}
+    onComplete={handleImmersiveComplete}
+    onExitEarly={handleImmersiveExitEarly}
+   />
+  )}
+ </AnimatePresence>
 
- <button
- onClick={handleStartImmersiveTimer}
- className={`w-full py-4 mt-4 dark:text-white text-slate-900 font-black text-lg tracking-widest uppercase rounded-xl transition-all hover:scale-[1.02] relative z-30 ${isStrictMode ? "bg-gradient-to-r from-red-700 to-rose-600 shadow-md hover:shadow-md" : "bg-gradient-to-r from-purple-600 to-indigo-600 shadow-md hover:shadow-md"}`}
- >
- ENTER FOCUS
- </button>
- </div>
- </motion.div>
- </motion.div>
+ {createPortal(
+  <AnimatePresence>
+   {showLogSessionModal && (
+    <motion.div
+     key="logSessionModalPortal"
+     initial={{ opacity: 0 }}
+     animate={{ opacity: 1 }}
+     exit={{ opacity: 0 }}
+     className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
+    >
+     <motion.div
+      initial={{ scale: 0.9, y: 20 }}
+      animate={{ scale: 1, y: 0 }}
+      className="dark:bg-slate-900 bg-white border dark:border-slate-800 border-slate-200 p-8 rounded-2xl max-w-md w-full shadow-lg"
+     >
+      <h2 className="text-2xl font-black dark:text-white text-slate-900 mb-2">
+       LOG SESSION XP
+      </h2>
+      <p className="dark:text-slate-400 text-slate-600 mb-6 text-sm">
+       Verify the duration of your study session. You can reduce the
+       logged time, but cannot exceed the tracked session time.
+      </p>
+      <div className="mb-6">
+       {(() => {
+        const isDeepOrOvertime = logSessionDeepFocus || (logSessionHours * 60 + logSessionMins) >= 90;
+        return (
+         <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${isDeepOrOvertime ? "bg-purple-500/10 text-purple-400 border-purple-500/25" : "bg-cyan-500/10 text-cyan-400 border-cyan-500/25"}`}>
+          {isDeepOrOvertime ? "⚡ Deep Focus/Overtime Session (2 XP/min)" : "📚 Standard Study Session (1 XP/min)"}
+         </span>
+        );
+       })()}
+      </div>
+      <div className="space-y-6">
+       <div className="grid grid-cols-2 gap-4">
+        <div>
+         <label className="block text-xs font-bold dark:text-slate-500 text-slate-600 uppercase tracking-wider mb-2">
+          Hours
+         </label>
+         <input
+          type="number"
+          min="0"
+          max={Math.floor(maxSessionDuration / 60)}
+          value={logSessionHours}
+          onChange={(e) =>
+           setLogSessionHours(
+            Math.max(
+             0,
+             Math.min(
+              Math.floor(maxSessionDuration / 60),
+              parseInt(e.target.value) || 0,
+             ),
+            ),
+           )
+          }
+          className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 focus:border-cyan-500 outline-none transition-colors"
+         />
+        </div>
+        <div>
+         <label className="block text-xs font-bold dark:text-slate-500 text-slate-600 uppercase tracking-wider mb-2">
+          Minutes
+         </label>
+         <input
+          type="number"
+          min="0"
+          max="59"
+          value={logSessionMins}
+          onChange={(e) => {
+           let m = parseInt(e.target.value) || 0;
+           if (
+            logSessionHours >=
+            Math.floor(maxSessionDuration / 60)
+           ) {
+            m = Math.min(maxSessionDuration % 60, m);
+           } else {
+            m = Math.min(59, m);
+           }
+           setLogSessionMins(Math.max(0, m));
+          }}
+          className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 focus:border-cyan-500 outline-none transition-colors"
+         />
+        </div>
+       </div>
+       <div className="dark:bg-slate-800 bg-slate-100/50 p-4 rounded-lg flex justify-between items-center border dark:border-slate-700 border-slate-300">
+        <span className="dark:text-slate-400 text-slate-600 font-bold">
+         XP to Earn:
+        </span>
+        <span className="dark:text-cyan-400 text-cyan-700 font-black text-xl">
+         {(() => {
+          const mins = logSessionHours * 60 + logSessionMins;
+          const rate = (logSessionDeepFocus || mins >= 90) ? 2 : 1;
+          const base = mins * rate;
+          let mult = getStreakMultiplier();
+          if (activeBoost && activeBoost.expiresAt > Date.now())
+           mult *= activeBoost.multiplier;
+          return Math.round(base * mult);
+         })()}{" "}
+         XP
+        </span>
+       </div>
+       <div className="flex gap-3">
+        <Button
+         type="button"
+         variant="outline"
+         onClick={() => setShowLogSessionModal(false)}
+         className="w-1/3 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:text-white hover:dark:bg-slate-800 bg-slate-100"
+        >
+         CANCEL
+        </Button>
+        <Button
+         onClick={handleConfirmLogSession}
+         variant="default"
+         className="w-2/3 bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500"
+        >
+         CLAIM XP
+        </Button>
+       </div>
+      </div>
+     </motion.div>
+    </motion.div>
+   )}
+  </AnimatePresence>,
+  document.body,
  )}
- </AnimatePresence>,
- document.body,
+
+ {createPortal(
+  <AnimatePresence>
+   {showConfigTimer && (
+    <motion.div
+     key="configTimerModalPortal"
+     initial={{ opacity: 0 }}
+     animate={{ opacity: 1 }}
+     exit={{ opacity: 0 }}
+     className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
+    >
+     <motion.div
+      initial={{ scale: 0.9, y: 30, opacity: 0 }}
+      animate={{ scale: 1, y: 0, opacity: 1 }}
+      transition={{ type: "spring", bounce: 0.4 }}
+      className="dark:bg-slate-900 bg-white border border-purple-500/30 p-8 rounded-3xl max-w-lg w-full shadow-md relative overflow-hidden"
+     >
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-50" />
+
+      <button
+       onClick={() => setShowConfigTimer(false)}
+       className="absolute top-6 right-6 dark:text-slate-500 text-slate-600 hover:dark:text-white text-slate-900"
+      >
+       ✕
+      </button>
+
+      <h2 className="text-2xl font-black dark:text-white text-slate-900 uppercase tracking-widest mb-6 flex items-center justify-center gap-3">
+       <motion.div
+        whileHover={{ scale: 1.2, rotate: 10 }}
+        transition={{ duration: 0.5 }}
+        className="relative z-20"
+       >
+        <div className="absolute inset-0 bg-purple-400/40 rounded-full  opacity-50" />
+        <Timer className="w-6 h-6 dark:text-purple-400 text-purple-700 drop-shadow-md relative z-10" />
+       </motion.div>
+       Configure Timer
+      </h2>
+
+      <div className="space-y-6">
+       <div className="relative">
+        <div className="space-y-6">
+         <div>
+          <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-widest block mb-3">
+           Duration Mode
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+           <button
+            onClick={() => setTimerMode("pomodoro")}
+            className={`py-3 rounded-lg border font-mono text-sm transition-all ${timerMode === "pomodoro" ? "bg-purple-500/20 border-purple-500 dark:text-white text-slate-900" : "dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500"}`}
+           >
+            POMODORO
+            <br />
+            <span className="text-[10px] opacity-70">25m</span>
+           </button>
+           <button
+            onClick={() => setTimerMode("deepwork")}
+            className={`py-3 rounded-lg border font-mono text-sm transition-all ${timerMode === "deepwork" ? "bg-purple-500/20 border-purple-500 dark:text-white text-slate-900" : "dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500"}`}
+           >
+            DEEP WORK
+            <br />
+            <span className="text-[10px] opacity-70">50m</span>
+           </button>
+           <button
+            onClick={() => setTimerMode("custom")}
+            className={`py-3 rounded-lg border font-mono text-sm transition-all ${timerMode === "custom" ? "bg-purple-500/20 border-purple-500 dark:text-white text-slate-900" : "dark:bg-black bg-slate-50 dark:border-slate-700 border-slate-300 dark:text-slate-400 text-slate-600 hover:border-slate-500"}`}
+           >
+            CUSTOM
+            <br />
+            <span className="text-[10px] opacity-70">SET</span>
+           </button>
+          </div>
+
+          {timerMode === "custom" && (
+           <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            className="mt-3"
+           >
+            <input
+             type="number"
+             min="1"
+             max="180"
+             value={customMins}
+             onChange={(e) =>
+              setCustomMins(
+               Math.max(
+                1,
+                Math.min(
+                 180,
+                 parseInt(e.target.value) || 1,
+                ),
+               ),
+              )
+             }
+             className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 text-center text-xl focus:border-purple-500 outline-none"
+            />
+           </motion.div>
+          )}
+         </div>
+
+         <div>
+          <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-widest flex items-center gap-2 mb-3 group/label w-max cursor-pointer">
+           <motion.div
+            whileHover={{ scale: 1.3, rotate: 15 }}
+            className="relative"
+           >
+            <div className="absolute inset-0 bg-cyan-400/30 rounded-full  opacity-0 group-hover/label:opacity-100 transition-opacity" />
+            <Target className="w-5 h-5 dark:text-cyan-400 text-cyan-700 drop-shadow-md relative z-10" />
+           </motion.div>
+           Link Mission
+          </label>
+          <div className="dark:bg-black bg-white border dark:border-slate-700 border-slate-300/80 hover:border-cyan-500/40 rounded-xl overflow-hidden relative group transition-all duration-300 shadow-md">
+           <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+           <div className="max-h-48 overflow-y-auto custom-scrollbar p-2 space-y-2 relative z-10">
+            <button
+             onClick={() => setTimerTaskId(null)}
+             className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all flex items-center group/btn relative overflow-hidden ${!timerTaskId ? "bg-purple-900/30 text-purple-200 border border-purple-500/50 shadow-md" : "dark:bg-black bg-white dark:text-slate-400 text-slate-600 hover:dark:text-slate-200 text-slate-900 border border-transparent hover:dark:border-white/10 border-black/10 hover:bg-white"}`}
+            >
+             {!timerTaskId && (
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-transparent pointer-events-none" />
+             )}
+             <motion.div
+              whileHover={{ scale: 1.2, rotate: -15 }}
+              className="relative"
+             >
+              <Shield
+               className={`w-5 h-5 mr-3 transition-colors ${!timerTaskId ? "dark:text-purple-400 text-purple-700 drop-shadow-md" : "opacity-50 group-hover/btn:dark:text-purple-300 dark:text-purple-400 text-purple-700 group-hover/btn:opacity-100 group-hover/btn:drop-shadow-md"}`}
+              />
+             </motion.div>
+             <div className="flex flex-col">
+              <span className="font-bold tracking-wide">
+               Free Flow
+              </span>
+              <span className="text-xs opacity-60 font-mono">
+               Unlinked Session
+              </span>
+             </div>
+            </button>
+            {Array.from(
+             new Map(
+              todos
+               .filter((t) => !t.completed)
+               .map((t) => [t.id, t]),
+             ).values(),
+            ).map((task: any) => (
+             <button
+              key={task.id}
+              onClick={() => setTimerTaskId(task.id)}
+              className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all flex items-center group/btn relative overflow-hidden ${timerTaskId === task.id ? "bg-cyan-900/30 text-cyan-100 border border-cyan-500/50 shadow-md" : "dark:bg-black bg-white dark:text-slate-300 text-slate-900 hover:dark:text-cyan-300 dark:text-cyan-400 text-cyan-700 border border-transparent hover:border-cyan-500/20 hover:bg-cyan-950/20"}`}
+             >
+              {timerTaskId === task.id && (
+               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-transparent pointer-events-none" />
+              )}
+              <motion.div
+               whileHover={{ scale: 1.2, rotate: 15 }}
+               className="relative flex-shrink-0"
+              >
+               <Target
+                className={`w-5 h-5 mr-3 transition-colors ${timerTaskId === task.id ? "dark:text-cyan-400 text-cyan-700 animate-pulse drop-shadow-md" : "opacity-50 group-hover/btn:dark:text-cyan-400 text-cyan-700 group-hover/btn:opacity-100 group-hover/btn:drop-shadow-md"}`}
+               />
+              </motion.div>
+              <div className="flex flex-col overflow-hidden">
+               <span className="font-bold tracking-wide truncate pr-4">
+                {task.text}
+               </span>
+               <span className="text-[10px] dark:text-slate-500 text-slate-600 font-mono tracking-wider mt-0.5 uppercase flex items-center gap-1">
+                EXP:{" "}
+                <span className="dark:text-amber-400 text-amber-700 font-bold">
+                 +{task.xpReward} XP
+                </span>
+               </span>
+              </div>
+             </button>
+            ))}
+           </div>
+          </div>
+         </div>
+        </div>
+
+        {/* Strict Mode Glassmorphism Overlay */}
+        <AnimatePresence>
+         {isStrictMode && (
+          <motion.div
+           key="strictModeProtocolBanner"
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           exit={{ opacity: 0 }}
+           className="absolute -inset-4 z-20 flex flex-col items-center justify-center bg-slate-950/70 rounded-2xl border border-red-900/30 shadow-md overflow-hidden "
+          >
+           {/* Ambient Soft Glow */}
+           <motion.div
+            animate={{
+             scale: [1, 1.1, 1],
+             opacity: [0.3, 0.5, 0.3],
+            }}
+            transition={{
+             duration: 4,
+             repeat: Infinity,
+             ease: "easeInOut",
+            }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-[radial-gradient(ellipse_at_center,rgba(225,29,72,0.15)_0%,transparent_60%)] pointer-events-none"
+           />
+
+           <motion.div
+            initial={{ y: -10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="relative z-10 flex flex-col items-center mb-4 mt-2"
+           >
+            <ShieldAlert
+             className="w-8 h-8 dark:text-rose-400 text-rose-700 mb-2 drop-shadow-md"
+             strokeWidth={1.5}
+            />
+            <h3 className="text-lg font-black text-rose-50 uppercase tracking-[0.2em]">
+             Strict Protocol
+            </h3>
+           </motion.div>
+
+           <div className="space-y-3 w-full px-8 text-left relative z-10 pb-2">
+            <motion.div
+             initial={{ opacity: 0, x: -15 }}
+             animate={{ opacity: 1, x: 0 }}
+             transition={{ delay: 0.2 }}
+             className="flex items-center gap-3"
+            >
+             <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
+              <Maximize className="w-3 h-3 dark:text-rose-400 text-rose-700" />
+             </div>
+             <div className="flex flex-col">
+              <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
+               Fullscreen
+              </span>
+              <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
+               Mandatory Focus
+              </span>
+             </div>
+            </motion.div>
+
+            <motion.div
+             initial={{ opacity: 0, x: -15 }}
+             animate={{ opacity: 1, x: 0 }}
+             transition={{ delay: 0.3 }}
+             className="flex items-center gap-3"
+            >
+             <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
+              <EyeOff className="w-3 h-3 dark:text-rose-400 text-rose-700" />
+             </div>
+             <div className="flex flex-col">
+              <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
+               Tab Guard
+              </span>
+              <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
+               Breach Logic Armed
+              </span>
+             </div>
+            </motion.div>
+
+            <motion.div
+             initial={{ opacity: 0, x: -15 }}
+             animate={{ opacity: 1, x: 0 }}
+             transition={{ delay: 0.4 }}
+             className="flex items-center gap-3"
+            >
+             <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
+              <LockIcon className="w-3 h-3 dark:text-rose-400 text-rose-700" />
+             </div>
+             <div className="flex flex-col">
+              <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
+               15 Min Lock
+              </span>
+              <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
+               Minimum To Save
+              </span>
+             </div>
+            </motion.div>
+
+            <motion.div
+             initial={{ opacity: 0, x: -15 }}
+             animate={{ opacity: 1, x: 0 }}
+             transition={{ delay: 0.5 }}
+             className="flex items-center gap-3"
+            >
+             <div className="w-8 h-8 rounded-full bg-rose-950/50 border border-rose-900/50 shadow-md flex items-center justify-center flex-shrink-0">
+              <MousePointerClick className="w-3 h-3 dark:text-rose-400 text-rose-700" />
+             </div>
+             <div className="flex flex-col">
+              <span className="text-xs dark:text-white text-slate-900 font-bold tracking-wider uppercase">
+               20s Abort
+              </span>
+              <span className="text-[9px] dark:text-slate-400 text-slate-600 font-mono tracking-widest uppercase">
+               Hold To Exit
+              </span>
+             </div>
+            </motion.div>
+           </div>
+          </motion.div>
+         )}
+        </AnimatePresence>
+       </div>
+
+       <div className="flex items-center justify-between p-4 dark:bg-black bg-slate-50 border dark:border-slate-800 border-slate-200 rounded-xl relative z-30">
+        <div>
+         <h4 className="dark:text-white text-slate-900 font-bold text-sm tracking-wider uppercase flex items-center gap-2 group/strict">
+          <motion.div
+           whileHover={{ scale: 1.2, rotate: 15 }}
+           className="relative"
+          >
+           <Shield
+            className={`w-4 h-4 transition-all ${isStrictMode ? "dark:text-red-400 text-red-700 drop-shadow-md" : "dark:text-emerald-400 text-emerald-700 group-hover/strict:drop-shadow-md"}`}
+           />
+          </motion.div>{" "}
+          Strict Mode
+         </h4>
+         <p className="text-xs dark:text-slate-400 text-slate-600 font-mono mt-1">
+          Disables easy exit & enforces fullscreen focus.
+         </p>
+        </div>
+        <button
+         onClick={() => setIsStrictMode(!isStrictMode)}
+         className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${isStrictMode ? "bg-red-600" : "bg-slate-700"}`}
+        >
+         <div
+          className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${isStrictMode ? "left-7" : "left-1"}`}
+         />
+        </button>
+       </div>
+
+       <button
+        onClick={handleStartImmersiveTimer}
+        className={`w-full py-4 mt-4 dark:text-white text-slate-900 font-black text-lg tracking-widest uppercase rounded-xl transition-all hover:scale-[1.02] relative z-30 ${isStrictMode ? "bg-gradient-to-r from-red-700 to-rose-600 shadow-md hover:shadow-md" : "bg-gradient-to-r from-purple-600 to-indigo-600 shadow-md hover:shadow-md"}`}
+       >
+        ENTER FOCUS
+       </button>
+      </div>
+     </motion.div>
+    </motion.div>
+   )}
+  </AnimatePresence>,
+  document.body,
  )}
 
  {/* Boss Day Banner */}

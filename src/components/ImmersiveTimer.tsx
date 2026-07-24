@@ -39,8 +39,7 @@ export function ImmersiveTimer({
   const elapsedSeconds = initialSeconds - timeLeft;
   const elapsedMins = Math.floor(elapsedSeconds / 60);
   let currentMultiplier = 1;
-  if (elapsedMins >= 120) currentMultiplier = 2.0;
-  else if (elapsedMins >= 90) currentMultiplier = 1.5;
+  if (elapsedMins >= 90) currentMultiplier = 2.0;
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -226,6 +225,7 @@ export function ImmersiveTimer({
  <AnimatePresence>
  {taskName && (
  <motion.div
+ key="taskNameBadge"
  initial={{ opacity: 0, y: -20 }}
  animate={{ opacity: 1, y: 0 }}
  className="inline-flex items-center gap-2 px-4 py-2 rounded-full dark:bg-slate-900/50 bg-white border dark:border-slate-800 border-slate-200 dark:text-slate-300 text-slate-600 font-mono text-sm"
@@ -236,6 +236,7 @@ export function ImmersiveTimer({
  )}
  {currentMultiplier > 1 && (
  <motion.div
+ key="multiplierBadge"
  initial={{ opacity: 0, scale: 0.8 }}
  animate={{ opacity: 1, scale: 1 }}
  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-900/40 border border-indigo-500/50 dark:text-indigo-300 text-indigo-600 font-bold uppercase tracking-widest text-xs drop-shadow-md"
@@ -246,6 +247,7 @@ export function ImmersiveTimer({
  )}
  {isStrictMode && (
  <motion.div
+ key="strictModeBadge"
  initial={{ opacity: 0, y: -20 }}
  animate={{ opacity: 1, y: 0 }}
  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-900/40 border border-red-500/50 dark:text-red-300 dark:text-red-400 text-red-700 font-mono text-sm"

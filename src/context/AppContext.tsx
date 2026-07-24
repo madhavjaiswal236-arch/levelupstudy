@@ -833,15 +833,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
  updateStreak();
  setHoursStudiedToday(prev => Math.min(24, prev + durationMins / 60));
  
- // Calculate session XP based on duration thresholds
- let sessionXp = 0;
- if (durationMins <= 90) {
- sessionXp = durationMins * 10;
- } else if (durationMins <= 120) {
- sessionXp = 90 * 10 + (durationMins - 90) * 15;
- } else {
- sessionXp = 90 * 10 + 30 * 15 + (durationMins - 120) * 20;
- }
+ // Calculate session XP based on Option A: Linear & Scaled Down
+ // If the session is Deep Focus OR duration >= 90 mins (1 hour 30 mins), rate is 2 XP/min
+ const rate = (isDeepFocus || durationMins >= 90) ? 2 : 1;
+ const sessionXp = durationMins * rate;
  
  // Deep Work Bonus: > 90 mins
  if (isDeepFocus && durationMins >= 90) {

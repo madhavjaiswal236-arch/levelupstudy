@@ -51,6 +51,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
   const autoScrollRef = useRef<NodeJS.Timeout | null>(null);
   const hasMovedRef = useRef(false);
   const justDraggedRef = useRef(false);
+  const visualSelectionRef = useRef<HTMLDivElement | null>(null);
   
   // Computed Days
   useEffect(() => {
@@ -537,11 +538,20 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                  const rawStartHour = (y / 80);
                  const startHour = Math.round(rawStartHour * 60) / 60;
                  
-                 setDragSelection({ day: d, startHour, endHour: startHour + 30/60, isDragging: true });
-                 
                  const container = document.getElementById('calendar-scroll-container');
                  const startScrollY = container ? container.scrollTop : 0;
                  let scrollInterval: any = null;
+                 
+                 let finalEndHour = startHour + 30 / 60;
+                 
+                 // Instantly position the DOM visual selector
+                 if (visualSelectionRef.current) {
+                   visualSelectionRef.current.style.display = 'block';
+                   visualSelectionRef.current.style.left = `calc(${colIndex * (100 / visibleDays.length)}% + 4px)`;
+                   visualSelectionRef.current.style.width = `calc(${100 / visibleDays.length}% - 8px)`;
+                   visualSelectionRef.current.style.top = `${startHour * 80}px`;
+                   visualSelectionRef.current.style.height = `${40}px`; // 30 mins default = 40px
+                 }
                  
                  const updateGridDrag = (currentClientY: number) => {
                    const currentScrollY = container ? container.scrollTop : 0;
@@ -552,7 +562,13 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                    let currentEndHour = Math.round(rawEndHour * 60) / 60;
                    if (currentEndHour <= startHour + 1/60) currentEndHour = startHour + 1/60; // min 1 min
                    if (currentEndHour > 24) currentEndHour = 24;
-                   setDragSelection({ day: d, startHour, endHour: currentEndHour, isDragging: true });
+                   
+                   finalEndHour = currentEndHour;
+                   
+                   // Directly manipulate DOM style for 120 FPS buttery smooth resizing during selection
+                   if (visualSelectionRef.current) {
+                     visualSelectionRef.current.style.height = `${(currentEndHour - startHour) * 80}px`;
+                   }
                  };
                  
                  const handlePointerMove = (moveEvent: React.PointerEvent | PointerEvent) => {
@@ -578,8 +594,13 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                    target.removeEventListener('pointerup', handlePointerUp as EventListener);
                    document.body.classList.remove('is-dragging');
                    
+                   // Hide the visual selector in DOM
+                   if (visualSelectionRef.current) {
+                     visualSelectionRef.current.style.display = 'none';
+                   }
+                   
                    if (hasMovedRef.current) {
-                     setDragSelection(prev => prev ? { ...prev, isDragging: false } : null);
+                     setDragSelection({ day: d, startHour, endHour: finalEndHour, isDragging: false });
                      setShowTaskModal(true);
                      justDraggedRef.current = true;
                    }
@@ -619,7 +640,14 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
           ))}
           
           {/* Drag Selection Visual */}
-          {dragSelection && (
+          <div 
+            ref={visualSelectionRef}
+            className="absolute bg-indigo-500/20 border-2 border-indigo-500 rounded-xl pointer-events-none z-40 shadow-sm"
+            style={{ display: 'none' }}
+          />
+
+          {/* Modal Drag Selection Visual */}
+          {dragSelection && !dragSelection.isDragging && (
             <div 
               className="absolute bg-indigo-500/20 border-2 border-indigo-500 rounded-xl pointer-events-none z-40 shadow-sm"
               style={{
@@ -667,7 +695,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   e.preventDefault();
                   
                   let hasMoved = false;
-                  const target = e.currentTarget;
+                  const target = e.currentTarget as HTMLDivElement;
                   target.setPointerCapture(e.pointerId);
                   
                   setIsDraggingEvent(true);
@@ -699,7 +727,17 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     
                     if (newDeltaMins !== lastDeltaMins) {
                       lastDeltaMins = newDeltaMins;
-                      setLiveDragOffsetMins(newDeltaMins);
+                      
+                      // Direct DOM Manipulation for ultra-smooth rendering
+                      target.style.transform = `translate3d(0, ${newDeltaMins * (80 / 60)}px, 0)`;
+                      
+                      // Update time text inside the event card on the fly
+                      const timeEl = target.querySelector('[data-time-display="true"]');
+                      if (timeEl) {
+                        const tempStart = new Date(originalStartTime + newDeltaMins * 60000);
+                        const tempEnd = new Date(originalEndTime + newDeltaMins * 60000);
+                        timeEl.innerHTML = `${format(tempStart, 'h:mm a')} <span class="mx-0.5 text-slate-400">→</span> ${format(tempEnd, 'h:mm a')}`;
+                      }
                     }
                   };
                   
@@ -712,11 +750,10 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     target.removeEventListener('pointermove', handlePointerMove as EventListener);
                     target.removeEventListener('pointerup', handlePointerUp as EventListener);
                     
-                    setLiveDragOffsetMins(0);
+                    // Reset inline transform so React takes over layout positioning
+                    target.style.transform = '';
                     
-                    if (!hasMoved) {
-                      // Edit session feature has been removed
-                    } else {
+                    if (hasMoved) {
                       const finalStart = new Date(originalStartTime + lastDeltaMins * 60000);
                       const finalEnd = new Date(originalStartTime + lastDeltaMins * 60000 + durationMilli);
                       
@@ -788,10 +825,10 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   {/* Time and Duration/XP */}
                   {view !== 'Week' && (
                     <div className="mt-auto flex flex-col gap-0.5 opacity-90">
-                      <p className="text-[9px] font-medium flex items-center gap-1">
+                      <p data-time-display="true" className="text-[9px] font-medium flex items-center gap-1">
                         {format(displayStart, 'h:mm a')} <ArrowRight className="w-2 h-2" /> {format(displayEnd, 'h:mm a')}
                       </p>
-                      <p className="text-[9px] font-medium flex items-center gap-1">
+                      <p data-duration-display="true" className="text-[9px] font-medium flex items-center gap-1">
                         <Clock className="w-2.5 h-2.5" /> 
                         {(() => {
                           const totalMins = Math.round(displayDuration * 60);
@@ -813,6 +850,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     e.preventDefault();
                     
                     const target = e.currentTarget;
+                    const eventCard = target.parentElement as HTMLDivElement;
                     target.setPointerCapture(e.pointerId);
                     document.body.classList.add('is-dragging');
                     
@@ -836,7 +874,29 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                       
                       if (newDurationMins !== lastDurationMins) {
                         lastDurationMins = newDurationMins;
-                        setLiveResizeDeltaMins(newDurationMins - originalDurationMins);
+                        
+                        // Direct DOM manipulation of the parent element's height for 120 FPS buttery smooth resizing
+                        if (eventCard) {
+                          eventCard.style.height = `${(newDurationMins / 60) * 80}px`;
+                        }
+                        
+                        // Update time text and duration text inside the card on the fly if present
+                        const timeEl = eventCard?.querySelector('[data-time-display="true"]');
+                        if (timeEl) {
+                          const tempEnd = new Date(ev.start.getTime() + newDurationMins * 60000);
+                          timeEl.innerHTML = `${format(ev.start, 'h:mm a')} <span class="mx-0.5 text-slate-400">→</span> ${format(tempEnd, 'h:mm a')}`;
+                        }
+                        const durationEl = eventCard?.querySelector('[data-duration-display="true"]');
+                        if (durationEl) {
+                          const h = Math.floor(newDurationMins / 60);
+                          const m = Math.round(newDurationMins % 60);
+                          const xp = Math.round((newDurationMins / 60) * (ev.subject === 'Physics' ? 60 : ev.subject === 'Mathematics' ? 65 : ev.subject === 'Chemistry' ? 50 : ev.subject === 'Biology' ? 50 : 40));
+                          durationEl.innerHTML = `
+                            <svg class="w-2.5 h-2.5 inline-block mr-1 align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top: -2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            ${h > 0 ? `${h}h ` : ''}${m}m
+                            <span class="font-bold text-yellow-600 dark:text-yellow-400 ml-1">+${xp} XP</span>
+                          `;
+                        }
                       }
                     };
                     
@@ -848,7 +908,10 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                       target.removeEventListener('pointermove', handlePointerMove as EventListener);
                       target.removeEventListener('pointerup', handlePointerUp as EventListener);
                       
-                      setLiveResizeDeltaMins(0);
+                      // Reset inline height style so React layout takes over the final positions
+                      if (eventCard) {
+                        eventCard.style.height = '';
+                      }
                       
                       const finalEnd = new Date(ev.start.getTime() + lastDurationMins * 60000);
                       
@@ -923,7 +986,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     );
   };
 
-  const renderSidebarContents = () => (
+  const renderSidebarContents = (prefix: string) => (
     <>
       {/* Mini Calendar */}
       <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
@@ -935,15 +998,15 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
            </div>
          </div>
          <div className="grid grid-cols-7 gap-1 text-center text-xs">
-           {['S','M','T','W','T','F','S'].map((d, idx) => <div key={`${d}-${idx}`} className="text-slate-500 font-medium py-1">{d}</div>)}
-           {Array.from({ length: getDay(startOfMonth(currentDate)) }).map((_, i) => <div key={`empty-${i}`} />)}
+           {['S','M','T','W','T','F','S'].map((d, idx) => <div key={`${prefix}-${d}-${idx}`} className="text-slate-500 font-medium py-1">{d}</div>)}
+           {Array.from({ length: getDay(startOfMonth(currentDate)) }).map((_, i) => <div key={`${prefix}-empty-${i}`} />)}
            {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
              const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1);
              const isToday = isSameDay(dayDate, new Date());
              const isSel = isSameDay(dayDate, currentDate);
              return (
                <button 
-                 key={i} 
+                 key={`${prefix}-day-${i}`} 
                  onClick={() => setCurrentDate(dayDate)}
                  className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-all ${isSel ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-500/20' : isToday ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'text-slate-300 hover:bg-white/10'}`}
                >
@@ -986,7 +1049,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
              { name: 'Personal', color: 'bg-rose-500' }
            ].map(cal => (
              <div 
-               key={cal.name}
+               key={`${prefix}-${cal.name}`}
                onClick={() => {
                  if (['Physics', 'Chemistry', 'Mathematics'].includes(cal.name)) {
                    setSelectedSubject(cal.name);
@@ -1029,9 +1092,9 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
            ))}
          </div>
       </div>
-
-
-      
+ 
+ 
+       
       {/* Upcoming */}
       <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
          <div className="flex justify-between items-center mb-4">
@@ -1050,7 +1113,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                 let dateStr = isSameDay(st, new Date()) ? 'Today' : isSameDay(st, addDays(new Date(), 1)) ? 'Tomorrow' : format(st, 'MMM d');
                 
                 return (
-                  <div key={t.id} className="flex items-center gap-3">
+                  <div key={`${prefix}-upcoming-${t.id}`} className="flex items-center gap-3">
                     <div className={`w-1 h-8 rounded-full ${color}`}></div>
                     <div className="flex-1 overflow-hidden">
                       <p className="text-xs font-bold text-slate-200 line-clamp-1">{t.text}</p>
@@ -1483,7 +1546,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   </button>
                 </div>
                 
-                {renderSidebarContents()}
+                {renderSidebarContents('mobile')}
               </motion.div>
             </div>
           )}
@@ -1498,167 +1561,11 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
             </h1>
           </div>
           <div className="p-6 flex-1 overflow-y-auto space-y-6 scrollbar-hide min-h-0">
-            {renderSidebarContents()}
+            {renderSidebarContents('desktop')}
           </div>
         </div>
 
-        {/* Deprecated Inline Sidebar (Hidden) */}
-        <div className="hidden">
-          <div className="p-6 pb-2">
-            <h1 className="text-xl font-bold flex items-center gap-2 tracking-tight text-indigo-400">
-              <CalendarIcon className="w-6 h-6" />
-              Schedule
-            </h1>
-          </div>
-          
-          <div className="p-6 flex-1 overflow-y-auto space-y-6 scrollbar-hide">
-            
-            {/* Mini Calendar */}
-            <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
-               <div className="flex justify-between items-center mb-4">
-                 <h3 className="font-bold text-sm text-white">{format(currentDate, 'MMMM yyyy')}</h3>
-                 <div className="flex gap-1">
-                   <button onClick={() => setCurrentDate(addMonths(currentDate, -1))} className="p-1 hover:bg-white/10 rounded-lg transition-colors"><ChevronLeft className="w-4 h-4 text-slate-400" /></button>
-                   <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1 hover:bg-white/10 rounded-lg transition-colors"><ChevronRight className="w-4 h-4 text-slate-400" /></button>
-                 </div>
-               </div>
-               <div className="grid grid-cols-7 gap-1 text-center text-xs">
-                 {['S','M','T','W','T','F','S'].map((d, idx) => <div key={`${d}-${idx}`} className="text-slate-500 font-medium py-1">{d}</div>)}
-                 {Array.from({ length: getDay(startOfMonth(currentDate)) }).map((_, i) => <div key={`empty-${i}`} />)}
-                 {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
-                   const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), i + 1);
-                   const isToday = isSameDay(dayDate, new Date());
-                   const isSel = isSameDay(dayDate, currentDate);
-                   return (
-                     <button 
-                       key={i} 
-                       onClick={() => setCurrentDate(dayDate)}
-                       className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-all ${isSel ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-500/20' : isToday ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'text-slate-300 hover:bg-white/10'}`}
-                     >
-                       {i + 1}
-                     </button>
-                   )
-                 })}
-               </div>
-            </div>
-            
-            {/* Today's Progress */}
-            <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
-              <h3 className="font-bold text-sm mb-4 text-white">Today's Progress</h3>
-              <div className="flex items-center gap-4">
-                <div className="relative w-14 h-14 flex items-center justify-center">
-                  <svg className="w-full h-full transform -rotate-90">
-                    <circle cx="28" cy="28" r="24" className="stroke-slate-800" strokeWidth="4" fill="none" />
-                    <circle cx="28" cy="28" r="24" className="stroke-indigo-500 transition-all duration-1000" strokeWidth="4" fill="none" strokeDasharray="150" strokeDashoffset={150 - (150 * Math.min(xpGainedToday / Math.max(dailyXpRequired, 1), 1))} />
-                  </svg>
-                  <span className="absolute text-xs font-bold text-white">{Math.min(Math.round((xpGainedToday / Math.max(dailyXpRequired, 1)) * 100), 100)}%</span>
-                </div>
-                <div>
-                  <p className="font-bold text-sm text-white">{Math.round(hoursStudiedToday * 10) / 10}h studied</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{xpGainedToday} / {dailyXpRequired} XP</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Calendars */}
-            <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
-               <div className="flex justify-between items-center mb-4">
-                 <h3 className="font-bold text-sm text-white">Calendars</h3>
-                 <button className="text-slate-400 hover:text-white transition-colors"><Plus className="w-4 h-4" /></button>
-               </div>
-               <div className="space-y-2">
-                 {[
-                   { name: 'General', color: 'bg-indigo-500' },
-                   { name: 'Physics', color: 'bg-blue-500' },
-                   { name: 'Chemistry', color: 'bg-emerald-500' },
-                   { name: 'Mathematics', color: 'bg-amber-500' },
-                   { name: 'Personal', color: 'bg-rose-500' }
-                 ].map(cal => (
-                   <div 
-                     key={cal.name}
-                     onClick={() => {
-                       if (['Physics', 'Chemistry', 'Mathematics'].includes(cal.name)) {
-                         setSelectedSubject(cal.name);
-                       }
-                     }}
-                     className={`flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer ${
-                       selectedSubject === cal.name && ['Physics', 'Chemistry', 'Mathematics'].includes(cal.name)
-                         ? 'bg-indigo-600/10 border border-indigo-500/30' 
-                         : 'border border-transparent hover:bg-white/[0.04]'
-                     }`}
-                   >
-                     <label className="flex items-center gap-3 cursor-pointer flex-1" onClick={(e) => e.stopPropagation()}>
-                       <div className={`w-4 h-4 rounded shadow-sm border border-white/10 flex items-center justify-center transition-colors ${activeCalendars.includes(cal.name) ? cal.color : 'bg-transparent'}`}>
-                          {activeCalendars.includes(cal.name) && <CheckCircle2 className="w-3 h-3 text-white" />}
-                       </div>
-                       <span className="text-sm text-slate-300 group-hover:text-white transition-colors">{cal.name}</span>
-                       <input 
-                         type="checkbox" 
-                         className="hidden" 
-                         checked={activeCalendars.includes(cal.name)} 
-                         onChange={(e) => {
-                           if (e.target.checked) {
-                             setActiveCalendars([...activeCalendars, cal.name]);
-                           } else {
-                             setActiveCalendars(activeCalendars.filter(c => c !== cal.name));
-                           }
-                         }} 
-                       />
-                     </label>
-                     {['Physics', 'Chemistry', 'Mathematics'].includes(cal.name) && (
-                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                         selectedSubject === cal.name 
-                           ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
-                           : 'text-slate-500 hover:text-slate-400 bg-white/[0.02]'
-                       }`}>
-                         {selectedSubject === cal.name ? 'Active' : 'Select'}
-                       </span>
-                     )}
-                   </div>
-                 ))}
-               </div>
-            </div>
 
-
-            
-            {/* Upcoming */}
-            <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
-               <div className="flex justify-between items-center mb-4">
-                 <h3 className="font-bold text-sm text-white">Upcoming</h3>
-                 <span className="text-[10px] font-bold text-indigo-400 cursor-pointer">View all</span>
-               </div>
-               <div className="space-y-3">
-                  {todos
-                    .filter(t => t.startTime && t.endTime && !t.completed && new Date(t.endTime) > new Date())
-                    .sort((a, b) => new Date(a.startTime!).getTime() - new Date(b.startTime!).getTime())
-                    .slice(0, 3)
-                    .map(t => {
-                      const st = new Date(t.startTime!);
-                      const colorMap: Record<string, string> = { Physics: 'bg-blue-500', Chemistry: 'bg-emerald-500', Mathematics: 'bg-amber-500', Personal: 'bg-rose-500' };
-                      const color = colorMap[t.subject || ''] || 'bg-indigo-500';
-                      let timeStr = format(st, 'h:mm a');
-                      let dateStr = isSameDay(st, new Date()) ? 'Today' : isSameDay(st, addDays(new Date(), 1)) ? 'Tomorrow' : format(st, 'MMM d');
-                      
-                      return (
-                        <div key={t.id} className="flex items-center gap-3">
-                          <div className={`w-1 h-8 rounded-full ${color}`}></div>
-                          <div className="flex-1 overflow-hidden">
-                            <p className="text-xs font-bold text-slate-200 line-clamp-1">{t.text}</p>
-                            <p className="text-[10px] text-slate-500">{dateStr}, {timeStr}</p>
-                          </div>
-                        </div>
-                      )
-                    })
-                  }
-                  {todos.filter(t => t.startTime && t.endTime && !t.completed && new Date(t.endTime) > new Date()).length === 0 && (
-                    <p className="text-xs text-slate-500 italic">No upcoming tasks.</p>
-                  )}
-               </div>
-            </div>
-            
-          </div>
-        </div>
-        
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col bg-white dark:bg-[#121212] order-1 md:order-2 h-full md:h-auto min-h-0">
           
