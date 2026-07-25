@@ -9,6 +9,7 @@ const auth = getAuth(app);
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = sessionStorage.getItem('google_access_token');
+let pendingSignInPromise: Promise<{ user: User; accessToken: string } | null> | null = null;
 
 export const initAuth = (
  onAuthChange?: (user: User | null, token: string | null) => void
@@ -52,59 +53,77 @@ const getProvider = () => {
 };
 
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
- try {
- isSigningIn = true;
+  if (pendingSignInPromise) {
+    console.log('Sign-in already in progress, returning existing promise...');
+    return pendingSignInPromise;
+  }
 
- if (Capacitor.isNativePlatform()) {
-    const result = await FirebaseAuthentication.signInWithGoogle({
-      scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
-    });
-    
-    if (!result.credential) {
-      throw new Error('No credential returned from native sign in');
-    }
-    
-    const credential = GoogleAuthProvider.credential(result.credential.idToken, result.credential.accessToken);
-    const fbResult = await signInWithCredential(auth, credential);
-    
-    if (result.credential.accessToken) {
-      cachedAccessToken = result.credential.accessToken;
+  pendingSignInPromise = (async () => {
+    try {
+      isSigningIn = true;
+
+      if (Capacitor.isNativePlatform()) {
+        const result = await FirebaseAuthentication.signInWithGoogle({
+          scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
+        });
+        
+        if (!result.credential) {
+          throw new Error('No credential returned from native sign in');
+        }
+        
+        const credential = GoogleAuthProvider.credential(result.credential.idToken, result.credential.accessToken);
+        const fbResult = await signInWithCredential(auth, credential);
+        
+        if (result.credential.accessToken) {
+          cachedAccessToken = result.credential.accessToken;
+          sessionStorage.setItem('google_access_token', cachedAccessToken);
+          const expiresAt = new Date().getTime() + 3500 * 1000;
+          sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+        }
+
+        return { user: fbResult.user, accessToken: cachedAccessToken || '' };
+      }
+
+      const result = await signInWithPopup(auth, getProvider());
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) {
+        throw new Error('Failed to get access token from Firebase Auth');
+      }
+
+      cachedAccessToken = credential.accessToken;
       sessionStorage.setItem('google_access_token', cachedAccessToken);
+      
+      // Set expiration time to 3500 seconds (slightly under 1 hour to have a buffer)
       const expiresAt = new Date().getTime() + 3500 * 1000;
       sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+
+      return { user: result.user, accessToken: cachedAccessToken };
+    } catch (error: any) {
+      console.error('Sign in error details:', error);
+
+      if (!Capacitor.isNativePlatform() && (
+        error.code === 'auth/popup-blocked' || 
+        error.code === 'auth/cancelled-popup-request' || 
+        error.message?.toLowerCase().includes('popup') ||
+        error.message?.toLowerCase().includes('cancelled')
+      )) {
+        const friendlyError = new Error(
+          "Popups are blocked or restricted by your browser. Since the app is running in an iframe inside the AI Studio preview, please click the 'Open in New Tab' button (top-right corner of the preview) to log in, or allow popups in your browser settings."
+        );
+        (friendlyError as any).code = error.code;
+        throw friendlyError;
+      }
+      throw error;
+    } finally {
+      isSigningIn = false;
     }
+  })();
 
-    return { user: fbResult.user, accessToken: cachedAccessToken || '' };
- }
-
- const result = await signInWithPopup(auth, getProvider());
- const credential = GoogleAuthProvider.credentialFromResult(result);
- if (!credential?.accessToken) {
- throw new Error('Failed to get access token from Firebase Auth');
- }
-
- cachedAccessToken = credential.accessToken;
- sessionStorage.setItem('google_access_token', cachedAccessToken);
- 
- // Set expiration time to 3500 seconds (slightly under 1 hour to have a buffer)
- const expiresAt = new Date().getTime() + 3500 * 1000;
- sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
-
- return { user: result.user, accessToken: cachedAccessToken };
- } catch (error: any) {
- console.error('Sign in error:', error);
-
- if (!Capacitor.isNativePlatform() && (error.code === 'auth/popup-blocked' || (error.message?.toLowerCase().includes('popup') && error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request'))) {
-   console.log('Popup blocked, using redirect...');
-   import('firebase/auth').then(({ signInWithRedirect }) => {
-     signInWithRedirect(auth, getProvider());
-   });
-   return new Promise(() => {}); // Wait forever for redirect
- }
- throw error;
- } finally {
- isSigningIn = false;
- }
+  try {
+    return await pendingSignInPromise;
+  } finally {
+    pendingSignInPromise = null;
+  }
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
