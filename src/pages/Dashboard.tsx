@@ -420,6 +420,51 @@ export default function Dashboard() {
  const [taskStep, setTaskStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
  const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
+
+ // Determine the best subject and chapter to continue
+ const getContinueTarget = () => {
+   // 1. If user has already selected a subject and chapter, use those
+   if (selectedSubject && selectedChapter) {
+     return { subject: selectedSubject, chapter: selectedChapter };
+   }
+
+   // 2. Find the most recently added task in todos that has a subject and chapter
+   if (todos && todos.length > 0) {
+     const sortedTodos = [...todos].sort((a, b) => b.id - a.id);
+     const lastTodoWithChapter = sortedTodos.find(t => t.subject && t.chapter);
+     if (lastTodoWithChapter && lastTodoWithChapter.subject && lastTodoWithChapter.chapter) {
+       return { subject: lastTodoWithChapter.subject, chapter: lastTodoWithChapter.chapter };
+     }
+   }
+
+   // 3. Find from history
+   if (history && history.length > 0) {
+     const sortedHistory = [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+     for (const entry of sortedHistory) {
+       if (entry.completedTasks && entry.completedTasks.length > 0) {
+         const lastCompleted = [...entry.completedTasks].reverse().find(t => t.subject && t.chapter);
+         if (lastCompleted && lastCompleted.subject && lastCompleted.chapter) {
+           return { subject: lastCompleted.subject, chapter: lastCompleted.chapter };
+         }
+       }
+     }
+   }
+
+   // 4. Fallback to ongoing/suggested chapters in Physics, Chemistry, Mathematics
+   const subjects = ["Physics", "Chemistry", "Mathematics"];
+   for (const sub of subjects) {
+     const ongoing = getCurrentChapterForSubject(sub);
+     if (ongoing) {
+       return { subject: sub, chapter: ongoing };
+     }
+   }
+
+   // 5. Hard fallback
+   const fallbackChapter = getCurrentChapterForSubject("Physics") || "Units and Measurements";
+   return { subject: "Physics", chapter: fallbackChapter };
+ };
+
+ const continueTarget = getContinueTarget();
  const [customTaskName, setCustomTaskName] = useState("");
  const [lectureNumberInput, setLectureNumberInput] = useState<string>("");
   const [hasEditedLecture, setHasEditedLecture] = useState(false);
@@ -2717,14 +2762,18 @@ export default function Dashboard() {
    <h3 className="text-sm font-bold dark:text-cyan-400 text-cyan-700 uppercase tracking-wider">
    Select Subject
    </h3>
-   {selectedSubject && selectedChapter && (
+   {continueTarget && (
      <Button
        variant="outline"
        size="sm"
        className="h-7 text-[10px] bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 border-cyan-500/50 hover:bg-cyan-500/30"
-       onClick={() => setTaskStep(3)}
+       onClick={() => {
+         setSelectedSubject(continueTarget.subject);
+         setSelectedChapter(continueTarget.chapter);
+         setTaskStep(3);
+       }}
      >
-       Continue: {selectedSubject} - {selectedChapter.substring(0, 15)}{selectedChapter.length > 15 ? '...' : ''} &rarr;
+       Continue: {continueTarget.subject} - {continueTarget.chapter.substring(0, 15)}{continueTarget.chapter.length > 15 ? '...' : ''} &rarr;
      </Button>
    )}
  </div>

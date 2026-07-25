@@ -774,7 +774,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   e.stopPropagation();
                   e.preventDefault();
                 }}
-                className={`absolute rounded-xl px-2 py-1 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? 'opacity-50 scale-[0.98] z-50 shadow-lg' : 'z-40 shadow-sm'} transition-transform group`}
+                className={`absolute rounded-xl px-2 py-1 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? 'opacity-50 scale-[0.98] z-50 shadow-lg' : 'z-40 shadow-sm'} ${dragEventId === ev.id || resizingEventId === ev.id ? '' : 'transition-transform'} group`}
                 style={{ 
                   left: `calc(${dayIndex * (100 / visibleDays.length)}% + 4px)`,
                   width: `calc(${100 / visibleDays.length}% - 8px)`,
