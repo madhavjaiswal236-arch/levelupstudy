@@ -1,8 +1,10 @@
-import { logout } from '@/lib/firebase';
+import { logout, db } from '@/lib/firebase';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef, useMemo } from 'react';
 import { initAuth } from '@/lib/firebase';
+import { User } from 'firebase/auth';
 import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export interface Chapter {
  name: string;
@@ -321,8 +323,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
  motivationalAlerts: true,
  soundEnabled: true
  });
- const [firebaseUser, setFirebaseUser] = useState<import('firebase/auth').User | null>(null);
+ const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
  const [hasToken, setHasToken] = useState<boolean>(false);
+ const lastLoadedStateStr = useRef<string | null>(null);
 
  useEffect(() => {
  const unsubscribe = initAuth(
@@ -337,6 +340,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
  }
  };
  }, []);
+
+ // Firebase Sync Listener
+ useEffect(() => {
+   if (!firebaseUser) return;
+   
+   const userDocRef = doc(db, 'users', firebaseUser.uid);
+   const unsub = onSnapshot(userDocRef, (docSnap) => {
+     if (docSnap.exists()) {
+       const parsed = docSnap.data();
+       const stringified = JSON.stringify(parsed);
+       if (stringified === lastLoadedStateStr.current) {
+         return;
+       }
+       lastLoadedStateStr.current = stringified;
+
+       // Apply state from Firebase
+       if (parsed.xp !== undefined) setXp(parsed.xp);
+       if (parsed.level !== undefined) setLevel(parsed.level);
+       if (parsed.questionsSolved !== undefined) setQuestionsSolved(parsed.questionsSolved);
+       if (parsed.dailyTarget !== undefined) setDailyTarget(parsed.dailyTarget);
+       if (parsed.accuracy !== undefined) setAccuracy(parsed.accuracy);
+       if (parsed.speedScore !== undefined) setSpeedScore(parsed.speedScore);
+       if (parsed.streakDays !== undefined) setStreakDays(parsed.streakDays);
+       if (parsed.lastStudyDate !== undefined) setLastStudyDate(parsed.lastStudyDate);
+       if (parsed.focusBadges !== undefined) setFocusBadges(parsed.focusBadges);
+       if (parsed.syllabus !== undefined) setSyllabus(parsed.syllabus);
+       if (parsed.activeBoost !== undefined) setActiveBoost(parsed.activeBoost);
+       if (parsed.class11EndDate !== undefined) setClass11EndDate(parsed.class11EndDate);
+       if (parsed.totalXpGoal !== undefined) setTotalXpGoal(parsed.totalXpGoal);
+       if (parsed.isClass11SetupDone !== undefined) setIsClass11SetupDone(parsed.isClass11SetupDone);
+       if (parsed.backlogPriorities !== undefined) setBacklogPriorities(parsed.backlogPriorities);
+       if (parsed.hasSeenRules !== undefined) setHasSeenRules(parsed.hasSeenRules);
+       if (parsed.todos !== undefined) setTodos(parsed.todos);
+       if (parsed.loggedTasksToday !== undefined) setLoggedTasksToday(parsed.loggedTasksToday);
+       if (parsed.pendingTasks !== undefined) setPendingTasks(parsed.pendingTasks);
+       if (parsed.history !== undefined) setHistory(parsed.history);
+       if (parsed.practiceSessions !== undefined) setPracticeSessions(parsed.practiceSessions);
+       if (parsed.playerName !== undefined) setPlayerName(parsed.playerName);
+       if (parsed.habits !== undefined) setHabits(parsed.habits);
+       if (parsed.lifeMetrics !== undefined) setLifeMetrics(parsed.lifeMetrics);
+       if (parsed.monthlyGoals !== undefined) setMonthlyGoals(parsed.monthlyGoals);
+       if (parsed.lastBossDayDate !== undefined) setLastBossDayDate(parsed.lastBossDayDate);
+       if (parsed.bossDayTargetXp !== undefined) setBossDayTargetXp(parsed.bossDayTargetXp);
+       if (parsed.bossDayCompleted !== undefined) setBossDayCompleted(parsed.bossDayCompleted);
+       if (parsed.equippedTitle !== undefined) setEquippedTitle(parsed.equippedTitle);
+       if (parsed.equippedAura !== undefined) setEquippedAura(parsed.equippedAura);
+       if (parsed.unlockedItems !== undefined) setUnlockedItems(parsed.unlockedItems);
+       if (parsed.ongoingChapters !== undefined) setOngoingChapters(parsed.ongoingChapters);
+       if (parsed.notificationSettings !== undefined) setNotificationSettings(parsed.notificationSettings);
+       if (parsed.xpGainedToday !== undefined) setXpGainedToday(parsed.xpGainedToday);
+       if (parsed.spentXpToday !== undefined) setSpentXpToday(parsed.spentXpToday);
+       if (parsed.totalSpentXp !== undefined) setTotalSpentXp(parsed.totalSpentXp);
+       if (parsed.hoursStudiedToday !== undefined) setHoursStudiedToday(parsed.hoursStudiedToday);
+     }
+   });
+
+   return () => unsub();
+ }, [firebaseUser]);
 
  // Load state on mount
  useEffect(() => {
@@ -499,20 +560,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
  habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
  unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
  };
+
+ const stringified = JSON.stringify(stateToSave);
+ if (stringified === lastLoadedStateStr.current) {
+   return;
+ }
+ lastLoadedStateStr.current = stringified;
+
  const timeoutId = setTimeout(() => {
+      if (firebaseUser) {
+        setDoc(doc(db, 'users', firebaseUser.uid), stateToSave, { merge: true }).catch(console.error);
+      }
       if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: JSON.stringify(stateToSave) });
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
       } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+        localStorage.setItem(LOCAL_STORAGE_KEY, stringified);
       }
     }, 500);
 
     const handleBeforeUnload = () => {
       clearTimeout(timeoutId);
+      if (firebaseUser) {
+        setDoc(doc(db, 'users', firebaseUser.uid), stateToSave, { merge: true }).catch(console.error);
+      }
       if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: JSON.stringify(stateToSave) });
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
       } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+        localStorage.setItem(LOCAL_STORAGE_KEY, stringified);
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
