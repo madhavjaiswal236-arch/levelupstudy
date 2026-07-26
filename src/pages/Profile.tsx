@@ -663,6 +663,36 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  </CardContent>
  </Card>
 
+ {/* Account Settings Card */}
+ <Card className="md:col-span-3 border-indigo-500/30 dark:bg-black bg-slate-50 relative overflow-hidden mt-6">
+ <CardHeader>
+ <CardTitle className="flex items-center gap-2 dark:text-indigo-400 text-indigo-700">
+ <Settings className="w-5 h-5" />
+ Account Settings
+ </CardTitle>
+ <p className="text-sm dark:text-slate-400 text-slate-600">Manage your account and authentication.</p>
+ </CardHeader>
+ <CardContent>
+ <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-indigo-950/20 rounded-xl border border-indigo-900/50 gap-4">
+ <div>
+ <h3 className="dark:text-indigo-100 text-indigo-900 font-bold tracking-wide">Google Sign In</h3>
+ <p className="text-sm dark:text-indigo-400 text-indigo-700">
+ {firebaseUser ? `Signed in as ${firebaseUser.email || firebaseUser.displayName}` : "Sign in to sync your progress across devices and enable Calendar integration."}
+ </p>
+ </div>
+ {firebaseUser ? (
+ <Button onClick={handleLogout} variant="outline" className="border-indigo-500/50 dark:text-indigo-400 text-indigo-700 hover:bg-indigo-500/10">
+ Sign Out
+ </Button>
+ ) : (
+ <Button onClick={handleLogin} disabled={isLoggingIn} className="bg-indigo-600 text-white hover:bg-indigo-700 shadow-md border-indigo-500">
+ {isLoggingIn ? "Signing in..." : "Sign In with Google"}
+ </Button>
+ )}
+ </div>
+ </CardContent>
+ </Card>
+
  {/* Danger Zone: Hard Reset */}
  <Card className="md:col-span-3 border-rose-500/30 dark:bg-black bg-slate-50 relative overflow-hidden mt-6">
  <CardHeader>
