@@ -104,7 +104,8 @@ function AppContent() {
   notificationSettings,
   syncConflict,
   setSyncConflict,
-  forceDownloadData
+  forceDownloadData,
+  forceUploadData
   } = useAppContext();
 
   useEffect(() => {
@@ -983,9 +984,23 @@ function AppContent() {
          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
        >
          Pull from Cloud
-       </Button>
-       <Button
-         onClick={() => {
+        </Button>
+        <Button
+          onClick={async () => {
+            try {
+              await forceUploadData();
+              setSyncConflict(false);
+            } catch(e) {
+              console.error(e);
+              alert("Failed to push data");
+            }
+          }}
+          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+        >
+          Push to Cloud
+        </Button>
+        <Button
+          onClick={() => {
            setSyncConflict(false);
          }}
          variant="outline"

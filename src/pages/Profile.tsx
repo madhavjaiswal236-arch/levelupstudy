@@ -31,6 +31,7 @@ export default function Profile() {
    setIsPushing(true);
    try {
      await forceUploadData();
+     alert("Data successfully pushed to cloud.");
    } catch(e) {
      console.error(e);
      alert("Failed to upload data");

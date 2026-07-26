@@ -403,6 +403,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
        if (parsed.history !== undefined) setHistory(parsed.history);
        if (parsed.practiceSessions !== undefined) setPracticeSessions(parsed.practiceSessions);
        if (parsed.playerName !== undefined) setPlayerName(parsed.playerName);
+      if (parsed.habits !== undefined) setHabits(parsed.habits);
+      if (parsed.lifeMetrics !== undefined) setLifeMetrics(parsed.lifeMetrics);
+      if (parsed.monthlyGoals !== undefined) setMonthlyGoals(parsed.monthlyGoals);
+      if (parsed.lastBossDayDate !== undefined) setLastBossDayDate(parsed.lastBossDayDate);
+      if (parsed.bossDayTargetXp !== undefined) setBossDayTargetXp(parsed.bossDayTargetXp);
+      if (parsed.bossDayCompleted !== undefined) setBossDayCompleted(parsed.bossDayCompleted);
+      if (parsed.equippedTitle !== undefined) setEquippedTitle(parsed.equippedTitle);
        if (parsed.habits !== undefined) setHabits(parsed.habits);
        if (parsed.lifeMetrics !== undefined) setLifeMetrics(parsed.lifeMetrics);
        if (parsed.monthlyGoals !== undefined) setMonthlyGoals(parsed.monthlyGoals);
@@ -418,11 +425,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
        if (parsed.spentXpToday !== undefined) setSpentXpToday(parsed.spentXpToday);
        if (parsed.totalSpentXp !== undefined) setTotalSpentXp(parsed.totalSpentXp);
        if (parsed.hoursStudiedToday !== undefined) setHoursStudiedToday(parsed.hoursStudiedToday);
-     }
+    } else {
+      if (isFirstLoad.current) {
+        isFirstLoad.current = false;
+        const localStateStr = localStorage.getItem(LOCAL_STORAGE_KEY) || "{}";
+        const localParsed = JSON.parse(localStateStr);
+        if (Object.keys(localParsed).length > 0) {
+          setDoc(userDocRef, localParsed, { merge: true }).catch(console.error);
+        }
+      }
+    }
    });
 
    return () => unsub();
- }, [firebaseUser]);
+ }, [firebaseUser, syncConflict]);
 
  // Load state on mount
  useEffect(() => {
@@ -594,7 +610,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
  const timeoutId = setTimeout(() => {
       if (firebaseUser) {
-        setDoc(doc(db, 'users', firebaseUser.uid), stateToSave, { merge: true }).catch(console.error);
+        const cleanState = JSON.parse(JSON.stringify(stateToSave));
+        setDoc(doc(db, "users", firebaseUser.uid), cleanState, { merge: true }).catch(console.error);
       }
       if (Capacitor.isNativePlatform()) {
         Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
@@ -606,7 +623,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const handleBeforeUnload = () => {
       clearTimeout(timeoutId);
       if (firebaseUser) {
-        setDoc(doc(db, 'users', firebaseUser.uid), stateToSave, { merge: true }).catch(console.error);
+        const cleanState = JSON.parse(JSON.stringify(stateToSave));
+        setDoc(doc(db, "users", firebaseUser.uid), cleanState, { merge: true }).catch(console.error);
       }
       if (Capacitor.isNativePlatform()) {
         Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
@@ -618,6 +636,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => {
       clearTimeout(timeoutId);
+      if (firebaseUser) {
+        const cleanState = JSON.parse(JSON.stringify(stateToSave));
+        setDoc(doc(db, "users", firebaseUser.uid), cleanState, { merge: true }).catch(console.error);
+      }
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
  }, [isLoaded, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
@@ -1046,8 +1068,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
      habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
      unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
     };
-    await setDoc(doc(db, 'users', firebaseUser.uid), stateToSave, { merge: true });
-    alert("Data successfully uploaded to cloud.");
+    const cleanStateToSave = JSON.parse(JSON.stringify(stateToSave));
+    await setDoc(doc(db, 'users', firebaseUser.uid), cleanStateToSave, { merge: true });
+    
   };
 
   const forceDownloadData = async () => {
@@ -1067,7 +1090,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // We will reload to apply it cleanly
       window.location.reload();
     } else {
-      alert("No data found in cloud for this account.");
+      throw new Error("No data found in cloud for this account.");
     }
   };
 
