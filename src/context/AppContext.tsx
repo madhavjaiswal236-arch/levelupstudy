@@ -1,10 +1,8 @@
-import { logout, db } from '@/lib/firebase';
+import { logout } from '@/lib/firebase';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef, useMemo } from 'react';
 import { initAuth } from '@/lib/firebase';
-import { User } from 'firebase/auth';
 import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
-import { doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 
 export interface Chapter {
  name: string;
@@ -243,10 +241,6 @@ interface AppState {
  ongoingChapters: Record<string, string>;
  setOngoingChapters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
  getCurrentChapterForSubject: (subj: string) => string | null;
-  forceUploadData: () => Promise<void>;
-  forceDownloadData: () => Promise<void>;
-  syncConflict: boolean;
-  setSyncConflict: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -327,12 +321,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
  motivationalAlerts: true,
  soundEnabled: true
  });
- const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+ const [firebaseUser, setFirebaseUser] = useState<import('firebase/auth').User | null>(null);
  const [hasToken, setHasToken] = useState<boolean>(false);
- const [syncConflict, setSyncConflict] = useState<boolean>(false);
- const lastLoadedStateStr = useRef<string | null>(null);
- const isFirstLoad = useRef<boolean>(true);
- const isApplyingRemote = useRef<boolean>(false);
 
  useEffect(() => {
  const unsubscribe = initAuth(
@@ -347,101 +337,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
  }
  };
  }, []);
-
- // Firebase Sync Listener
- useEffect(() => {
-   if (!firebaseUser) return;
-   
-   const userDocRef = doc(db, 'users', firebaseUser.uid);
-   const unsub = onSnapshot(userDocRef, (docSnap) => {
-     if (docSnap.exists()) {
-       const parsed = docSnap.data();
-       const stringified = JSON.stringify(parsed);
-       if (stringified === lastLoadedStateStr.current) {
-         return;
-       }
-
-       // Check for mismatch on first remote fetch
-       if (isFirstLoad.current) {
-          isFirstLoad.current = false;
-          // Check if there is significant local progress
-          const localStateStr = localStorage.getItem(LOCAL_STORAGE_KEY) || "{}";
-          const localParsed = JSON.parse(localStateStr);
-          const localXp = localParsed.xp || 0;
-          const remoteXp = parsed.xp || 0;
-          
-          // If local has progress and it differs from remote, halt and prompt user
-          if (localXp > 0 && remoteXp > 0 && Math.abs(remoteXp - localXp) > 10) {
-              setSyncConflict(true);
-              return; // halt auto-pull
-          }
-       }
-
-       if (syncConflict) return; // Do not auto-pull if in conflict state
-
-       lastLoadedStateStr.current = stringified;
-
-       // Apply state from Firebase
-       isApplyingRemote.current = true;
-       if (parsed.xp !== undefined) setXp(parsed.xp);
-       if (parsed.level !== undefined) setLevel(parsed.level);
-       if (parsed.questionsSolved !== undefined) setQuestionsSolved(parsed.questionsSolved);
-       if (parsed.dailyTarget !== undefined) setDailyTarget(parsed.dailyTarget);
-       if (parsed.accuracy !== undefined) setAccuracy(parsed.accuracy);
-       if (parsed.speedScore !== undefined) setSpeedScore(parsed.speedScore);
-       if (parsed.streakDays !== undefined) setStreakDays(parsed.streakDays);
-       if (parsed.lastStudyDate !== undefined) setLastStudyDate(parsed.lastStudyDate);
-       if (parsed.focusBadges !== undefined) setFocusBadges(parsed.focusBadges);
-       if (parsed.syllabus !== undefined) setSyllabus(parsed.syllabus);
-       if (parsed.activeBoost !== undefined) setActiveBoost(parsed.activeBoost);
-       if (parsed.class11EndDate !== undefined) setClass11EndDate(parsed.class11EndDate);
-       if (parsed.totalXpGoal !== undefined) setTotalXpGoal(parsed.totalXpGoal);
-       if (parsed.isClass11SetupDone !== undefined) setIsClass11SetupDone(parsed.isClass11SetupDone);
-       if (parsed.backlogPriorities !== undefined) setBacklogPriorities(parsed.backlogPriorities);
-       if (parsed.hasSeenRules !== undefined) setHasSeenRules(parsed.hasSeenRules);
-       if (parsed.todos !== undefined) setTodos(parsed.todos);
-       if (parsed.loggedTasksToday !== undefined) setLoggedTasksToday(parsed.loggedTasksToday);
-       if (parsed.pendingTasks !== undefined) setPendingTasks(parsed.pendingTasks);
-       if (parsed.history !== undefined) setHistory(parsed.history);
-       if (parsed.practiceSessions !== undefined) setPracticeSessions(parsed.practiceSessions);
-       if (parsed.playerName !== undefined) setPlayerName(parsed.playerName);
-      if (parsed.habits !== undefined) setHabits(parsed.habits);
-      if (parsed.lifeMetrics !== undefined) setLifeMetrics(parsed.lifeMetrics);
-      if (parsed.monthlyGoals !== undefined) setMonthlyGoals(parsed.monthlyGoals);
-      if (parsed.lastBossDayDate !== undefined) setLastBossDayDate(parsed.lastBossDayDate);
-      if (parsed.bossDayTargetXp !== undefined) setBossDayTargetXp(parsed.bossDayTargetXp);
-      if (parsed.bossDayCompleted !== undefined) setBossDayCompleted(parsed.bossDayCompleted);
-      if (parsed.equippedTitle !== undefined) setEquippedTitle(parsed.equippedTitle);
-       if (parsed.habits !== undefined) setHabits(parsed.habits);
-       if (parsed.lifeMetrics !== undefined) setLifeMetrics(parsed.lifeMetrics);
-       if (parsed.monthlyGoals !== undefined) setMonthlyGoals(parsed.monthlyGoals);
-       if (parsed.lastBossDayDate !== undefined) setLastBossDayDate(parsed.lastBossDayDate);
-       if (parsed.bossDayTargetXp !== undefined) setBossDayTargetXp(parsed.bossDayTargetXp);
-       if (parsed.bossDayCompleted !== undefined) setBossDayCompleted(parsed.bossDayCompleted);
-       if (parsed.equippedTitle !== undefined) setEquippedTitle(parsed.equippedTitle);
-       if (parsed.equippedAura !== undefined) setEquippedAura(parsed.equippedAura);
-       if (parsed.unlockedItems !== undefined) setUnlockedItems(parsed.unlockedItems);
-       if (parsed.ongoingChapters !== undefined) setOngoingChapters(parsed.ongoingChapters);
-       if (parsed.notificationSettings !== undefined) setNotificationSettings(parsed.notificationSettings);
-       if (parsed.xpGainedToday !== undefined) setXpGainedToday(parsed.xpGainedToday);
-       if (parsed.spentXpToday !== undefined) setSpentXpToday(parsed.spentXpToday);
-       if (parsed.totalSpentXp !== undefined) setTotalSpentXp(parsed.totalSpentXp);
-       if (parsed.hoursStudiedToday !== undefined) setHoursStudiedToday(parsed.hoursStudiedToday);
-       setTimeout(() => { isApplyingRemote.current = false; }, 100);
-    } else {
-      if (isFirstLoad.current) {
-        isFirstLoad.current = false;
-        const localStateStr = localStorage.getItem(LOCAL_STORAGE_KEY) || "{}";
-        const localParsed = JSON.parse(localStateStr);
-        if (Object.keys(localParsed).length > 0) {
-          setDoc(userDocRef, localParsed, { merge: true }).catch(console.error);
-        }
-      }
-    }
-   });
-
-   return () => unsub();
- }, [firebaseUser, syncConflict]);
 
  // Load state on mount
  useEffect(() => {
@@ -604,50 +499,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
  habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
  unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
  };
-
- if (isApplyingRemote.current) return;
- const stringified = JSON.stringify(stateToSave);
- if (stringified === lastLoadedStateStr.current) {
-   return;
- }
- lastLoadedStateStr.current = stringified;
-
  const timeoutId = setTimeout(() => {
-      if (firebaseUser) {
-        const cleanState = JSON.parse(JSON.stringify(stateToSave));
-        setDoc(doc(db, "users", firebaseUser.uid), cleanState, { merge: true }).catch(console.error);
-      }
       if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: JSON.stringify(stateToSave) });
       } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, stringified);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
       }
     }, 500);
 
     const handleBeforeUnload = () => {
       clearTimeout(timeoutId);
-      if (firebaseUser) {
-        const cleanState = JSON.parse(JSON.stringify(stateToSave));
-        setDoc(doc(db, "users", firebaseUser.uid), cleanState, { merge: true }).catch(console.error);
-      }
       if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: JSON.stringify(stateToSave) });
       } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, stringified);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       clearTimeout(timeoutId);
-      if (firebaseUser) {
-        const cleanState = JSON.parse(JSON.stringify(stateToSave));
-        setDoc(doc(db, "users", firebaseUser.uid), cleanState, { merge: true }).catch(console.error);
-      }
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
  }, [isLoaded, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
- questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal, ongoingChapters, firebaseUser]);
+ questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal, ongoingChapters]);
 
  // Handle Cross-Tab Synchronization
  useEffect(() => {
@@ -1062,45 +937,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
    return null;
  };
 
-  const forceUploadData = async () => {
-    if (!firebaseUser) throw new Error("Not signed in");
-    const stateToSave = {
-     xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
-     questionsSolved, dailyTarget, accuracy, speedScore,
-     streakDays, lastStudyDate, focusBadges, syllabus, activeBoost,
-     class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules,
-     habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
-     unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
-    };
-    const cleanStateToSave = JSON.parse(JSON.stringify(stateToSave));
-    await Promise.race([
-      setDoc(doc(db, 'users', firebaseUser.uid), cleanStateToSave, { merge: true }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout saving to Firestore after 10s. The database might be unreachable or rules are blocking it silently.")), 10000))
-    ]);
-    
-  };
-
-  const forceDownloadData = async () => {
-    if (!firebaseUser) throw new Error("Not signed in");
-    const docSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-    if (docSnap.exists()) {
-      const parsed = docSnap.data();
-      const stringified = JSON.stringify(parsed);
-      lastLoadedStateStr.current = stringified;
-
-      if (Capacitor.isNativePlatform()) {
-        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, stringified);
-      }
-      
-      // We will reload to apply it cleanly
-      window.location.reload();
-    } else {
-      throw new Error("No data found in cloud for this account.");
-    }
-  };
-
    const contextValue = useMemo(() => ({
     xp,
     setXp,
@@ -1190,11 +1026,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotificationSettings,
     ongoingChapters,
     setOngoingChapters,
-    getCurrentChapterForSubject,
-    forceUploadData,
-    forceDownloadData,
-    syncConflict,
-    setSyncConflict
+    getCurrentChapterForSubject
   }), [
     xp,
     xpGainedToday,
@@ -1282,8 +1114,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notificationSettings,
     setNotificationSettings,
     ongoingChapters,
-    getCurrentChapterForSubject,
-    syncConflict
+    getCurrentChapterForSubject
   ]);
 
   return (

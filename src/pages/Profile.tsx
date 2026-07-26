@@ -18,42 +18,12 @@ export default function Profile() {
  playerName, setPlayerName, xp, level, streakDays, syllabus, todos, setTodos, 
  pendingTasks, setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
  resetApp, equippedTitle, setEquippedTitle, equippedAura, setEquippedAura, history, questionsSolved,
- notificationSettings, setNotificationSettings, forceUploadData, forceDownloadData
+ notificationSettings, setNotificationSettings
  } = useAppContext();
  const [isEditing, setIsEditing] = useState(false);
  const [tempName, setTempName] = useState(playerName);
  const [isLoggingIn, setIsLoggingIn] = useState(false);
- const [isPushing, setIsPushing] = useState(false);
- const [isPulling, setIsPulling] = useState(false);
- const [syncMsg, setSyncMsg] = useState("");
  const [currentTimeDate, setCurrentTimeDate] = useState(new Date());
-
- const handlePush = async () => {
-   setIsPushing(true);
-   try {
-     await forceUploadData();
-     setSyncMsg("Data successfully pushed to cloud."); setTimeout(() => setSyncMsg(""), 3000);
-   } catch(e) {
-     console.error(e);
-     setSyncMsg("Failed to upload data. Check console."); setTimeout(() => setSyncMsg(""), 3000);
-   } finally {
-     setIsPushing(false);
-   }
- };
-
- const handlePull = async () => {
-   if (true) { setSyncMsg("Pulling...");
-     setIsPulling(true);
-     try {
-       await forceDownloadData();
-     } catch(e) {
-       console.error(e);
-       setSyncMsg("Failed to download data. Check console."); setTimeout(() => setSyncMsg(""), 3000);
-     } finally {
-       setIsPulling(false);
-     }
-   }
- };
 
  const auraStyles: Record<string, string> = {
  aura_flame: "shadow-md border-amber-500 ring-2 ring-amber-500/50 animate-pulse",
@@ -224,11 +194,11 @@ export default function Profile() {
  } catch (err: any) {
  console.error(err);
  if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
- setSyncMsg("Domain not authorized in Firebase! Note: It can take a few minutes for Firebase to apply this setting. Please ensure you have added exactly this domain to Firebase Console -> Authentication -> Settings -> Authorized domains:\n\n" + window.location.hostname);
+ alert(`Domain not authorized in Firebase! Note: It can take a few minutes for Firebase to apply this setting. Please ensure you have added exactly this domain to Firebase Console -> Authentication -> Settings -> Authorized domains:\n\n${window.location.hostname}`);
  } else if (err?.message?.includes('popup') || err?.message?.includes('internal-error')) {
- setSyncMsg("Authentication is restricted in this preview iframe. Please click 'Open in New Tab' (top right).");
+ alert("Authentication is restricted by the browser in this preview iframe. Please use the 'Open in New Tab' button (top right of preview) to log in.");
  } else {
- setSyncMsg("Login failed: " + (err.message || 'Unknown error. Check console for details.'));
+ alert("Login failed: " + (err.message || 'Unknown error. Check console for details.'));
  }
  } finally {
  setIsLoggingIn(false);
@@ -690,55 +660,6 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  );
  })}
  </div>
- </CardContent>
- </Card>
-
- {/* Account Settings Card */}
- <Card className="md:col-span-3 border-indigo-500/30 dark:bg-black bg-slate-50 relative overflow-hidden mt-6">
- <CardHeader>
- <CardTitle className="flex items-center gap-2 dark:text-indigo-400 text-indigo-700">
- <Settings className="w-5 h-5" />
- Account & Sync Settings
- </CardTitle>
- <p className="text-sm dark:text-slate-400 text-slate-600">Manage your account and data synchronization across devices.</p>
- </CardHeader>
- <CardContent className="space-y-4">
- <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-indigo-950/20 rounded-xl border border-indigo-900/50 gap-4">
- <div>
- <h3 className="dark:text-indigo-100 text-indigo-900 font-bold tracking-wide">Google Sign In</h3>
- <p className="text-sm dark:text-indigo-400 text-indigo-700">
- {firebaseUser ? `Signed in as ${firebaseUser.email || firebaseUser.displayName}` : "Sign in to sync your progress across devices and enable Calendar integration."}
- </p>
- </div>
- {firebaseUser ? (
- <Button onClick={handleLogout} variant="outline" className="border-indigo-500/50 dark:text-indigo-400 text-indigo-700 hover:bg-indigo-500/10">
- Sign Out
- </Button>
- ) : (
- <Button onClick={handleLogin} disabled={isLoggingIn} className="bg-indigo-600 text-white hover:bg-indigo-700 shadow-md border-indigo-500">
- {isLoggingIn ? "Signing in..." : "Sign In with Google"}
- </Button>
- )}
- </div>
- 
- {firebaseUser && (
- <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-emerald-950/20 rounded-xl border border-emerald-900/50 gap-4 mt-4">
- <div>
- <h3 className="dark:text-emerald-100 text-emerald-900 font-bold tracking-wide">Manual Data Sync</h3>
- <p className="text-sm dark:text-emerald-400 text-emerald-700 max-w-lg">
- Pushing data will upload your current device's data to the cloud. Pulling data will download data from the cloud to this device, overwriting current local progress.
- </p>
- </div>
- <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
- <Button onClick={handlePush} disabled={isPushing} variant="default" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap">
- {isPushing ? "Pushing..." : "Push Data to Cloud"}
- </Button>
- <Button onClick={handlePull} disabled={isPulling} variant="outline" className="flex-1 border-emerald-500/50 dark:text-emerald-400 text-emerald-700 hover:bg-emerald-500/10 whitespace-nowrap">
- {isPulling ? "Pulling..." : "Pull Data from Cloud"}
- </Button>
- </div>
- </div>
- )}
  </CardContent>
  </Card>
 
