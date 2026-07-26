@@ -1073,7 +1073,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
      unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
     };
     const cleanStateToSave = JSON.parse(JSON.stringify(stateToSave));
-    await setDoc(doc(db, 'users', firebaseUser.uid), cleanStateToSave, { merge: true });
+    await Promise.race([
+      setDoc(doc(db, 'users', firebaseUser.uid), cleanStateToSave, { merge: true }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout saving to Firestore after 10s. The database might be unreachable or rules are blocking it silently.")), 10000))
+    ]);
     
   };
 

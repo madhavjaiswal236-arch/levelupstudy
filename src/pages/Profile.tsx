@@ -25,29 +25,30 @@ export default function Profile() {
  const [isLoggingIn, setIsLoggingIn] = useState(false);
  const [isPushing, setIsPushing] = useState(false);
  const [isPulling, setIsPulling] = useState(false);
+ const [syncMsg, setSyncMsg] = useState("");
  const [currentTimeDate, setCurrentTimeDate] = useState(new Date());
 
  const handlePush = async () => {
    setIsPushing(true);
    try {
      await forceUploadData();
-     alert("Data successfully pushed to cloud.");
+     setSyncMsg("Data successfully pushed to cloud."); setTimeout(() => setSyncMsg(""), 3000);
    } catch(e) {
      console.error(e);
-     alert("Failed to upload data");
+     setSyncMsg("Failed to upload data. Check console."); setTimeout(() => setSyncMsg(""), 3000);
    } finally {
      setIsPushing(false);
    }
  };
 
  const handlePull = async () => {
-   if (window.confirm("Are you sure you want to pull data? This will overwrite your current progress on this device.")) {
+   if (true) { setSyncMsg("Pulling...");
      setIsPulling(true);
      try {
        await forceDownloadData();
      } catch(e) {
        console.error(e);
-       alert("Failed to download data");
+       setSyncMsg("Failed to download data. Check console."); setTimeout(() => setSyncMsg(""), 3000);
      } finally {
        setIsPulling(false);
      }
@@ -223,11 +224,11 @@ export default function Profile() {
  } catch (err: any) {
  console.error(err);
  if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
- alert(`Domain not authorized in Firebase! Note: It can take a few minutes for Firebase to apply this setting. Please ensure you have added exactly this domain to Firebase Console -> Authentication -> Settings -> Authorized domains:\n\n${window.location.hostname}`);
+ setSyncMsg("Domain not authorized in Firebase! Note: It can take a few minutes for Firebase to apply this setting. Please ensure you have added exactly this domain to Firebase Console -> Authentication -> Settings -> Authorized domains:\n\n" + window.location.hostname);
  } else if (err?.message?.includes('popup') || err?.message?.includes('internal-error')) {
- alert("Authentication is restricted by the browser in this preview iframe. Please use the 'Open in New Tab' button (top right of preview) to log in.");
+ setSyncMsg("Authentication is restricted in this preview iframe. Please click 'Open in New Tab' (top right).");
  } else {
- alert("Login failed: " + (err.message || 'Unknown error. Check console for details.'));
+ setSyncMsg("Login failed: " + (err.message || 'Unknown error. Check console for details.'));
  }
  } finally {
  setIsLoggingIn(false);

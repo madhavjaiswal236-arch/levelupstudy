@@ -184,7 +184,9 @@ function AppContent() {
 
  const [showLevelUp, setShowLevelUp] = useState(false);
  const [prevLevel, setPrevLevel] = useState<number | null>(null);
- const [showNameModal, setShowNameModal] = useState(false);
+ const [isPushingToCloud, setIsPushingToCloud] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const [showNameModal, setShowNameModal] = useState(false);
  const [tempName, setTempName] = useState("");
  const [quote, setQuote] = useState("");
 
@@ -978,7 +980,7 @@ function AppContent() {
              setSyncConflict(false);
            } catch(e) {
              console.error(e);
-             alert("Failed to pull data");
+             setSyncMsg("Failed to pull data"); setTimeout(() => setSyncMsg(""), 5000);
            }
          }}
          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
@@ -987,17 +989,21 @@ function AppContent() {
         </Button>
         <Button
           onClick={async () => {
+            setIsPushingToCloud(true);
             try {
               await forceUploadData();
               setSyncConflict(false);
             } catch(e) {
               console.error(e);
-              alert("Failed to push data");
+              setSyncMsg("Failed to push data: " + (e.message || e)); setTimeout(() => setSyncMsg(""), 5000);
+            } finally {
+              setIsPushingToCloud(false);
             }
           }}
+          disabled={isPushingToCloud}
           className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
         >
-          Push to Cloud
+          {isPushingToCloud ? "Pushing..." : "Push to Cloud"}
         </Button>
         <Button
           onClick={() => {

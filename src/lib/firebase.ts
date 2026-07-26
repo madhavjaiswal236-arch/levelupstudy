@@ -7,7 +7,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = (firebaseConfig as any).firestoreDatabaseId ? getFirestore(app, (firebaseConfig as any).firestoreDatabaseId) : getFirestore(app);
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = sessionStorage.getItem('google_access_token');
