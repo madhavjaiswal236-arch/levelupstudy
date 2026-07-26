@@ -332,6 +332,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
  const [syncConflict, setSyncConflict] = useState<boolean>(false);
  const lastLoadedStateStr = useRef<string | null>(null);
  const isFirstLoad = useRef<boolean>(true);
+ const isApplyingRemote = useRef<boolean>(false);
 
  useEffect(() => {
  const unsubscribe = initAuth(
@@ -381,6 +382,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
        lastLoadedStateStr.current = stringified;
 
        // Apply state from Firebase
+       isApplyingRemote.current = true;
        if (parsed.xp !== undefined) setXp(parsed.xp);
        if (parsed.level !== undefined) setLevel(parsed.level);
        if (parsed.questionsSolved !== undefined) setQuestionsSolved(parsed.questionsSolved);
@@ -425,6 +427,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
        if (parsed.spentXpToday !== undefined) setSpentXpToday(parsed.spentXpToday);
        if (parsed.totalSpentXp !== undefined) setTotalSpentXp(parsed.totalSpentXp);
        if (parsed.hoursStudiedToday !== undefined) setHoursStudiedToday(parsed.hoursStudiedToday);
+       setTimeout(() => { isApplyingRemote.current = false; }, 100);
     } else {
       if (isFirstLoad.current) {
         isFirstLoad.current = false;
@@ -602,6 +605,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
  unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
  };
 
+ if (isApplyingRemote.current) return;
  const stringified = JSON.stringify(stateToSave);
  if (stringified === lastLoadedStateStr.current) {
    return;
@@ -643,7 +647,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
  }, [isLoaded, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
- questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal, ongoingChapters]);
+ questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal, ongoingChapters, firebaseUser]);
 
  // Handle Cross-Tab Synchronization
  useEffect(() => {
