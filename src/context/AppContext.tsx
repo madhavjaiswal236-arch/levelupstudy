@@ -245,6 +245,8 @@ interface AppState {
  getCurrentChapterForSubject: (subj: string) => string | null;
   forceUploadData: () => Promise<void>;
   forceDownloadData: () => Promise<void>;
+  syncConflict: boolean;
+  setSyncConflict: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -327,7 +329,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
  });
  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
  const [hasToken, setHasToken] = useState<boolean>(false);
+ const [syncConflict, setSyncConflict] = useState<boolean>(false);
  const lastLoadedStateStr = useRef<string | null>(null);
+ const isFirstLoad = useRef<boolean>(true);
 
  useEffect(() => {
  const unsubscribe = initAuth(
@@ -355,6 +359,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
        if (stringified === lastLoadedStateStr.current) {
          return;
        }
+
+       // Check for mismatch on first remote fetch
+       if (isFirstLoad.current) {
+          isFirstLoad.current = false;
+          // Check if there is significant local progress
+          const localStateStr = localStorage.getItem(LOCAL_STORAGE_KEY) || "{}";
+          const localParsed = JSON.parse(localStateStr);
+          const localXp = localParsed.xp || 0;
+          const remoteXp = parsed.xp || 0;
+          
+          // If local has progress and it differs from remote, halt and prompt user
+          if (localXp > 0 && remoteXp > 0 && Math.abs(remoteXp - localXp) > 10) {
+              setSyncConflict(true);
+              return; // halt auto-pull
+          }
+       }
+
+       if (syncConflict) return; // Do not auto-pull if in conflict state
+
        lastLoadedStateStr.current = stringified;
 
        // Apply state from Firebase
@@ -1139,7 +1162,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setOngoingChapters,
     getCurrentChapterForSubject,
     forceUploadData,
-    forceDownloadData
+    forceDownloadData,
+    syncConflict,
+    setSyncConflict
   }), [
     xp,
     xpGainedToday,
@@ -1227,7 +1252,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notificationSettings,
     setNotificationSettings,
     ongoingChapters,
-    getCurrentChapterForSubject
+    getCurrentChapterForSubject,
+    syncConflict
   ]);
 
   return (

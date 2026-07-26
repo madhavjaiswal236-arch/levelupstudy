@@ -18,6 +18,7 @@ import {
  User,
  Skull,
  AlertCircle,
+ AlertTriangle,
  Lock as LockIcon,
  Moon,
  Sun,
@@ -46,6 +47,7 @@ const WebGLShader = lazy(() => import("./components/ui/web-gl-shader").then(m =>
 const LiquidButton = lazy(() => import("./components/ui/liquid-glass-button").then(m => ({ default: m.LiquidButton })));
 import { TextReveal } from "./components/ui/text-reveal";
 import { PageSkeleton } from "./components/PageSkeleton";
+import { Button } from "./components/ui/button";
 
 const Protocols = lazy(() => import("./pages/Protocols"));
 const Rivals = lazy(() => import("./pages/Rivals"));
@@ -99,7 +101,10 @@ function AppContent() {
   pendingTasks,
   todos,
   xpGainedToday,
-  notificationSettings
+  notificationSettings,
+  syncConflict,
+  setSyncConflict,
+  forceDownloadData
   } = useAppContext();
 
   useEffect(() => {
@@ -942,6 +947,56 @@ function AppContent() {
  {/* Enter Name Modal */}
  {createPortal(
  <AnimatePresence>
+ {syncConflict && (
+ <motion.div
+   initial={{ opacity: 0 }}
+   animate={{ opacity: 1 }}
+   exit={{ opacity: 0 }}
+   className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+ >
+   <motion.div
+     initial={{ opacity: 0, scale: 0.95, y: 10 }}
+     animate={{ opacity: 1, scale: 1, y: 0 }}
+     exit={{ opacity: 0, scale: 0.95, y: 10 }}
+     className="w-full max-w-md dark:bg-slate-900 bg-white border dark:border-rose-500/50 border-rose-200 rounded-2xl shadow-2xl p-6"
+   >
+     <div className="flex items-center gap-3 mb-4 text-rose-500">
+       <AlertTriangle className="w-6 h-6" />
+       <h2 className="text-xl font-bold dark:text-rose-100 text-rose-900">Data Conflict Detected</h2>
+     </div>
+     <p className="dark:text-slate-300 text-slate-600 mb-6 leading-relaxed">
+       We found data on the cloud that is different from your current device's progress. 
+       <br/><br/>
+       Would you like to <strong>Pull</strong> the cloud data (overwriting this device) or <strong>Push</strong> this device's data to the cloud?
+     </p>
+     <div className="flex flex-col sm:flex-row gap-3">
+       <Button
+         onClick={async () => {
+           try {
+             await forceDownloadData();
+             setSyncConflict(false);
+           } catch(e) {
+             console.error(e);
+             alert("Failed to pull data");
+           }
+         }}
+         className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
+       >
+         Pull from Cloud
+       </Button>
+       <Button
+         onClick={() => {
+           setSyncConflict(false);
+         }}
+         variant="outline"
+         className="flex-1 dark:border-slate-700 dark:hover:bg-slate-800"
+       >
+         Resolve Later
+       </Button>
+     </div>
+   </motion.div>
+ </motion.div>
+ )}
  {showNameModal && (
  <motion.div
  initial={{ opacity: 0 }}

@@ -23,7 +23,35 @@ export default function Profile() {
  const [isEditing, setIsEditing] = useState(false);
  const [tempName, setTempName] = useState(playerName);
  const [isLoggingIn, setIsLoggingIn] = useState(false);
+ const [isPushing, setIsPushing] = useState(false);
+ const [isPulling, setIsPulling] = useState(false);
  const [currentTimeDate, setCurrentTimeDate] = useState(new Date());
+
+ const handlePush = async () => {
+   setIsPushing(true);
+   try {
+     await forceUploadData();
+   } catch(e) {
+     console.error(e);
+     alert("Failed to upload data");
+   } finally {
+     setIsPushing(false);
+   }
+ };
+
+ const handlePull = async () => {
+   if (window.confirm("Are you sure you want to pull data? This will overwrite your current progress on this device.")) {
+     setIsPulling(true);
+     try {
+       await forceDownloadData();
+     } catch(e) {
+       console.error(e);
+       alert("Failed to download data");
+     } finally {
+       setIsPulling(false);
+     }
+   }
+ };
 
  const auraStyles: Record<string, string> = {
  aura_flame: "shadow-md border-amber-500 ring-2 ring-amber-500/50 animate-pulse",
@@ -700,27 +728,11 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  </p>
  </div>
  <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
- <Button onClick={async () => {
-   try {
-     await forceUploadData();
-   } catch(e) {
-     console.error(e);
-     alert("Failed to upload data");
-   }
- }} variant="default" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap">
- Push Data to Cloud
+ <Button onClick={handlePush} disabled={isPushing} variant="default" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap">
+ {isPushing ? "Pushing..." : "Push Data to Cloud"}
  </Button>
- <Button onClick={async () => {
-   if (window.confirm("Are you sure you want to pull data? This will overwrite your current progress on this device.")) {
-     try {
-       await forceDownloadData();
-     } catch(e) {
-       console.error(e);
-       alert("Failed to download data");
-     }
-   }
- }} variant="outline" className="flex-1 border-emerald-500/50 dark:text-emerald-400 text-emerald-700 hover:bg-emerald-500/10 whitespace-nowrap">
- Pull Data from Cloud
+ <Button onClick={handlePull} disabled={isPulling} variant="outline" className="flex-1 border-emerald-500/50 dark:text-emerald-400 text-emerald-700 hover:bg-emerald-500/10 whitespace-nowrap">
+ {isPulling ? "Pulling..." : "Pull Data from Cloud"}
  </Button>
  </div>
  </div>
