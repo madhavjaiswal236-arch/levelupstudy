@@ -18,7 +18,7 @@ export default function Profile() {
  playerName, setPlayerName, xp, level, streakDays, syllabus, todos, setTodos, 
  pendingTasks, setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
  resetApp, equippedTitle, setEquippedTitle, equippedAura, setEquippedAura, history, questionsSolved,
- notificationSettings, setNotificationSettings
+ notificationSettings, setNotificationSettings, forceUploadData, forceDownloadData
  } = useAppContext();
  const [isEditing, setIsEditing] = useState(false);
  const [tempName, setTempName] = useState(playerName);
@@ -668,11 +668,11 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  <CardHeader>
  <CardTitle className="flex items-center gap-2 dark:text-indigo-400 text-indigo-700">
  <Settings className="w-5 h-5" />
- Account Settings
+ Account & Sync Settings
  </CardTitle>
- <p className="text-sm dark:text-slate-400 text-slate-600">Manage your account and authentication.</p>
+ <p className="text-sm dark:text-slate-400 text-slate-600">Manage your account and data synchronization across devices.</p>
  </CardHeader>
- <CardContent>
+ <CardContent className="space-y-4">
  <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-indigo-950/20 rounded-xl border border-indigo-900/50 gap-4">
  <div>
  <h3 className="dark:text-indigo-100 text-indigo-900 font-bold tracking-wide">Google Sign In</h3>
@@ -690,6 +690,41 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  </Button>
  )}
  </div>
+ 
+ {firebaseUser && (
+ <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-emerald-950/20 rounded-xl border border-emerald-900/50 gap-4 mt-4">
+ <div>
+ <h3 className="dark:text-emerald-100 text-emerald-900 font-bold tracking-wide">Manual Data Sync</h3>
+ <p className="text-sm dark:text-emerald-400 text-emerald-700 max-w-lg">
+ Pushing data will upload your current device's data to the cloud. Pulling data will download data from the cloud to this device, overwriting current local progress.
+ </p>
+ </div>
+ <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+ <Button onClick={async () => {
+   try {
+     await forceUploadData();
+   } catch(e) {
+     console.error(e);
+     alert("Failed to upload data");
+   }
+ }} variant="default" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap">
+ Push Data to Cloud
+ </Button>
+ <Button onClick={async () => {
+   if (window.confirm("Are you sure you want to pull data? This will overwrite your current progress on this device.")) {
+     try {
+       await forceDownloadData();
+     } catch(e) {
+       console.error(e);
+       alert("Failed to download data");
+     }
+   }
+ }} variant="outline" className="flex-1 border-emerald-500/50 dark:text-emerald-400 text-emerald-700 hover:bg-emerald-500/10 whitespace-nowrap">
+ Pull Data from Cloud
+ </Button>
+ </div>
+ </div>
+ )}
  </CardContent>
  </Card>
 

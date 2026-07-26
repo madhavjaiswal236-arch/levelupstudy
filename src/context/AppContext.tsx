@@ -4,7 +4,7 @@ import { initAuth } from '@/lib/firebase';
 import { User } from 'firebase/auth';
 import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 
 export interface Chapter {
  name: string;
@@ -243,6 +243,8 @@ interface AppState {
  ongoingChapters: Record<string, string>;
  setOngoingChapters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
  getCurrentChapterForSubject: (subj: string) => string | null;
+  forceUploadData: () => Promise<void>;
+  forceDownloadData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -1011,6 +1013,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
    return null;
  };
 
+  const forceUploadData = async () => {
+    if (!firebaseUser) throw new Error("Not signed in");
+    const stateToSave = {
+     xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
+     questionsSolved, dailyTarget, accuracy, speedScore,
+     streakDays, lastStudyDate, focusBadges, syllabus, activeBoost,
+     class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules,
+     habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
+     unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
+    };
+    await setDoc(doc(db, 'users', firebaseUser.uid), stateToSave, { merge: true });
+    alert("Data successfully uploaded to cloud.");
+  };
+
+  const forceDownloadData = async () => {
+    if (!firebaseUser) throw new Error("Not signed in");
+    const docSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+    if (docSnap.exists()) {
+      const parsed = docSnap.data();
+      const stringified = JSON.stringify(parsed);
+      lastLoadedStateStr.current = stringified;
+
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: stringified });
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, stringified);
+      }
+      
+      // We will reload to apply it cleanly
+      window.location.reload();
+    } else {
+      alert("No data found in cloud for this account.");
+    }
+  };
+
    const contextValue = useMemo(() => ({
     xp,
     setXp,
@@ -1100,7 +1137,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotificationSettings,
     ongoingChapters,
     setOngoingChapters,
-    getCurrentChapterForSubject
+    getCurrentChapterForSubject,
+    forceUploadData,
+    forceDownloadData
   }), [
     xp,
     xpGainedToday,
