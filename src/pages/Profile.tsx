@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppContext';
-import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, GripVertical, Lock as LockIcon, CheckCircle2, AlertTriangle, Settings } from 'lucide-react';
+import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, GripVertical, Lock as LockIcon, CheckCircle2, AlertTriangle, Settings, LogOut, RefreshCw, Clock } from 'lucide-react';
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getRankInfo } from '@/lib/utils';
@@ -12,6 +12,7 @@ import { initAuth, googleSignIn, logout, getAccessToken } from '@/lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
 import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask } from '@/lib/calendar';
 import { Todo } from '@/context/AppContext';
+import { format } from 'date-fns';
 
 export default function Profile() {
  const { 
@@ -543,7 +544,135 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  </CardContent>
  </Card>
 
- 
+ {/* Google Calendar & Account Integration Card */}
+ <Card id="profile-calendar-integration" className="md:col-span-3 border-sky-500/30 dark:bg-black bg-slate-50 relative overflow-hidden mt-6 transition-all">
+   <div className="absolute -top-16 -right-16 w-64 h-64 bg-sky-500/10 rounded-full blur-[80px] pointer-events-none" />
+   <CardHeader>
+     <div className="flex items-center justify-between">
+       <CardTitle className="flex items-center gap-2 text-sky-600 dark:text-sky-400">
+         <Calendar className="w-5 h-5" />
+         Google Account & Calendar Integration
+       </CardTitle>
+       {firebaseUser ? (
+         <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
+           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+           <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">Connected</span>
+         </div>
+       ) : (
+         <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full">
+           <div className="w-2 h-2 rounded-full bg-amber-500" />
+           <span className="text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">Not Connected</span>
+         </div>
+       )}
+     </div>
+     <p className="text-sm dark:text-slate-400 text-slate-600">
+       Sync your study schedule directly with Google Calendar and preview synced events in real time.
+     </p>
+   </CardHeader>
+   <CardContent className="space-y-6">
+     {/* Account Info & Actions */}
+     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-slate-100 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 gap-4">
+       {firebaseUser ? (
+         <div className="flex items-center gap-3">
+           {firebaseUser.photoURL ? (
+             <img src={firebaseUser.photoURL} alt="User" className="w-10 h-10 rounded-full border border-sky-500/40" />
+           ) : (
+             <div className="w-10 h-10 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold">
+               {firebaseUser.displayName?.charAt(0) || 'G'}
+             </div>
+           )}
+           <div>
+             <p className="font-bold text-sm dark:text-white text-slate-900">{firebaseUser.displayName || 'Google User'}</p>
+             <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{firebaseUser.email}</p>
+           </div>
+         </div>
+       ) : (
+         <div>
+           <p className="font-bold text-sm dark:text-white text-slate-900">Sign in to sync your study schedule</p>
+           <p className="text-xs text-slate-500 dark:text-slate-400">Connect Google Calendar to automatically add study lectures and tasks.</p>
+         </div>
+       )}
+
+       <div className="flex items-center gap-3 w-full sm:w-auto">
+         {firebaseUser ? (
+           <Button
+             variant="outline"
+             onClick={handleLogout}
+             className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30 text-xs font-bold font-mono"
+           >
+             <LogOut className="w-4 h-4 mr-2" />
+             Disconnect
+           </Button>
+         ) : (
+           <Button
+             onClick={handleLogin}
+             disabled={isLoggingIn}
+             className="bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-md font-mono"
+           >
+             {isLoggingIn ? (
+               <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+             ) : (
+               <Calendar className="w-4 h-4 mr-2" />
+             )}
+             {isLoggingIn ? 'Connecting...' : 'Sign in with Google'}
+           </Button>
+         )}
+       </div>
+     </div>
+
+     {/* Sync Action & Live Preview */}
+     <div className="space-y-4">
+       <div className="flex items-center justify-between">
+         <h4 className="text-sm font-bold dark:text-slate-200 text-slate-800 flex items-center gap-2">
+           <Clock className="w-4 h-4 text-sky-500" />
+           Calendar Events Preview & Sync
+         </h4>
+         <Button
+           size="sm"
+           onClick={handleSaveSchedule}
+           disabled={isRescheduling}
+           className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold font-mono"
+         >
+           {isRescheduling ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />}
+           Sync Schedule Now
+         </Button>
+       </div>
+
+       {/* List of Synced Tasks */}
+       <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+         {syncedTasks.length === 0 ? (
+           <div className="text-center py-6 text-xs text-slate-500 dark:text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+             No tasks scheduled in calendar yet. Add tasks from the Dashboard to preview them here.
+           </div>
+         ) : (
+           syncedTasks.map(task => (
+             <div
+               key={task.id}
+               className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between text-xs"
+             >
+               <div className="flex items-center gap-3">
+                 <div className={`w-2.5 h-2.5 rounded-full ${task.completed ? 'bg-emerald-500' : 'bg-sky-500'}`} />
+                 <div>
+                   <p className={`font-medium ${task.completed ? 'line-through text-slate-400' : 'dark:text-white text-slate-900'}`}>
+                     {task.text}
+                   </p>
+                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                     {task.subject || 'General'} • {task.previewStart ? format(task.previewStart, 'MMM d, h:mm a') : 'Not scheduled'}
+                   </span>
+                 </div>
+               </div>
+               {task.calendarSynced && (
+                 <span className="px-2 py-0.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 rounded text-[10px] font-mono font-bold">
+                   Synced
+                 </span>
+               )}
+             </div>
+           ))
+         )}
+       </div>
+     </div>
+   </CardContent>
+ </Card>
 
  {/* Achievements Card */}
  <Card className="md:col-span-3 border-amber-500/30 dark:bg-black bg-slate-50 relative overflow-hidden mt-6">

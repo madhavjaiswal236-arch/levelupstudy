@@ -56,7 +56,7 @@ import {
  updateGoogleTaskStatus,
  markCalendarEventCompleted,
 } from "@/lib/calendar";
-import { getAccessToken, googleSignIn } from "@/lib/firebase";
+import { getAccessToken, getAccessTokenSync, googleSignIn } from "@/lib/firebase";
 import { getDynamicInsight } from "@/lib/gemini";
 import { TourStep, useTour } from "@/components/TourGuide";
 import { LiveDayOverlay } from "@/components/LiveDayOverlay";
@@ -315,10 +315,11 @@ export default function Dashboard() {
 
  const allBacklogTasks = useMemo(() => {
  const rawBacklogs = [
- ...pendingTasks,
+ ...pendingTasks.filter(t => t.subject !== 'Personal'),
  ...todos.filter(
  (t) =>
  !t.completed &&
+ t.subject !== 'Personal' &&
  (new Date(t.id).toDateString() !== new Date().toDateString() && t.id < Date.now()),
  ),
  ];
@@ -795,13 +796,13 @@ export default function Dashboard() {
 
    // Schedule it with calendar
   try {
-    let token = await getAccessToken();
+    let token = getAccessTokenSync();
     if (!token) {
       try {
-        showToast("Google Calendar not loaded. Opening login page...", "success");
+        showToast("Connecting to Google Calendar...", "success");
         const loginRes = await googleSignIn();
         if (!loginRes) {
-          throw new Error("Google Calendar login cancelled or failed.");
+          throw new Error("Google Calendar login in progress or redirecting...");
         }
       } catch (loginErr: any) {
         throw new Error(`Google Calendar login required: ${loginErr.message || "Login failed"}`);
@@ -918,13 +919,13 @@ export default function Dashboard() {
 
    // 2. Schedule it with calendar
   try {
-    let token = await getAccessToken();
+    let token = getAccessTokenSync();
     if (!token) {
       try {
-        showToast("Google Calendar not loaded. Opening login page...", "success");
+        showToast("Connecting to Google Calendar...", "success");
         const loginRes = await googleSignIn();
         if (!loginRes) {
-          throw new Error("Google Calendar login cancelled or failed.");
+          throw new Error("Google Calendar login in progress or redirecting...");
         }
       } catch (loginErr: any) {
         throw new Error(`Google Calendar login required: ${loginErr.message || "Login failed"}`);
@@ -1204,7 +1205,7 @@ export default function Dashboard() {
  const formattedOptimizedHours = optimizedStudyHours.toFixed(1);
 
  const displayedTodos = useMemo(() => {
- let sourceTodos = todos;
+ let sourceTodos = todos.filter(t => t.subject !== 'Personal');
  const uniqueMap = new Map();
  sourceTodos.forEach((t) => uniqueMap.set(t.id, t));
  sourceTodos = Array.from(uniqueMap.values());

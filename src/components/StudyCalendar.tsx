@@ -4,26 +4,26 @@ import {
   X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, 
   Clock, Plus, Search, CheckCircle2, Zap, AlertCircle, Atom, Beaker, Sigma, Check, ArrowRight, Menu
 } from 'lucide-react';
-import { getAccessToken, googleSignIn } from "../lib/firebase";
+import { getAccessToken, getAccessTokenSync, googleSignIn, refreshGoogleToken, auth } from "../lib/firebase";
 import { useAppContext, Todo } from '../context/AppContext';
-import { rescheduleCalendarEvents, createCalendarEvent, updateCalendarEventTime, deleteCalendarEvent, fetchGoogleCalendarEvents } from '../lib/calendar';
+import { rescheduleCalendarEvents, createCalendarEvent, updateCalendarEventTime, deleteCalendarEvent, markCalendarEventCompleted, fetchGoogleCalendarEvents } from '../lib/calendar';
 import { format, addDays, startOfWeek, isSameDay, startOfDay, getDay, endOfMonth, startOfMonth, parseISO, addMonths } from 'date-fns';
 import { predictNextLecture } from '../lib/utils';
 
 
 const COLORS: Record<string, string> = {
-  Physics: 'bg-indigo-100 border border-indigo-300 text-indigo-900 shadow-sm dark:border-indigo-500/50 dark:text-indigo-200 dark:bg-indigo-900/60 hover:border-indigo-500 hover:shadow-md',
-  Chemistry: 'bg-emerald-100 border border-emerald-300 text-emerald-900 shadow-sm dark:border-emerald-500/50 dark:text-emerald-200 dark:bg-emerald-900/60 hover:border-emerald-500 hover:shadow-md',
-  Mathematics: 'bg-amber-100 border border-amber-300 text-amber-900 shadow-sm dark:border-amber-500/50 dark:text-amber-200 dark:bg-amber-900/60 hover:border-amber-500 hover:shadow-md',
-  Personal: 'bg-rose-100 border border-rose-300 text-rose-900 shadow-sm dark:border-rose-500/50 dark:text-rose-200 dark:bg-rose-900/60 hover:border-rose-500 hover:shadow-md',
-  Default: 'bg-slate-100 border border-slate-300 text-slate-900 shadow-sm dark:border-slate-500/50 dark:text-slate-200 dark:bg-slate-800/60 hover:border-slate-500 hover:shadow-md'
+  Physics: 'bg-indigo-100 border border-indigo-300 text-indigo-900 shadow-sm dark:border-indigo-500/50 dark:text-indigo-200 dark:bg-indigo-900/60 hover:border-indigo-500 hover:shadow-lg hover:shadow-indigo-500/30 dark:hover:shadow-indigo-500/50 hover:scale-[1.02] transition-all duration-300',
+  Chemistry: 'bg-emerald-100 border border-emerald-300 text-emerald-900 shadow-sm dark:border-emerald-500/50 dark:text-emerald-200 dark:bg-emerald-900/60 hover:border-emerald-500 hover:shadow-lg hover:shadow-emerald-500/30 dark:hover:shadow-emerald-500/50 hover:scale-[1.02] transition-all duration-300',
+  Mathematics: 'bg-amber-100 border border-amber-300 text-amber-900 shadow-sm dark:border-amber-500/50 dark:text-amber-200 dark:bg-amber-900/60 hover:border-amber-500 hover:shadow-lg hover:shadow-amber-500/30 dark:hover:shadow-amber-500/50 hover:scale-[1.02] transition-all duration-300',
+  Personal: 'bg-rose-100 border border-rose-300 text-rose-900 shadow-sm dark:border-rose-500/50 dark:text-rose-200 dark:bg-rose-900/60 hover:border-rose-500 hover:shadow-lg hover:shadow-rose-500/30 dark:hover:shadow-rose-500/50 hover:scale-[1.02] transition-all duration-300',
+  'Google Calendar': 'bg-sky-100 border border-sky-400 text-sky-900 shadow-sm dark:border-sky-500/50 dark:text-sky-200 dark:bg-sky-900/60 hover:border-sky-500 hover:shadow-lg hover:shadow-sky-500/30 hover:scale-[1.02] transition-all duration-300',
+  Default: 'bg-slate-100 border border-slate-300 text-slate-900 shadow-sm dark:border-slate-500/50 dark:text-slate-200 dark:bg-slate-800/60 hover:border-slate-500 hover:shadow-lg hover:shadow-slate-500/30 dark:hover:shadow-slate-500/50 hover:scale-[1.02] transition-all duration-300'
 };
 
 export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: { onClose?: () => void, dailyXpRequired?: number, onToggleTodo?: (id: any) => void }) {
     const { todos, setTodos, syllabus, xpGainedToday, dailyTarget, hoursStudiedToday, totalXpGoal, class11EndDate, xp, history, getCurrentChapterForSubject } = useAppContext();
 
-  
-
+  const [googleEvents, setGoogleEvents] = useState<any[]>([]);
 
   const [toastMessage, setToastMessage] = useState("");
 
@@ -40,9 +40,9 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     setTimeout(() => setToastMessage(""), 5000);
   };
 
-  const [activeCalendars, setActiveCalendars] = useState<string[]>(['Physics', 'Chemistry', 'Mathematics', 'Personal', 'General']);
+  const [activeCalendars, setActiveCalendars] = useState<string[]>(['Physics', 'Chemistry', 'Mathematics', 'Personal', 'General', 'Google Calendar']);
   const [selectedSubject, setSelectedSubject] = useState<string>("Physics");
-  const [view, setView] = useState<'Day' | '3 Days' | 'Week' | 'Month'>('Week');
+  const [view, setView] = useState<'Day' | '3 Days' | 'Week' | 'Month'>('Day');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [now, setNow] = useState(new Date());
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -59,7 +59,10 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     const sync = async () => {
       try {
         const events = await fetchGoogleCalendarEvents(addDays(new Date(), -14), addDays(new Date(), 30));
-        if (!isMounted || !events || events.length === 0) return;
+        if (!isMounted) return;
+        if (events && events.length > 0) {
+          setGoogleEvents(events);
+        }
         
         setTodos(prev => {
           let updated = false;
@@ -104,7 +107,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
   }, [view, currentDate]);
 
   const scheduledEvents = useMemo(() => {
-    return todos
+    const localEvents = todos
       .filter(t => activeCalendars.includes(t.subject || 'General'))
       .filter(t => t.startTime && t.endTime)
       .map(t => {
@@ -121,12 +124,34 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
           todo: t,
         };
       });
-  }, [todos]);
+
+    const externalGoogleEvents = googleEvents
+      .filter(g => !todos.some(t => t.calendarEventId === g.id))
+      .filter(g => g.start?.dateTime && g.end?.dateTime)
+      .map(g => {
+        return {
+          id: `gcal-${g.id}`,
+          title: g.summary || '(Google Event)',
+          subject: 'Google Calendar',
+          calendarEventId: g.id,
+          start: new Date(g.start.dateTime),
+          end: new Date(g.end.dateTime),
+          completed: g.summary?.startsWith('[Done]'),
+          isExternalGoogleEvent: true,
+          htmlLink: g.htmlLink,
+        };
+      });
+
+    return [...localEvents, ...externalGoogleEvents];
+  }, [todos, activeCalendars, googleEvents]);
 
   const unscheduledTasks = useMemo(() => {
     return todos
-      .filter(t => activeCalendars.includes(t.subject || 'General')).filter(t => !t.startTime || !t.endTime).filter(t => !t.completed);
-  }, [todos]);
+      .filter(t => t.subject !== 'Personal')
+      .filter(t => activeCalendars.includes(t.subject || 'General'))
+      .filter(t => !t.startTime || !t.endTime)
+      .filter(t => !t.completed);
+  }, [todos, activeCalendars]);
 
   const handlePrev = () => {
     if (view === 'Day') setCurrentDate(prev => addDays(prev, -1));
@@ -171,7 +196,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
     }
   }, [showTaskModal, dragSelection]);
 
-  const [resizingEventId, setResizingEventId] = useState<number | null>(null);
+  const [resizingEventId, setResizingEventId] = useState<number | string | null>(null);
   const [hoveredHandleId, setHoveredHandleId] = useState<string | null>(null);
   const [, setResizingDeltaMins] = useState<number>(0);
   const [resizeStartHeight, setResizeStartHeight] = useState<number>(0);
@@ -245,7 +270,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
   }, [taskSubject, syllabus]);
 
   // Drag and Drop State
-  const [dragEventId, setDragEventId] = useState<number | null>(null);
+  const [dragEventId, setDragEventId] = useState<number | string | null>(null);
   const [isDraggingEvent, setIsDraggingEvent] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [unsyncedChanges, setUnsyncedChanges] = useState(false);
@@ -253,13 +278,20 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
   
 
   const ensureCalendarAuth = async (isManual: boolean = false) => {
-    let token = await getAccessToken();
+    let token = getAccessTokenSync();
+    if (!token && auth.currentUser) {
+      try {
+        token = await refreshGoogleToken();
+      } catch (e) {
+        console.warn("Silent token refresh failed:", e);
+      }
+    }
     if (!token) {
       if (isManual) {
-        showToast("Google Calendar not loaded. Opening login page...", "success");
+        showToast("Connecting to Google Calendar...", "info");
         const loginRes = await googleSignIn();
         if (!loginRes) {
-          throw new Error("Google Calendar login cancelled or failed.");
+          throw new Error("Google Calendar login in progress or redirecting...");
         }
         return true;
       }
@@ -270,7 +302,6 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
 
   const handleCalendarSync = async (isManual: boolean = false) => {
     setIsSyncing(true);
-    setUnsyncedChanges(false);
     
     let allSuccess = true;
     let errorMessage = "";
@@ -281,8 +312,8 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
           return;
         }
         
-        // Update existing events
-        const eventsToUpdate = todos.filter(t => t.calendarEventId && t.startTime && t.endTime).map(t => ({
+        // Update existing Google Calendar events (excluding local- placeholder IDs)
+        const eventsToUpdate = todos.filter(t => t.calendarEventId && !t.calendarEventId.startsWith('local-') && t.startTime && t.endTime).map(t => ({
             eventId: t.calendarEventId!,
             startTime: new Date(t.startTime!),
             endTime: new Date(t.endTime!)
@@ -292,19 +323,19 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
             if (!updateSuccess) allSuccess = false;
         }
 
-        // Create new events
-        const eventsToCreate = todos.filter(t => !t.calendarEventId && t.startTime && t.endTime);
+        // Create new events on Google Calendar for unsynced or local-only tasks
+        const eventsToCreate = todos.filter(t => (!t.calendarEventId || t.calendarEventId.startsWith('local-')) && t.startTime && t.endTime);
         if (eventsToCreate.length > 0) {
             const createdEventIds: { id: number; calendarEventId: string }[] = [];
             for (const t of eventsToCreate) {
                 try {
-                    const durationMinutes = (new Date(t.endTime!).getTime() - new Date(t.startTime!).getTime()) / 60000;
+                    const durationMinutes = Math.round((new Date(t.endTime!).getTime() - new Date(t.startTime!).getTime()) / 60000);
                     const result = await createCalendarEvent(t.text, durationMinutes, t.type || 'Lecture', false, todos, new Date(t.startTime!), new Date(t.endTime!));
-                    if (result && result.id) {
+                    if (result && result.id && !result.id.startsWith('local-')) {
                         createdEventIds.push({ id: t.id, calendarEventId: result.id });
                     }
                 } catch(e) {
-                    console.error(e);
+                    console.error("Error creating Google Calendar event:", e);
                     allSuccess = false;
                 }
             }
@@ -454,7 +485,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
           id="calendar-header-scroll" 
           className="flex-1 overflow-hidden flex"
         >
-          <div className="flex flex-1 min-w-[600px]">
+          <div className={`flex flex-1 ${visibleDays.length > 1 ? 'min-w-[600px]' : 'w-full'}`}>
             {visibleDays.map(d => (
               <div key={d.getTime()} className="flex-1 flex items-center justify-center border-r border-slate-200 dark:border-white/5 relative gap-1.5 h-12">
                 <span className={`text-[10px] font-bold uppercase tracking-wider ${isSameDay(d, currentDate) ? 'text-indigo-400' : isSameDay(d, new Date()) ? 'text-indigo-500' : 'text-slate-400'}`}>{format(d, 'EEE')}</span>
@@ -497,7 +528,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
         </div>
         
         {/* Days Grid */}
-        <div className="flex-1 flex flex-col relative min-w-[600px]">
+        <div className={`flex-1 flex flex-col relative ${visibleDays.length > 1 ? 'min-w-[600px]' : 'w-full'}`}>
           {/* Grid Body */}
           <div className="relative flex-1" style={{ height: `${hours.length * 80}px`, minHeight: `${hours.length * 80}px` }}>
           {/* Supreme Line (Current Time) */}
@@ -542,6 +573,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                  const startScrollY = container ? container.scrollTop : 0;
                  let scrollInterval: any = null;
                  
+                 let finalStartHour = startHour;
                  let finalEndHour = startHour + 30 / 60;
                  
                  // Instantly position the DOM visual selector
@@ -560,14 +592,23 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                    
                    let rawEndHour = (moveY / 80);
                    let currentEndHour = Math.round(rawEndHour * 60) / 60;
-                   if (currentEndHour <= startHour + 1/60) currentEndHour = startHour + 1/60; // min 1 min
-                   if (currentEndHour > 24) currentEndHour = 24;
                    
-                   finalEndHour = currentEndHour;
+                   let actualStart = Math.min(startHour, currentEndHour);
+                   let actualEnd = Math.max(startHour, currentEndHour);
+                   
+                   if (actualEnd - actualStart < 1/60) {
+                     actualEnd = actualStart + 1/60; // min 1 min
+                   }
+                   if (actualEnd > 24) actualEnd = 24;
+                   if (actualStart < 0) actualStart = 0;
+                   
+                   finalStartHour = actualStart;
+                   finalEndHour = actualEnd;
                    
                    // Directly manipulate DOM style for 120 FPS buttery smooth resizing during selection
                    if (visualSelectionRef.current) {
-                     visualSelectionRef.current.style.height = `${(currentEndHour - startHour) * 80}px`;
+                     visualSelectionRef.current.style.top = `${actualStart * 80}px`;
+                     visualSelectionRef.current.style.height = `${(actualEnd - actualStart) * 80}px`;
                    }
                  };
                  
@@ -600,7 +641,15 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                    }
                    
                    if (hasMovedRef.current) {
-                     setDragSelection({ day: d, startHour, endHour: finalEndHour, isDragging: false });
+                     setDragSelection({ day: d, startHour: finalStartHour, endHour: finalEndHour, isDragging: false });
+                     const formatTimeInput = (hour: number) => {
+                       const totalMins = Math.round(hour * 60);
+                       const h = Math.floor(totalMins / 60);
+                       const m = totalMins % 60;
+                       return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                     };
+                     setModalStartTime(formatTimeInput(finalStartHour));
+                     setModalEndTime(formatTimeInput(finalEndHour));
                      setShowTaskModal(true);
                      justDraggedRef.current = true;
                    }
@@ -708,24 +757,53 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   const durationMilli = originalEndTime - originalStartTime;
                   
                   let lastDeltaMins = 0;
+                  let currentDayIndex = dayIndex; // default to original day index
+
+                  // Set initial positioning styles immediately on drag start
+                  target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
+                  target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
                   
                   const handlePointerMove = (moveEvent: PointerEvent) => {
                     moveEvent.preventDefault();
                     const deltaY = moveEvent.clientY - startY;
-                    if (Math.abs(deltaY) > 3) {
+                    if (Math.abs(deltaY) > 2) {
                       hasMoved = true;
                     }
-                    const deltaMins = deltaY / (80 / 60);
+                    const rawDeltaMins = deltaY / (80 / 60);
+                    const currentStartMins = (startHour * 60) + rawDeltaMins;
+                    const snappedStartMins = Math.round(currentStartMins); // Exact minute precision
+                    let newDeltaMins = snappedStartMins - Math.round(startHour * 60);
                     
-                    let newDeltaMins = Math.round(deltaMins);
-                    
-                    const minDeltaMins = - (startHour) * 60; 
-                    const maxDeltaMins = (24 - (startHour + duration)) * 60; 
+                    const origStartMins = startHour * 60;
+                    const eventDurMins = duration * 60;
+                    const minDeltaMins = -origStartMins; 
+                    const maxDeltaMins = (24 * 60) - (origStartMins + eventDurMins); 
                     
                     if (newDeltaMins < minDeltaMins) newDeltaMins = minDeltaMins;
                     if (newDeltaMins > maxDeltaMins) newDeltaMins = maxDeltaMins;
+
+                    if (newDeltaMins !== 0) {
+                      hasMoved = true;
+                    }
                     
-                    if (newDeltaMins !== lastDeltaMins) {
+                    // Track horizontal position to change days
+                    const gridContainer = target.parentElement;
+                    if (gridContainer) {
+                      const rect = gridContainer.getBoundingClientRect();
+                      const relativeX = moveEvent.clientX - rect.left;
+                      const colWidth = rect.width / visibleDays.length;
+                      let potentialDayIndex = Math.floor(relativeX / colWidth);
+                      potentialDayIndex = Math.max(0, Math.min(visibleDays.length - 1, potentialDayIndex));
+                      
+                      if (potentialDayIndex !== currentDayIndex) {
+                        currentDayIndex = potentialDayIndex;
+                        hasMoved = true;
+                      }
+                      target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
+                      target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
+                    }
+                    
+                    if (newDeltaMins !== lastDeltaMins || hasMoved) {
                       lastDeltaMins = newDeltaMins;
                       
                       // Direct DOM Manipulation for ultra-smooth rendering
@@ -734,9 +812,13 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                       // Update time text inside the event card on the fly
                       const timeEl = target.querySelector('[data-time-display="true"]');
                       if (timeEl) {
-                        const tempStart = new Date(originalStartTime + newDeltaMins * 60000);
-                        const tempEnd = new Date(originalEndTime + newDeltaMins * 60000);
-                        timeEl.innerHTML = `${format(tempStart, 'h:mm a')} <span class="mx-0.5 text-slate-400">→</span> ${format(tempEnd, 'h:mm a')}`;
+                        const targetMins = Math.round((startHour * 60) + newDeltaMins);
+                        const h = Math.floor(targetMins / 60);
+                        const m = targetMins % 60;
+                        const tempStart = new Date(visibleDays[currentDayIndex]);
+                        tempStart.setHours(h, m, 0, 0);
+                        const tempEnd = new Date(tempStart.getTime() + durationMilli);
+                        timeEl.innerHTML = `${format(tempStart, 'h:mm a')} <span class="mx-0.5 opacity-60">→</span> ${format(tempEnd, 'h:mm a')}`;
                       }
                     }
                   };
@@ -750,12 +832,22 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     target.removeEventListener('pointermove', handlePointerMove as EventListener);
                     target.removeEventListener('pointerup', handlePointerUp as EventListener);
                     
-                    // Reset inline transform so React takes over layout positioning
+                    // Reset transform while keeping target column width/left intact for React
                     target.style.transform = '';
+                    target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
+                    target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
                     
                     if (hasMoved) {
-                      const finalStart = new Date(originalStartTime + lastDeltaMins * 60000);
-                      const finalEnd = new Date(originalStartTime + lastDeltaMins * 60000 + durationMilli);
+                      const totalStartMins = Math.round((startHour * 60) + lastDeltaMins);
+                      const finalStartMins = totalStartMins;
+                      const hours = Math.floor(finalStartMins / 60);
+                      const mins = finalStartMins % 60;
+                      
+                      const targetDay = visibleDays[currentDayIndex];
+                      const finalStart = new Date(targetDay);
+                      finalStart.setHours(hours, mins, 0, 0);
+                      
+                      const finalEnd = new Date(finalStart.getTime() + durationMilli);
                       
                       setTodos(prev => prev.map(t => 
                         t.id === ev.id ? { ...t, startTime: finalStart.toISOString(), endTime: finalEnd.toISOString() } : t
@@ -774,16 +866,16 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                   e.stopPropagation();
                   e.preventDefault();
                 }}
-                className={`absolute rounded-xl px-2 py-1 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? 'opacity-50 scale-[0.98] z-50 shadow-lg' : 'z-40 shadow-sm'} ${dragEventId === ev.id || resizingEventId === ev.id ? '' : 'transition-transform'} group`}
+                className={`absolute rounded-xl px-2.5 py-1.5 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? 'opacity-80 shadow-2xl z-50 ring-2 ring-indigo-500' : 'z-40 shadow-sm'} ${dragEventId === ev.id || resizingEventId === ev.id ? '' : 'transition-all duration-300'} group`}
                 style={{ 
-                  left: `calc(${dayIndex * (100 / visibleDays.length)}% + 4px)`,
-                  width: `calc(${100 / visibleDays.length}% - 8px)`,
+                  left: `calc(${dayIndex * (100 / visibleDays.length)}% + 3px)`,
+                  width: `calc(${100 / visibleDays.length}% - 6px)`,
                   top: `${(displayStartHour) * 80}px`,
-                  height: `${displayDuration * 80 - 2}px`
+                  height: `${Math.max(28, displayDuration * 80 - 2)}px`
                 }}
               >
                 
-                {/* Delete button (visible on hover) */}
+                {/* Delete button (prominent hover/touch area) */}
                 <button
                   data-delete-btn="true"
                   onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
@@ -792,52 +884,104 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     e.preventDefault();
                     setTodos(prev => prev.filter(t => t.id !== ev.id));
                     setUnsyncedChanges(true);
+                    showToast("Task deleted", "success");
                     if ((ev as any).calendarEventId) {
                       deleteCalendarEvent((ev as any).calendarEventId).catch(console.error);
                     }
                   }}
-                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/20 hover:bg-black/40 dark:bg-white/20 dark:hover:bg-white/40 flex items-center justify-center opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity z-[60]"
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-900/40 hover:bg-red-500 dark:bg-white/30 dark:hover:bg-red-500 text-white flex items-center justify-center opacity-100 md:opacity-0 group-hover:opacity-100 transition-all z-[70] shadow-sm"
+                  title="Delete task"
                 >
                   <X className="w-3 h-3 text-white" />
                 </button>
                 
                 <div className="flex flex-col h-full overflow-hidden pointer-events-none">
-                  {/* Subject and Type */}
-                  <div className="flex items-center gap-1 mb-1 opacity-90 text-[8px] uppercase tracking-widest font-bold">
-                    {ev.subject === 'Physics' && <Atom className="w-2.5 h-2.5" />}
-                    {ev.subject === 'Chemistry' && <Beaker className="w-2.5 h-2.5" />}
-                    {ev.subject === 'Mathematics' && <Sigma className="w-2.5 h-2.5" />}
-                    {ev.todo?.type || 'TASK'}
-                  </div>
-                  
-                  {/* Title and Checkbox */}
-                  <div className="flex items-start gap-1.5 mb-1.5 pointer-events-auto">
-                    <div 
-                      data-checkbox="true"
-                      className={`w-3 h-3 mt-[1px] rounded-sm border flex-shrink-0 flex items-center justify-center cursor-pointer ${ev.completed ? 'bg-current border-current text-white' : 'border-current opacity-50 hover:opacity-100'}`}
-                      onPointerDown={(e) => { e.stopPropagation(); if (onToggleTodo) onToggleTodo(ev.id); else setTodos(prev => prev.map(t => t.id === ev.id ? { ...t, completed: !t.completed } : t)); }}
-                    >
-                      {ev.completed && <Check className="w-2 h-2 text-white" />}
+                  {displayDuration < 0.65 ? (
+                    /* Compact Layout for Short Duration Tasks (< 40 mins) */
+                    <div className="flex items-center gap-1.5 h-full w-full overflow-hidden pr-5">
+                      <button
+                        data-checkbox="true"
+                        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          const nextState = !ev.completed;
+                          if (onToggleTodo) onToggleTodo(ev.id);
+                          else setTodos(prev => prev.map(t => t.id === ev.id ? { ...t, completed: nextState } : t));
+                          showToast(nextState ? "Task completed! 🎉" : "Task marked incomplete", "success");
+                          if (ev.calendarEventId && !ev.calendarEventId.startsWith('local-')) {
+                            markCalendarEventCompleted(ev.calendarEventId, nextState, ev.title).catch(console.error);
+                          }
+                        }}
+                        className={`w-3.5 h-3.5 rounded-sm border flex-shrink-0 flex items-center justify-center cursor-pointer pointer-events-auto transition-all ${ev.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-current opacity-60 hover:opacity-100'}`}
+                        title={ev.completed ? "Mark incomplete" : "Mark complete"}
+                      >
+                        {ev.completed && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                      </button>
+                      
+                      <p className={`text-[11px] font-bold leading-none truncate pointer-events-none ${ev.completed ? 'line-through opacity-60' : ''}`}>
+                        {ev.title}
+                      </p>
+                      
+                      <span data-time-display="true" className="text-[9px] opacity-75 font-mono ml-auto truncate flex-shrink-0">
+                        {format(displayStart, 'h:mm a')}
+                      </span>
                     </div>
-                    <p className={`text-[11px] font-bold leading-tight ${view === 'Week' ? '' : 'line-clamp-2'} pr-5 pointer-events-none`}>{ev.title}</p>
-                  </div>
-                  
-                  {/* Time and Duration/XP */}
-                  {view !== 'Week' && (
-                    <div className="mt-auto flex flex-col gap-0.5 opacity-90">
-                      <p data-time-display="true" className="text-[9px] font-medium flex items-center gap-1">
-                        {format(displayStart, 'h:mm a')} <ArrowRight className="w-2 h-2" /> {format(displayEnd, 'h:mm a')}
-                      </p>
-                      <p data-duration-display="true" className="text-[9px] font-medium flex items-center gap-1">
-                        <Clock className="w-2.5 h-2.5" /> 
-                        {(() => {
-                          const totalMins = Math.round(displayDuration * 60);
-                          const h = Math.floor(totalMins / 60);
-                          const m = totalMins % 60;
-                          return `${h > 0 ? `${h}h ` : ''}${m}m`;
-                        })()}
-                        <span className="font-bold text-yellow-600 dark:text-yellow-400 ml-1">+{Math.round(displayDuration * (ev.subject === 'Physics' ? 60 : ev.subject === 'Mathematics' ? 65 : ev.subject === 'Chemistry' ? 50 : ev.subject === 'Biology' ? 50 : 40))} XP</span>
-                      </p>
+                  ) : (
+                    /* Full Layout for Standard Tasks (>= 40 mins) */
+                    <div className="flex flex-col h-full justify-between overflow-hidden">
+                      <div>
+                        {/* Subject and Type Badge */}
+                        <div className="flex items-center gap-1 mb-1 opacity-90 text-[8px] uppercase tracking-widest font-bold flex-shrink-0">
+                          {ev.subject === 'Physics' && <Atom className="w-2.5 h-2.5" />}
+                          {ev.subject === 'Chemistry' && <Beaker className="w-2.5 h-2.5" />}
+                          {ev.subject === 'Mathematics' && <Sigma className="w-2.5 h-2.5" />}
+                          {('todo' in ev ? (ev as any).todo?.type : undefined) || 'TASK'}
+                        </div>
+                        
+                        {/* Title and Checkbox */}
+                        <div className="flex items-start gap-1.5 pointer-events-auto pr-5">
+                          <button
+                            data-checkbox="true"
+                            onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              const nextState = !ev.completed;
+                              if (onToggleTodo) onToggleTodo(ev.id);
+                              else setTodos(prev => prev.map(t => t.id === ev.id ? { ...t, completed: nextState } : t));
+                              showToast(nextState ? "Task completed! 🎉" : "Task marked incomplete", "success");
+                              if (ev.calendarEventId && !ev.calendarEventId.startsWith('local-')) {
+                                markCalendarEventCompleted(ev.calendarEventId, nextState, ev.title).catch(console.error);
+                              }
+                            }}
+                            className={`w-3.5 h-3.5 mt-[1px] rounded-sm border flex-shrink-0 flex items-center justify-center cursor-pointer transition-all ${ev.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-current opacity-60 hover:opacity-100'}`}
+                            title={ev.completed ? "Mark incomplete" : "Mark complete"}
+                          >
+                            {ev.completed && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                          </button>
+                          <p className={`text-[11px] font-bold leading-tight line-clamp-2 pointer-events-none ${ev.completed ? 'line-through opacity-60' : ''}`}>
+                            {ev.title}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Time and Duration/XP */}
+                      <div className="flex flex-col gap-0.5 opacity-90 pt-1 border-t border-black/10 dark:border-white/10 flex-shrink-0">
+                        <p data-time-display="true" className="text-[9px] font-medium flex items-center gap-1 truncate font-mono">
+                          {format(displayStart, 'h:mm a')} <ArrowRight className="w-2 h-2 opacity-60" /> {format(displayEnd, 'h:mm a')}
+                        </p>
+                        <p data-duration-display="true" className="text-[9px] font-medium flex items-center gap-1 truncate font-mono">
+                          <Clock className="w-2.5 h-2.5" /> 
+                          {(() => {
+                            const totalMins = Math.round(displayDuration * 60);
+                            const h = Math.floor(totalMins / 60);
+                            const m = totalMins % 60;
+                            return `${h > 0 ? `${h}h ` : ''}${m}m`;
+                          })()}
+                          <span className="font-bold text-yellow-600 dark:text-yellow-400 ml-1">+{Math.round(displayDuration * (ev.subject === 'Physics' ? 60 : ev.subject === 'Mathematics' ? 65 : ev.subject === 'Chemistry' ? 50 : ev.subject === 'Biology' ? 50 : 40))} XP</span>
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -858,7 +1002,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                     const originalDurationMins = duration * 60;
                     setResizingEventId(ev.id);
                     
-                    let lastDurationMins = Math.round(originalDurationMins / 15) * 15;
+                    let lastDurationMins = Math.round(originalDurationMins);
                     
                     const handlePointerMove = (moveEvent: PointerEvent | React.PointerEvent) => {
                       moveEvent.preventDefault();
@@ -866,8 +1010,8 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                       let rawDeltaMins = deltaY / (80 / 60);
                       let newDurationMins = originalDurationMins + rawDeltaMins;
                       
-                      if (newDurationMins < 15) newDurationMins = 15; // Minimum 15 minutes
-                      newDurationMins = Math.round(newDurationMins);
+                      if (newDurationMins < 5) newDurationMins = 5; // Minimum 5 minutes
+                      newDurationMins = Math.round(newDurationMins); // Exact minute precision
                       
                       const maxDurationMins = (24 - startHour) * 60;
                       if (newDurationMins > maxDurationMins) newDurationMins = maxDurationMins;
@@ -908,9 +1052,9 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                       target.removeEventListener('pointermove', handlePointerMove as EventListener);
                       target.removeEventListener('pointerup', handlePointerUp as EventListener);
                       
-                      // Reset inline height style so React layout takes over the final positions
+                      // Keep final height intact for seamless React update
                       if (eventCard) {
-                        eventCard.style.height = '';
+                        eventCard.style.height = `${Math.max(28, (lastDurationMins / 60) * 80 - 2)}px`;
                       }
                       
                       const finalEnd = new Date(ev.start.getTime() + lastDurationMins * 60000);
@@ -1385,7 +1529,7 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                           completed: false,
                           xpReward: reward,
                           type: taskType,
-                          subject: taskSubject === 'General' || taskSubject === 'Personal' ? undefined : taskSubject,
+                          subject: taskSubject === 'General' ? undefined : taskSubject,
                           chapter: taskChapter || undefined,
                           lectureNumber: lecNumParsed,
                           startTime: start.toISOString(),

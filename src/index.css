@@ -216,43 +216,51 @@
   .dark .icon-glow-rose,
   .dark .icon-glow-emerald {
     filter: none;
+    transition: filter 0.3s ease, transform 0.3s ease;
   }
 
-  /* Enable glows in dark mode ONLY when hovered directly or via small group wrappers */
-  .dark .icon-glow-cyan:hover,
-  .dark .group:hover > .icon-glow-cyan,
-  .dark .group:hover > * > .icon-glow-cyan {
-    filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.75)) drop-shadow(0 0 2px rgba(34, 211, 238, 0.5)) !important;
+  /* Robust and powerful glows on hover / parent-hover for both light and dark modes */
+  .icon-glow-cyan:hover,
+  .group:hover .icon-glow-cyan,
+  .card:hover .icon-glow-cyan,
+  button:hover .icon-glow-cyan {
+    filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.95)) drop-shadow(0 0 4px rgba(34, 211, 238, 0.7)) !important;
   }
-  .dark .icon-glow-purple:hover,
-  .dark .group:hover > .icon-glow-purple,
-  .dark .group:hover > * > .icon-glow-purple {
-    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.75)) drop-shadow(0 0 2px rgba(168, 85, 247, 0.5)) !important;
+  .icon-glow-purple:hover,
+  .group:hover .icon-glow-purple,
+  .card:hover .icon-glow-purple,
+  button:hover .icon-glow-purple {
+    filter: drop-shadow(0 0 14px rgba(168, 85, 247, 0.95)) drop-shadow(0 0 4px rgba(168, 85, 247, 0.7)) !important;
   }
-  .dark .icon-glow-yellow:hover,
-  .dark .group:hover > .icon-glow-yellow,
-  .dark .group:hover > * > .icon-glow-yellow {
-    filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.85)) drop-shadow(0 0 2px rgba(234, 179, 8, 0.6)) !important;
+  .icon-glow-yellow:hover,
+  .group:hover .icon-glow-yellow,
+  .card:hover .icon-glow-yellow,
+  button:hover .icon-glow-yellow {
+    filter: drop-shadow(0 0 16px rgba(234, 179, 8, 0.95)) drop-shadow(0 0 4px rgba(234, 179, 8, 0.7)) !important;
   }
-  .dark .icon-glow-amber:hover,
-  .dark .group:hover > .icon-glow-amber,
-  .dark .group:hover > * > .icon-glow-amber {
-    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.75)) drop-shadow(0 0 2px rgba(245, 158, 11, 0.5)) !important;
+  .icon-glow-amber:hover,
+  .group:hover .icon-glow-amber,
+  .card:hover .icon-glow-amber,
+  button:hover .icon-glow-amber {
+    filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.95)) drop-shadow(0 0 4px rgba(245, 158, 11, 0.7)) !important;
   }
-  .dark .icon-glow-blue:hover,
-  .dark .group:hover > .icon-glow-blue,
-  .dark .group:hover > * > .icon-glow-blue {
-    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.75)) drop-shadow(0 0 2px rgba(59, 130, 246, 0.5)) !important;
+  .icon-glow-blue:hover,
+  .group:hover .icon-glow-blue,
+  .card:hover .icon-glow-blue,
+  button:hover .icon-glow-blue {
+    filter: drop-shadow(0 0 14px rgba(59, 130, 246, 0.95)) drop-shadow(0 0 4px rgba(59, 130, 246, 0.7)) !important;
   }
-  .dark .icon-glow-rose:hover,
-  .dark .group:hover > .icon-glow-rose,
-  .dark .group:hover > * > .icon-glow-rose {
-    filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.8)) drop-shadow(0 0 2px rgba(244, 63, 94, 0.55)) !important;
+  .icon-glow-rose:hover,
+  .group:hover .icon-glow-rose,
+  .card:hover .icon-glow-rose,
+  button:hover .icon-glow-rose {
+    filter: drop-shadow(0 0 14px rgba(244, 63, 94, 0.95)) drop-shadow(0 0 4px rgba(244, 63, 94, 0.7)) !important;
   }
-  .dark .icon-glow-emerald:hover,
-  .dark .group:hover > .icon-glow-emerald,
-  .dark .group:hover > * > .icon-glow-emerald {
-    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.75)) drop-shadow(0 0 2px rgba(16, 185, 129, 0.5)) !important;
+  .icon-glow-emerald:hover,
+  .group:hover .icon-glow-emerald,
+  .card:hover .icon-glow-emerald,
+  button:hover .icon-glow-emerald {
+    filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.95)) drop-shadow(0 0 4px rgba(16, 185, 129, 0.7)) !important;
   }
 }
 .is-dragging {

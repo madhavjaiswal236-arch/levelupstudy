@@ -275,6 +275,10 @@ export async function deleteGoogleTask(taskId: string, isRetry = false): Promise
 
 
 export async function updateCalendarEventTime(eventId: string, startTime?: Date, endTime?: Date, summary?: string, colorId?: string): Promise<boolean> {
+  if (!eventId || eventId.startsWith('local-')) return true;
+  let token = await getAccessToken();
+  if (!token) return false;
+
   const patchBody: any = {};
   if (startTime) patchBody.start = { dateTime: startTime.toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone };
   if (endTime) patchBody.end = { dateTime: endTime.toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone };
@@ -285,7 +289,7 @@ export async function updateCalendarEventTime(eventId: string, startTime?: Date,
     const res = await fetchGoogleApi(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, 'PATCH', patchBody);
     return res.ok;
   } catch (error) {
-    console.error("Failed to update event time", error);
+    console.warn("Could not update Google Calendar event time:", error);
     return false;
   }
 }

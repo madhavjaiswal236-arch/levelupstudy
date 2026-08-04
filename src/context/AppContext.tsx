@@ -687,17 +687,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return updatedHistory;
     });
 
- // Move uncompleted to pending
- if (uncompletedTasks.length > 0) {
- setPendingTasks(prev => {
- const existingIds = new Set(prev.map(p => p.id));
- const newPendings = uncompletedTasks.filter(u => !existingIds.has(u.id));
- return [...prev, ...newPendings];
- });
- }
- 
- setLoggedTasksToday([]);
- setTodos([]); // Clear today's todos
+  // Move uncompleted to pending
+  const lastDateStr = lastDate ? lastDate.toDateString() : "";
+  const backlogCandidates = uncompletedTasks.filter(t => {
+    if (!t.startTime) return true; // Unscheduled tasks go to backlog
+    const taskDayStr = new Date(t.startTime).toDateString();
+    return taskDayStr === lastDateStr; // Only tasks scheduled for the rolled-over day go to backlog
+  });
+
+  if (backlogCandidates.length > 0) {
+    setPendingTasks(prev => {
+      const existingIds = new Set(prev.map(p => p.id));
+      const newPendings = backlogCandidates.filter(u => !existingIds.has(u.id));
+      return [...prev, ...newPendings];
+    });
+  }
+  
+  setLoggedTasksToday([]);
+  // Keep tasks scheduled on other days, clear only those on the rolled-over day (or unscheduled ones)
+  setTodos(prev => prev.filter(t => {
+    if (!t.startTime) return false;
+    const taskDayStr = new Date(t.startTime).toDateString();
+    return taskDayStr !== lastDateStr;
+  }));
  // -- END ROLLOVER LOGIC --
 
  } else {

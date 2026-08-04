@@ -1,11 +1,11 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential } from 'firebase/auth';
+import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const auth = getAuth(app);
+export const auth = getAuth(app);
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = sessionStorage.getItem('google_access_token');
@@ -15,7 +15,6 @@ export const initAuth = (
  onAuthChange?: (user: User | null, token: string | null) => void
 ) => {
  if (!Capacitor.isNativePlatform()) {
-  import('firebase/auth').then(({ getRedirectResult }) => {
     getRedirectResult(auth).then((result) => {
       if (result) {
         const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -24,21 +23,24 @@ export const initAuth = (
           sessionStorage.setItem('google_access_token', cachedAccessToken);
           const expiresAt = new Date().getTime() + 3500 * 1000;
           sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+          if (onAuthChange) onAuthChange(result.user, cachedAccessToken);
         }
       }
     }).catch(console.error);
-  });
  }
 
  return onAuthStateChanged(auth, async (user: User | null) => {
- if (user) {
- if (onAuthChange) onAuthChange(user, cachedAccessToken);
- } else {
- cachedAccessToken = null;
- sessionStorage.removeItem('google_access_token');
- sessionStorage.removeItem('google_access_token_expires_at');
- if (onAuthChange) onAuthChange(null, null);
- }
+   if (user) {
+     if (!cachedAccessToken) {
+       cachedAccessToken = sessionStorage.getItem('google_access_token');
+     }
+     if (onAuthChange) onAuthChange(user, cachedAccessToken);
+   } else {
+     cachedAccessToken = null;
+     sessionStorage.removeItem('google_access_token');
+     sessionStorage.removeItem('google_access_token_expires_at');
+     if (onAuthChange) onAuthChange(null, null);
+   }
  });
 };
 
@@ -47,12 +49,12 @@ const getProvider = () => {
  provider.addScope('https://www.googleapis.com/auth/calendar');
  provider.addScope('https://www.googleapis.com/auth/tasks');
  provider.setCustomParameters({
- prompt: 'consent'
+   prompt: 'consent'
  });
  return provider;
 };
 
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
+export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promise<{ user: User; accessToken: string } | null> => {
   if (pendingSignInPromise) {
     console.log('Sign-in already in progress, returning existing promise...');
     return pendingSignInPromise;
@@ -84,35 +86,34 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
         return { user: fbResult.user, accessToken: cachedAccessToken || '' };
       }
 
-      const result = await signInWithPopup(auth, getProvider());
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('Failed to get access token from Firebase Auth');
+      // Try Popup first
+      try {
+        const result = await signInWithPopup(auth, getProvider());
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (!credential?.accessToken) {
+          throw new Error('Failed to get access token from Firebase Auth');
+        }
+
+        cachedAccessToken = credential.accessToken;
+        sessionStorage.setItem('google_access_token', cachedAccessToken);
+        const expiresAt = new Date().getTime() + 3500 * 1000;
+        sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+
+        return { user: result.user, accessToken: cachedAccessToken };
+      } catch (popupErr: any) {
+        console.warn('signInWithPopup failed:', popupErr);
+        
+        // Check if popup was blocked or iframe restriction triggered
+        if (useRedirectIfBlocked && !Capacitor.isNativePlatform()) {
+          console.log('Attempting fallback signInWithRedirect...');
+          await signInWithRedirect(auth, getProvider());
+          return null;
+        }
+        
+        throw popupErr;
       }
-
-      cachedAccessToken = credential.accessToken;
-      sessionStorage.setItem('google_access_token', cachedAccessToken);
-      
-      // Set expiration time to 3500 seconds (slightly under 1 hour to have a buffer)
-      const expiresAt = new Date().getTime() + 3500 * 1000;
-      sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
-
-      return { user: result.user, accessToken: cachedAccessToken };
     } catch (error: any) {
       console.error('Sign in error details:', error);
-
-      if (!Capacitor.isNativePlatform() && (
-        error.code === 'auth/popup-blocked' || 
-        error.code === 'auth/cancelled-popup-request' || 
-        error.message?.toLowerCase().includes('popup') ||
-        error.message?.toLowerCase().includes('cancelled')
-      )) {
-        const friendlyError = new Error(
-          "Popups are blocked or restricted by your browser. Since the app is running in an iframe inside the AI Studio preview, please click the 'Open in New Tab' button (top-right corner of the preview) to log in, or allow popups in your browser settings."
-        );
-        (friendlyError as any).code = error.code;
-        throw friendlyError;
-      }
       throw error;
     } finally {
       isSigningIn = false;
@@ -126,17 +127,25 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
   }
 };
 
-export const getAccessToken = async (): Promise<string | null> => {
+export const getAccessTokenSync = (): string | null => {
   if (cachedAccessToken) {
     const expiresAtStr = sessionStorage.getItem('google_access_token_expires_at');
     const expiresAt = expiresAtStr ? parseInt(expiresAtStr) : 0;
-    // adding a 5 minute buffer for token expiration
-    if (Date.now() + 5 * 60 * 1000 > expiresAt) {
-      console.log("Access token expired (or expiring soon). Returning null to force re-auth.");
+    if (expiresAt > 0 && Date.now() + 5 * 60 * 1000 > expiresAt) {
+      console.log("Access token expired (or expiring soon). Returning null.");
+      cachedAccessToken = null;
+      sessionStorage.removeItem('google_access_token');
+      sessionStorage.removeItem('google_access_token_expires_at');
       return null;
     }
+  } else {
+    cachedAccessToken = sessionStorage.getItem('google_access_token');
   }
   return cachedAccessToken;
+};
+
+export const getAccessToken = async (): Promise<string | null> => {
+  return getAccessTokenSync();
 };
 
 let refreshPromise: Promise<string | null> | null = null;

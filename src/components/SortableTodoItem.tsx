@@ -4,6 +4,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "motion/react";
 import { GripVertical, Target, Calendar, Trash2, Clock } from "lucide-react";
 import { NeonCheckbox } from "./ui/neon-checkbox";
+import { getLogicalDate } from "../context/AppContext";
+import { isSameDay, format } from "date-fns";
 
 interface SortableTodoItemProps {
   todo: any;
@@ -34,6 +36,8 @@ export function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoI
     : todo.priority === "Medium"
     ? "amber"
     : "cyan";
+
+  const isDifferentDate = todo.startTime && !isSameDay(new Date(todo.startTime), getLogicalDate());
 
   return (
     <motion.div
@@ -69,6 +73,22 @@ export function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoI
           />
         )}
       </AnimatePresence>
+
+      {/* Different Date Indication */}
+      {isDifferentDate && (
+        <div 
+          className="absolute top-1 right-2 flex items-center gap-1 z-20"
+          title={`Scheduled for ${format(new Date(todo.startTime), 'EEEE, MMMM d, yyyy')}`}
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+          </span>
+          <span className="text-[9px] font-mono font-bold dark:text-rose-400 text-rose-700 bg-rose-500/10 dark:bg-rose-950/40 border border-rose-500/20 px-1 rounded">
+            {format(new Date(todo.startTime), 'MMM d')}
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 flex-1 min-w-0 relative z-10">
         {/* Drag Handle */}
