@@ -1,11 +1,12 @@
 {
-  "projectId": "waking-journey-pv7sv",
-  "appId": "1:401077605253:web:258063c9cd371e3a0caaec",
-  "apiKey": "AIzaSyDS6QEYD_J0KZlcbe9tj2TYEZG1jltdvYc",
-  "authDomain": "waking-journey-pv7sv.firebaseapp.com",
-  "storageBucket": "waking-journey-pv7sv.firebasestorage.app",
-  "messagingSenderId": "401077605253",
-  "measurementId": "",
-  "oAuthClientId": "401077605253-o8jhvm2ddhsmjpscq65p922ne5ams29p.apps.googleusercontent.com",
+  "projectId": "o-auth-1",
+  "appId": "1:807015900608:web:c1a0984fe682bd3fb55425",
+  "apiKey": "AIzaSyDIXS_JoqQgVe7RSe2nO6wFLRDJjC_qz2Y",
+  "authDomain": "o-auth-1.firebaseapp.com",
+  "databaseURL": "https://o-auth-1-default-rtdb.firebaseio.com",
+  "storageBucket": "o-auth-1.firebasestorage.app",
+  "messagingSenderId": "807015900608",
+  "measurementId": "G-T6KVFRHE74",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

@@ -853,8 +853,17 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                         t.id === ev.id ? { ...t, startTime: finalStart.toISOString(), endTime: finalEnd.toISOString() } : t
                       ));
 
-                      if (ev.calendarEventId) {
+                      if (ev.calendarEventId && !ev.calendarEventId.startsWith('local-')) {
                         updateCalendarEventTime(ev.calendarEventId, finalStart, finalEnd).catch(console.error);
+                      } else {
+                        const durationMins = Math.round((finalEnd.getTime() - finalStart.getTime()) / 60000);
+                        createCalendarEvent(ev.title, durationMins, (ev as any).type || 'Lecture', false, todos, finalStart, finalEnd)
+                          .then(res => {
+                            if (res && res.id && !res.id.startsWith('local-')) {
+                              setTodos(prev => prev.map(t => t.id === ev.id ? { ...t, calendarEventId: res.id } : t));
+                            }
+                          })
+                          .catch(console.error);
                       }
                     }
                   };
@@ -1063,8 +1072,17 @@ export function StudyCalendar({ onClose, dailyXpRequired = 100, onToggleTodo }: 
                         t.id === ev.id ? { ...t, endTime: finalEnd.toISOString() } : t
                       ));
 
-                      if (ev.calendarEventId) {
+                      if (ev.calendarEventId && !ev.calendarEventId.startsWith('local-')) {
                         updateCalendarEventTime(ev.calendarEventId, ev.start, finalEnd).catch(console.error);
+                      } else {
+                        const durationMins = Math.round((finalEnd.getTime() - ev.start.getTime()) / 60000);
+                        createCalendarEvent(ev.title, durationMins, (ev as any).type || 'Lecture', false, todos, ev.start, finalEnd)
+                          .then(res => {
+                            if (res && res.id && !res.id.startsWith('local-')) {
+                              setTodos(prev => prev.map(t => t.id === ev.id ? { ...t, calendarEventId: res.id } : t));
+                            }
+                          })
+                          .catch(console.error);
                       }
                     };
                     
