@@ -146,9 +146,12 @@ export interface PlayHistoryEntry {
 }
 
 export interface NotificationSettings {
- taskReminders: boolean;
- motivationalAlerts: boolean;
- soundEnabled: boolean;
+  taskReminders: boolean;
+  motivationalAlerts: boolean;
+  studyBlockReminders: boolean;
+  streakProtectionAlerts: boolean;
+  soundEnabled: boolean;
+  frequency: 'high' | 'balanced' | 'gentle';
 }
 
 interface AppState {
@@ -317,9 +320,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
  const [unlockedItems, setUnlockedItems] = useState<string[]>([]);
  const [ongoingChapters, setOngoingChapters] = useState<Record<string, string>>({});
  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
- taskReminders: true,
- motivationalAlerts: true,
- soundEnabled: true
+  taskReminders: true,
+  motivationalAlerts: true,
+  studyBlockReminders: true,
+  streakProtectionAlerts: true,
+  soundEnabled: true,
+  frequency: 'high'
  });
  const [firebaseUser, setFirebaseUser] = useState<import('firebase/auth').User | null>(null);
  const [hasToken, setHasToken] = useState<boolean>(false);

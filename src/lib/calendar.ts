@@ -1,37 +1,84 @@
 import { getAccessToken, refreshGoogleToken } from './firebase';
 
-async function fetchGoogleApi(url: string, method: string = 'GET', body?: any, isRetry: boolean = false): Promise<Response> {
- let token = await getAccessToken();
- if (!token) throw new Error('No Google Access Token found.');
+/**
+ * Fetch wrapper for Google APIs with full Exponential Backoff and Jitter.
+ * Gracefully handles transient network failures (TypeError), rate limiting (429),
+ * server errors (500, 502, 503, 504), and 401 token refreshes.
+ */
+async function fetchGoogleApi(
+  url: string,
+  method: string = 'GET',
+  body?: any,
+  maxRetries: number = 3,
+  initialDelayMs: number = 500
+): Promise<Response> {
+  let token = await getAccessToken();
+  if (!token) throw new Error('No Google Access Token found.');
 
- const fetchOptions: RequestInit = {
- method: method,
- headers: {
- 'Authorization': `Bearer ${token}`,
- 'Content-Type': 'application/json',
- },
- };
+  let hasRefreshedToken = false;
 
- if (body) {
- fetchOptions.body = JSON.stringify(body);
- }
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const fetchOptions: RequestInit = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    };
 
- let res = await fetch(url, fetchOptions);
+    if (body) {
+      fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+    }
 
- if (res.status === 401 && !isRetry) {
- console.log("Token expired, attempting refresh directly...");
- token = await refreshGoogleToken();
- if (token) {
- // Retry once with new token
- fetchOptions.headers = {
- 'Authorization': `Bearer ${token}`,
- 'Content-Type': 'application/json',
- };
- res = await fetch(url, fetchOptions);
- }
- }
+    try {
+      let res = await fetch(url, fetchOptions);
 
- return res;
+      // Handle 401 Unauthorized with token refresh (once)
+      if (res.status === 401 && !hasRefreshedToken) {
+        hasRefreshedToken = true;
+        console.log("Google API 401 token expired, attempting refresh...");
+        const newToken = await refreshGoogleToken();
+        if (newToken) {
+          token = newToken;
+          // Retry immediately with the refreshed token
+          continue;
+        }
+      }
+
+      // Check for transient server errors (429 Too Many Requests, 500, 502, 503, 504)
+      const isTransientError = [429, 500, 502, 503, 504].includes(res.status);
+
+      if (isTransientError && attempt < maxRetries) {
+        const backoffMs = initialDelayMs * Math.pow(2, attempt);
+        const jitterMs = Math.floor(Math.random() * 250);
+        const totalDelay = backoffMs + jitterMs;
+
+        console.warn(
+          `Google API transient error HTTP ${res.status} for ${url}. Retrying with exponential backoff in ${totalDelay}ms (Attempt ${attempt + 1}/${maxRetries})...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, totalDelay));
+        continue;
+      }
+
+      return res;
+    } catch (err) {
+      // Catch network-level exceptions (e.g. lost connection / DNS failure)
+      if (attempt < maxRetries) {
+        const backoffMs = initialDelayMs * Math.pow(2, attempt);
+        const jitterMs = Math.floor(Math.random() * 250);
+        const totalDelay = backoffMs + jitterMs;
+
+        console.warn(
+          `Network error during Google API request to ${url}: ${err instanceof Error ? err.message : String(err)}. Retrying with exponential backoff in ${totalDelay}ms (Attempt ${attempt + 1}/${maxRetries})...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, totalDelay));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error(`Google API request failed after ${maxRetries} exponential backoff attempts.`);
 }
 
 export async function createCalendarEvent(title: string, durationMinutes: number = 105, type: string = 'Lecture', isRetry = false, todos: any[] = [], specificStartTime?: Date, specificEndTime?: Date) {
@@ -105,7 +152,7 @@ export async function createCalendarEvent(title: string, durationMinutes: number
   };
 
   try {
-    const res = await fetchGoogleApi('https://www.googleapis.com/calendar/v3/calendars/primary/events', 'POST', event, isRetry);
+    const res = await fetchGoogleApi('https://www.googleapis.com/calendar/v3/calendars/primary/events', 'POST', event);
     if (!res.ok) {
       const errorText = await res.text();
       if (res.status === 401) {
@@ -212,7 +259,7 @@ export async function rescheduleCalendarEvents(eventsToReschedule: { eventId: st
  }
 }
 
-export async function createGoogleTask(title: string, dueDate?: Date, isRetry = false): Promise<any> {
+export async function createGoogleTask(title: string, dueDate?: Date, _isRetry = false): Promise<any> {
  let token = await getAccessToken();
  if (!token) return null;
  
@@ -225,7 +272,7 @@ export async function createGoogleTask(title: string, dueDate?: Date, isRetry = 
  }
 
  try {
- const res = await fetchGoogleApi('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks', 'POST', taskBody, isRetry);
+ const res = await fetchGoogleApi('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks', 'POST', taskBody);
 
  if (!res.ok) {
  const errorText = await res.text();
@@ -239,13 +286,13 @@ export async function createGoogleTask(title: string, dueDate?: Date, isRetry = 
  }
 }
 
-export async function updateGoogleTaskStatus(taskId: string, status: 'completed' | 'needsAction', isRetry = false): Promise<boolean> {
+export async function updateGoogleTaskStatus(taskId: string, status: 'completed' | 'needsAction', _isRetry = false): Promise<boolean> {
  if (!taskId) return false;
  let token = await getAccessToken();
  if (!token) return false;
 
  try {
- const res = await fetchGoogleApi(`https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/${taskId}`, 'PATCH', { id: taskId, status }, isRetry);
+ const res = await fetchGoogleApi(`https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/${taskId}`, 'PATCH', { id: taskId, status });
 
  if (!res.ok) {
  const errorText = await res.text();
@@ -258,13 +305,13 @@ export async function updateGoogleTaskStatus(taskId: string, status: 'completed'
  }
 }
 
-export async function deleteGoogleTask(taskId: string, isRetry = false): Promise<boolean> {
+export async function deleteGoogleTask(taskId: string, _isRetry = false): Promise<boolean> {
  if (!taskId) return false;
  let token = await getAccessToken();
  if (!token) return false;
 
  try {
- const res = await fetchGoogleApi(`https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/${taskId}`, 'DELETE', undefined, isRetry);
+ const res = await fetchGoogleApi(`https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/${taskId}`, 'DELETE');
 
  return res.ok || res.status === 410; // 410 means already deleted
  } catch (err) {

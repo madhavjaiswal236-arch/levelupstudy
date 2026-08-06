@@ -1,15 +1,41 @@
 import React, { useState } from 'react';
 import { Card } from '../components/ui/card';
-import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target, Terminal, RefreshCw } from 'lucide-react';
+import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target, Terminal, RefreshCw, Zap, Flame, CheckCircle2, Sliders, Volume2, ShieldAlert, ExternalLink, Globe } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import {
+  requestNotificationPermissions,
+  triggerMotivationNotification,
+  triggerTaskReminder,
+  triggerStudyBlockNotification,
+  triggerStreakProtectionAlert,
+  sendNotification,
+  getChromeNotificationPermissionState,
+  isInIframe
+} from '../lib/notifications';
 
 export default function Settings() {
   const { 
     notificationSettings, setNotificationSettings,
     playerName, setPlayerName,
     dailyTarget, setDailyTarget, class11EndDate, setClass11EndDate, totalXpGoal, setTotalXpGoal, xp,
-    resetApp, firebaseUser
+    resetApp, firebaseUser, streakDays, hoursStudiedToday, todos
   } = useAppContext();
+
+  const [permStatus, setPermStatus] = useState<string | null>(null);
+
+  const handleRequestPermissions = async () => {
+    const granted = await requestNotificationPermissions();
+    if (granted) {
+      setPermStatus("Permission Granted!");
+      sendNotification("🎉 System Notifications Enabled", {
+        body: "You will now receive high-priority study alerts, task reminders, and motivation!",
+        type: "general"
+      });
+    } else {
+      setPermStatus("Permission Denied or Blocked by Browser/OS");
+    }
+    setTimeout(() => setPermStatus(null), 4000);
+  };
 
   // These could be moved to AppContext later if we want them globally applied
   const [rolloverTime, setRolloverTime] = useState("03:00");
@@ -183,49 +209,237 @@ export default function Settings() {
         </Card>
 
         {/* Notifications */}
-        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
-          <div className="flex items-center gap-2 mb-6">
-            <Bell className="w-5 h-5 text-amber-500" />
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Notifications</h2>
+        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl md:col-span-2">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <Bell className="w-6 h-6 text-amber-500 animate-bounce" />
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Smart Notification System</h2>
+                <p className="text-xs text-slate-500">Configure task reminders, study blocks, rival alerts & motivation pools</p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleRequestPermissions}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-black rounded-xl text-xs flex items-center gap-2 shadow-lg transition-transform active:scale-95"
+            >
+              <Bell className="w-4 h-4" />
+              Enable System & Push Permissions
+            </button>
           </div>
-          
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+
+          {/* Chrome Desktop Notification Status Banner */}
+          <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <Globe className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium text-slate-900 dark:text-white">Task Reminders</p>
-                <p className="text-xs text-slate-500">Alerts when tasks are pending</p>
-              </div>
-              <div 
-                className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative ${notificationSettings.taskReminders ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                onClick={() => setNotificationSettings(prev => ({ ...prev, taskReminders: !prev.taskReminders }))}
-              >
-                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.taskReminders ? 'left-7' : 'left-1'}`} />
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white">Chrome Desktop System Popups:</span>
+                  {getChromeNotificationPermissionState() === 'granted' ? (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]">
+                      ENABLED (Granted)
+                    </span>
+                  ) : getChromeNotificationPermissionState() === 'denied' ? (
+                    <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold text-[10px]">
+                      BLOCKED IN CHROME
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-bold text-[10px]">
+                      PERMISSION REQUIRED
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-400 mt-1 leading-relaxed">
+                  Sends native OS desktop popups & audio chimes when study blocks start, tasks are due, or streak warnings trigger even if the tab is in the background.
+                </p>
+                {isInIframe() && (
+                  <p className="text-amber-400/90 mt-1 font-medium text-[11px]">
+                    💡 Running in AI Studio preview iframe: Chrome requires opening in a dedicated tab for desktop popups.
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-slate-900 dark:text-white">Motivational Alerts</p>
-                <p className="text-xs text-slate-500">Tough-love check-ins</p>
-              </div>
-              <div 
-                className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative ${notificationSettings.motivationalAlerts ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                onClick={() => setNotificationSettings(prev => ({ ...prev, motivationalAlerts: !prev.motivationalAlerts }))}
+            <div className="flex items-center gap-2 shrink-0">
+              {isInIframe() && (
+                <button
+                  type="button"
+                  onClick={() => window.open(window.location.href, '_blank')}
+                  className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open in New Tab
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleRequestPermissions}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-black rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors"
               >
-                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.motivationalAlerts ? 'left-7' : 'left-1'}`} />
+                <Bell className="w-3.5 h-3.5" />
+                Allow Popups
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="space-y-4">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold border-b border-slate-800 pb-1">
+                Alert Categories
+              </h3>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    Task & Objective Reminders
+                  </p>
+                  <p className="text-xs text-slate-500">High-priority task alerts & start reminders</p>
+                </div>
+                <div 
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.taskReminders ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                  onClick={() => setNotificationSettings(prev => ({ ...prev, taskReminders: !prev.taskReminders }))}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.taskReminders ? 'left-7' : 'left-1'}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-yellow-400" />
+                    Motivational & Rival Alerts
+                  </p>
+                  <p className="text-xs text-slate-500">Competitor check-ins & tough-love boosts</p>
+                </div>
+                <div 
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.motivationalAlerts ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                  onClick={() => setNotificationSettings(prev => ({ ...prev, motivationalAlerts: !prev.motivationalAlerts }))}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.motivationalAlerts ? 'left-7' : 'left-1'}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-cyan-400" />
+                    Study Block Launch & Midway Alerts
+                  </p>
+                  <p className="text-xs text-slate-500">Notifications at block start, halfway, & finish</p>
+                </div>
+                <div 
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.studyBlockReminders ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                  onClick={() => setNotificationSettings(prev => ({ ...prev, studyBlockReminders: !prev.studyBlockReminders }))}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.studyBlockReminders ? 'left-7' : 'left-1'}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-amber-500" />
+                    Streak Shield Protection Alerts
+                  </p>
+                  <p className="text-xs text-slate-500">Urgent warnings at 2 PM, 6 PM, 9 PM if hours low</p>
+                </div>
+                <div 
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.streakProtectionAlerts ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                  onClick={() => setNotificationSettings(prev => ({ ...prev, streakProtectionAlerts: !prev.streakProtectionAlerts }))}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.streakProtectionAlerts ? 'left-7' : 'left-1'}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-purple-400" />
+                    Audio Cues & Haptic Vibrations
+                  </p>
+                  <p className="text-xs text-slate-500">In-app audio chimes & mobile haptics</p>
+                </div>
+                <div 
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.soundEnabled ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                  onClick={() => setNotificationSettings(prev => ({ ...prev, soundEnabled: !prev.soundEnabled }))}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.soundEnabled ? 'left-7' : 'left-1'}`} />
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="space-y-4">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold border-b border-slate-800 pb-1">
+                Notification Density & Testing
+              </h3>
+
               <div>
-                <p className="font-medium text-slate-900 dark:text-white">Sound Effects</p>
-                <p className="text-xs text-slate-500">In-app audio cues</p>
+                <label className="block text-xs font-bold text-slate-300 mb-2 flex items-center gap-1.5">
+                  <Sliders className="w-4 h-4 text-amber-500" />
+                  Frequency / Pacing
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'high', label: 'High Intensity', desc: 'Every 20-30 mins' },
+                    { id: 'balanced', label: 'Balanced', desc: 'Every 45-60 mins' },
+                    { id: 'gentle', label: 'Gentle', desc: 'Every 2+ hours' }
+                  ].map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setNotificationSettings(prev => ({ ...prev, frequency: item.id as any }))}
+                      className={`p-3 rounded-xl border text-left transition-all ${notificationSettings.frequency === item.id ? 'bg-amber-500/10 border-amber-500 text-amber-300 font-black shadow-md' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                    >
+                      <div className="text-xs font-bold">{item.label}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{item.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div 
-                className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative ${notificationSettings.soundEnabled ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                onClick={() => setNotificationSettings(prev => ({ ...prev, soundEnabled: !prev.soundEnabled }))}
-              >
-                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.soundEnabled ? 'left-7' : 'left-1'}`} />
+
+              <div className="pt-2">
+                <p className="text-xs font-bold text-slate-300 mb-2">Live Test Trigger Console</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => triggerMotivationNotification()}
+                    className="p-2.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Zap className="w-3.5 h-3.5 shrink-0" />
+                    Test Motivation
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const urgent = todos.find(t => !t.completed);
+                      triggerTaskReminder(urgent ? urgent.text : "Solve 10 Physics PYQs", todos.filter(t => !t.completed).length || 3);
+                    }}
+                    className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    Test Task Alert
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => triggerStudyBlockNotification("Mathematics", "start")}
+                    className="p-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    Test Study Block
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => triggerStreakProtectionAlert(streakDays || 5, hoursStudiedToday || 0)}
+                    className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Flame className="w-3.5 h-3.5 shrink-0" />
+                    Test Streak Shield
+                  </button>
+                </div>
               </div>
             </div>
           </div>

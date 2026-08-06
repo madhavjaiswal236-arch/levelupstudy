@@ -39,6 +39,8 @@ const Analytics = lazy(() => import("./pages/Analytics"));
 const Syllabus = lazy(() => import("./pages/Syllabus"));
 import { HAPTIC_PATTERNS, vibrate } from "./lib/haptics";
 import { sendNotification } from "./lib/notifications";
+import { useNotificationScheduler } from "./hooks/useNotificationScheduler";
+import { NotificationToastContainer } from "./components/NotificationToastContainer";
 
 const LunarGravityCanvas = lazy(() => import("./components/ui/lunar-gravity-card").then(m => ({ default: m.LunarGravityCanvas })));
 const ShaderAnimation = lazy(() => import("./components/ui/shader-animation").then(m => ({ default: m.ShaderAnimation })));
@@ -99,8 +101,18 @@ function AppContent() {
   pendingTasks,
   todos,
   xpGainedToday,
+  hoursStudiedToday,
   notificationSettings
   } = useAppContext();
+
+  useNotificationScheduler({
+    notificationSettings,
+    todos,
+    streakDays,
+    hoursStudiedToday,
+    dailyTarget,
+    isLoaded
+  });
 
   useEffect(() => {
     levelRef.current = level;
@@ -921,6 +933,7 @@ function AppContent() {
 
  return (
  <div className="min-h-[100dvh] dark:bg-black bg-slate-50 dark:text-slate-200 text-slate-900 font-sans selection:bg-cyan-400 flex flex-col relative w-full overflow-x-hidden">
+ <NotificationToastContainer />
  {/* Immersive Grid Background */}
  <div className="fixed -inset-10 pointer-events-none z-0 subtle-bg-grid" />
 
