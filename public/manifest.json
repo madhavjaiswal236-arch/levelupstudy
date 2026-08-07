@@ -1,11 +1,11 @@
 {
-  "name": "JEE Levelling",
-  "short_name": "JEE Level",
+  "name": "LevelUp Study",
+  "short_name": "LevelUp",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#22d3ee",
-  "description": "A gamified productivity ecosystem for JEE preparation.",
+  "theme_color": "#000000",
+  "description": "A gamified, AI-powered productivity ecosystem for high-performance students.",
   "icons": [
     {
       "src": "/favicon.svg",

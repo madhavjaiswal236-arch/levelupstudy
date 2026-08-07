@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile & Progress Data",
+      "description": "User progress data, level, XP, syllabus, and study stats synced across devices.",
+      "type": "object",
+      "properties": {
+        "xp": { "type": "number", "description": "Total XP earned" },
+        "level": { "type": "number", "description": "Current player level" },
+        "questionsSolved": { "type": "number", "description": "Total questions solved" },
+        "streakDays": { "type": "number", "description": "Current streak in days" },
+        "todos": { "type": "array", "description": "User to-do list items" },
+        "pendingTasks": { "type": "array", "description": "User pending tasks" },
+        "syllabus": { "type": "object", "description": "Syllabus chapter progress" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last sync" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User document containing all personal progress and state"
+    }
+  }
+}

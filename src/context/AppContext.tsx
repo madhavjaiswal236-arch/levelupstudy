@@ -1,4 +1,4 @@
-import { logout } from '@/lib/firebase';
+import { logout, saveUserDataToCloud, subscribeToCloudUserData, loadUserDataFromCloud } from '@/lib/firebase';
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef, useMemo } from 'react';
 import { initAuth } from '@/lib/firebase';
 import { Preferences } from '@capacitor/preferences';
@@ -329,6 +329,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
  });
  const [firebaseUser, setFirebaseUser] = useState<import('firebase/auth').User | null>(null);
  const [hasToken, setHasToken] = useState<boolean>(false);
+ const lastSavedCloudJsonRef = useRef<string>('');
+ const isRemoteSyncingRef = useRef<boolean>(false);
 
  useEffect(() => {
  const unsubscribe = initAuth(
@@ -505,30 +507,97 @@ export function AppProvider({ children }: { children: ReactNode }) {
  habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura,
  unlockedItems, notificationSettings, totalXpGoal, ongoingChapters
  };
- const timeoutId = setTimeout(() => {
+ const jsonString = JSON.stringify(stateToSave);
+
+ const localTimeoutId = setTimeout(() => {
       if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: JSON.stringify(stateToSave) });
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
       } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
       }
     }, 500);
 
-    const handleBeforeUnload = () => {
-      clearTimeout(timeoutId);
+ const cloudTimeoutId = setTimeout(() => {
+      if (firebaseUser?.uid && !isRemoteSyncingRef.current) {
+        if (jsonString !== lastSavedCloudJsonRef.current) {
+          lastSavedCloudJsonRef.current = jsonString;
+          saveUserDataToCloud(firebaseUser.uid, stateToSave, false);
+        }
+      }
+    }, 15000);
+
+    const flushCloudSave = () => {
+      const currentJson = JSON.stringify(stateToSave);
       if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: JSON.stringify(stateToSave) });
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: currentJson });
       } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+        localStorage.setItem(LOCAL_STORAGE_KEY, currentJson);
+      }
+      if (firebaseUser?.uid && !isRemoteSyncingRef.current && currentJson !== lastSavedCloudJsonRef.current) {
+        lastSavedCloudJsonRef.current = currentJson;
+        saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
       }
     };
+
+    const handleBeforeUnload = () => {
+      flushCloudSave();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushCloudSave();
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      clearTimeout(timeoutId);
+      clearTimeout(localTimeoutId);
+      clearTimeout(cloudTimeoutId);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
- }, [isLoaded, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
+ }, [isLoaded, firebaseUser, xp, xpGainedToday, spentXpToday, totalSpentXp, hoursStudiedToday, level,
  questionsSolved, dailyTarget, accuracy, speedScore, streakDays, lastStudyDate, focusBadges, syllabus, activeBoost, class11EndDate, isClass11SetupDone, backlogPriorities, todos, loggedTasksToday, pendingTasks, history, practiceSessions, playerName, hasSeenRules, habits, lifeMetrics, monthlyGoals, lastBossDayDate, bossDayTargetXp, bossDayCompleted, equippedTitle, equippedAura, unlockedItems, notificationSettings, totalXpGoal, ongoingChapters]);
+
+ // Real-Time Cloud Listener for Google Auth Users
+ useEffect(() => {
+   if (!firebaseUser?.uid) return;
+
+   const unsubscribeCloud = subscribeToCloudUserData(firebaseUser.uid, (cloudData) => {
+     if (!cloudData) return;
+
+     const cloudJson = JSON.stringify(cloudData);
+     if (cloudJson === lastSavedCloudJsonRef.current) return;
+
+     lastSavedCloudJsonRef.current = cloudJson;
+     isRemoteSyncingRef.current = true;
+
+     if (cloudData.xp !== undefined) setXp(cloudData.xp);
+     if (cloudData.level !== undefined) setLevel(cloudData.level);
+     if (cloudData.questionsSolved !== undefined) setQuestionsSolved(cloudData.questionsSolved);
+     if (cloudData.streakDays !== undefined) setStreakDays(cloudData.streakDays);
+     if (cloudData.todos !== undefined) setTodos(cloudData.todos);
+     if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
+     if (cloudData.syllabus !== undefined) setSyllabus(cloudData.syllabus);
+     if (cloudData.history !== undefined) setHistory(cloudData.history);
+     if (cloudData.practiceSessions !== undefined) setPracticeSessions(cloudData.practiceSessions);
+     if (cloudData.playerName !== undefined) setPlayerName(cloudData.playerName);
+     if (cloudData.equippedTitle !== undefined) setEquippedTitle(cloudData.equippedTitle);
+     if (cloudData.equippedAura !== undefined) setEquippedAura(cloudData.equippedAura);
+     if (cloudData.unlockedItems !== undefined) setUnlockedItems(cloudData.unlockedItems);
+     if (cloudData.ongoingChapters !== undefined) setOngoingChapters(cloudData.ongoingChapters);
+
+     setTimeout(() => {
+       isRemoteSyncingRef.current = false;
+     }, 2000);
+   });
+
+   return () => {
+     unsubscribeCloud();
+   };
+ }, [firebaseUser]);
 
  // Handle Cross-Tab Synchronization
  useEffect(() => {

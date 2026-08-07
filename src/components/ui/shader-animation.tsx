@@ -158,6 +158,7 @@ export function ShaderAnimation() {
           container.removeChild(sceneRef.current.renderer.domElement)
         }
 
+        sceneRef.current.renderer.forceContextLoss()
         sceneRef.current.renderer.dispose()
         geometry.dispose()
         material.dispose()

@@ -1,5 +1,6 @@
 {
   "name": "LevelUp Study",
   "description": "A gamified, AI-powered productivity ecosystem for high-performance students.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
