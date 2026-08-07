@@ -314,47 +314,20 @@ export const getAccessToken = async (): Promise<string | null> => {
 let refreshPromise: Promise<string | null> | null = null;
 
 export const refreshGoogleToken = async (): Promise<string | null> => {
-  if (!auth.currentUser) return null;
+ if (!auth.currentUser) return null;
+ 
+ if (refreshPromise) {
+ console.log("Token refresh already in progress, waiting...");
+ return refreshPromise;
+ }
 
-  if (refreshPromise) {
-    console.log("Token refresh already in progress, waiting...");
-    return refreshPromise;
-  }
-
-  refreshPromise = (async () => {
+ refreshPromise = (async () => {
     try {
       const expiresAtStr = sessionStorage.getItem('google_access_token_expires_at');
       const expiresAt = expiresAtStr ? parseInt(expiresAtStr) : 0;
       if (Date.now() < expiresAt && cachedAccessToken) {
         return cachedAccessToken;
       }
-
-      // 1. Check if backend offline refresh token is available in local/session storage
-      const storedRefreshToken = localStorage.getItem('google_refresh_token') || sessionStorage.getItem('google_refresh_token');
-      if (storedRefreshToken) {
-        try {
-          console.log('[Offline Sync] Attempting silent server-side refresh token exchange via Railway/Vercel...');
-          const serverRes = await fetch('/api/auth/google/refresh', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken: storedRefreshToken }),
-          });
-          if (serverRes.ok) {
-            const data = await serverRes.json();
-            if (data.accessToken) {
-              cachedAccessToken = data.accessToken;
-              sessionStorage.setItem('google_access_token', cachedAccessToken);
-              const newExpiresAt = new Date().getTime() + (data.expiresIn || 3500) * 1000;
-              sessionStorage.setItem('google_access_token_expires_at', newExpiresAt.toString());
-              console.log('[Offline Sync] Server refresh token exchange succeeded without popup!');
-              return cachedAccessToken;
-            }
-          }
-        } catch (serverErr) {
-          console.warn('[Offline Sync] Server refresh route unavailable or failed, falling back to client auth:', serverErr);
-        }
-      }
-
       console.warn('OAuth token expired. Re-authentication required.');
 
       if (Capacitor.isNativePlatform()) {
@@ -372,27 +345,26 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
       }
 
       const result = await signInWithPopup(auth, getProvider());
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        cachedAccessToken = credential.accessToken;
-        sessionStorage.setItem('google_access_token', cachedAccessToken);
-        const expiresAt = new Date().getTime() + 3500 * 1000;
-        sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
-        return cachedAccessToken;
-      }
-    } catch (error) {
-      console.error("Failed to refresh token:", error);
-    }
-    return null;
-  })();
+ const credential = GoogleAuthProvider.credentialFromResult(result);
+ if (credential?.accessToken) {
+ cachedAccessToken = credential.accessToken;
+ sessionStorage.setItem('google_access_token', cachedAccessToken);
+ const expiresAt = new Date().getTime() + 3500 * 1000;
+ sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+ return cachedAccessToken;
+ }
+ } catch (error) {
+ console.error("Failed to refresh token:", error);
+ }
+ return null;
+ })();
 
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
-  }
+ try {
+ return await refreshPromise;
+ } finally {
+ refreshPromise = null;
+ }
 };
-
 
 export const logout = async () => {
  if (Capacitor.isNativePlatform()) {
