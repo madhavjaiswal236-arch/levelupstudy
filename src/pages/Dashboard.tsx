@@ -3657,8 +3657,12 @@ export default function Dashboard() {
                     className="w-full bg-slate-950 border dark:border-cyan-500/30 border-cyan-300/40 rounded-lg px-3 py-2 dark:text-white text-slate-900 font-bold focus:border-cyan-400 hover:border-cyan-400/50 outline-none transition-all text-sm font-mono shadow-md"
                     value={playerName || ""}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      setPlayerName(val || "Player 1");
+                      setPlayerName(e.target.value);
+                    }}
+                    onBlur={() => {
+                      if (!playerName || !playerName.trim()) {
+                        setPlayerName("Player 1");
+                      }
                     }}
                     placeholder="Enter your hero name..."
                   />

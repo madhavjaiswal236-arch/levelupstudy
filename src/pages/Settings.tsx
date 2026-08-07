@@ -160,6 +160,11 @@ export default function Settings() {
                 type="text"
                 value={playerName || ""}
                 onChange={(e) => setPlayerName(e.target.value)}
+                onBlur={() => {
+                  if (!playerName || !playerName.trim()) {
+                    setPlayerName("Player 1");
+                  }
+                }}
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
