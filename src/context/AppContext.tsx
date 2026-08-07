@@ -393,6 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hasToken, setHasToken] = useState<boolean>(false);
   const lastSavedCloudJsonRef = useRef<string>("");
   const isRemoteSyncingRef = useRef<boolean>(false);
+  const lastLocalMutationTimeRef = useRef<number>(0);
 
   useEffect(() => {
     const unsubscribe = initAuth((user, token) => {
@@ -602,6 +603,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Save state on change
   useEffect(() => {
     if (!isLoaded) return;
+    lastLocalMutationTimeRef.current = Date.now();
+
     const stateToSave = {
       xp,
       xpGainedToday,
@@ -649,7 +652,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
       }
-    }, 500);
+    }, 200);
 
     const cloudTimeoutId = setTimeout(() => {
       if (firebaseUser?.uid && !isRemoteSyncingRef.current) {
@@ -658,7 +661,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           saveUserDataToCloud(firebaseUser.uid, stateToSave, false);
         }
       }
-    }, 2000);
+    }, 400);
 
     const flushCloudSave = () => {
       const currentJson = JSON.stringify(stateToSave);
@@ -738,14 +741,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ongoingChapters,
   ]);
 
-  // Real-Time Cloud Listener for Google Auth Users
+  // Real-Time Cloud Listener with Non-Reverting Smart Sync
   useEffect(() => {
     if (!firebaseUser?.uid) return;
 
     const unsubscribeCloud = subscribeToCloudUserData(
       firebaseUser.uid,
-      (cloudData) => {
+      (cloudData, metadata) => {
         if (!cloudData) return;
+
+        // Skip local optimistic write snapshots
+        if (metadata?.hasPendingWrites) return;
+
+        // If a local mutation occurred within the last 2.5 seconds, ignore stale server snapshot
+        if (Date.now() - lastLocalMutationTimeRef.current < 2500) return;
 
         const cloudJson = JSON.stringify(cloudData);
         if (cloudJson === lastSavedCloudJsonRef.current) return;
@@ -753,15 +762,117 @@ export function AppProvider({ children }: { children: ReactNode }) {
         lastSavedCloudJsonRef.current = cloudJson;
         isRemoteSyncingRef.current = true;
 
-        if (cloudData.xp !== undefined) setXp(cloudData.xp);
-        if (cloudData.level !== undefined) setLevel(cloudData.level);
+        // Smart progression updates (never decrease local XP or progress)
+        if (cloudData.xp !== undefined) setXp((prev) => Math.max(prev, cloudData.xp));
+        if (cloudData.level !== undefined) setLevel((prev) => Math.max(prev, cloudData.level));
         if (cloudData.questionsSolved !== undefined)
-          setQuestionsSolved(cloudData.questionsSolved);
+          setQuestionsSolved((prev) => Math.max(prev, cloudData.questionsSolved));
         if (cloudData.streakDays !== undefined)
-          setStreakDays(cloudData.streakDays);
-        if (cloudData.todos !== undefined) setTodos(cloudData.todos);
-        if (cloudData.pendingTasks !== undefined)
-          setPendingTasks(cloudData.pendingTasks);
+          setStreakDays((prev) => Math.max(prev, cloudData.streakDays));
+        if (cloudData.xpGainedToday !== undefined)
+          setXpGainedToday((prev) => Math.max(prev, cloudData.xpGainedToday));
+        if (cloudData.hoursStudiedToday !== undefined)
+          setHoursStudiedToday((prev) => Math.max(prev, cloudData.hoursStudiedToday));
+
+        // Smart merge for Todos (never lose locally created or locally completed tasks)
+        if (cloudData.todos !== undefined) {
+          setTodos((prevLocal) => {
+            const cloudTodos: Todo[] = cloudData.todos || [];
+            if (!cloudTodos.length) return prevLocal;
+
+            const cloudMap = new Map<string | number, Todo>();
+            for (const t of cloudTodos) {
+              if (t && t.id !== undefined) cloudMap.set(t.id, t);
+            }
+
+            const processedIds = new Set<string | number>();
+            const merged: Todo[] = [];
+
+            for (const localTask of prevLocal) {
+              processedIds.add(localTask.id);
+              const cloudTask = cloudMap.get(localTask.id);
+              if (cloudTask) {
+                const isCompleted = localTask.completed || cloudTask.completed;
+                merged.push({
+                  ...cloudTask,
+                  ...localTask,
+                  completed: isCompleted,
+                });
+              } else {
+                merged.push(localTask);
+              }
+            }
+
+            for (const cloudTask of cloudTodos) {
+              if (cloudTask && !processedIds.has(cloudTask.id)) {
+                merged.push(cloudTask);
+              }
+            }
+
+            return merged;
+          });
+        }
+
+        // Smart merge for Pending Tasks
+        if (cloudData.pendingTasks !== undefined) {
+          setPendingTasks((prevLocal) => {
+            const cloudPending: Todo[] = cloudData.pendingTasks || [];
+            if (!cloudPending.length) return prevLocal;
+
+            const cloudMap = new Map<string | number, Todo>();
+            for (const t of cloudPending) {
+              if (t && t.id !== undefined) cloudMap.set(t.id, t);
+            }
+
+            const processedIds = new Set<string | number>();
+            const merged: Todo[] = [];
+
+            for (const localTask of prevLocal) {
+              processedIds.add(localTask.id);
+              const cloudTask = cloudMap.get(localTask.id);
+              if (cloudTask) {
+                merged.push({ ...cloudTask, ...localTask });
+              } else {
+                merged.push(localTask);
+              }
+            }
+
+            for (const cloudTask of cloudPending) {
+              if (cloudTask && !processedIds.has(cloudTask.id)) {
+                merged.push(cloudTask);
+              }
+            }
+
+            return merged;
+          });
+        }
+
+        // Smart merge for Logged Tasks Today (union merge by unique key)
+        if (cloudData.loggedTasksToday !== undefined) {
+          setLoggedTasksToday((prevLocal) => {
+            const cloudTasks: Todo[] = cloudData.loggedTasksToday || [];
+            const mergedMap = new Map<string, Todo>();
+
+            for (const task of cloudTasks) {
+              if (!task) continue;
+              const key = task.id
+                ? `id_${task.id}`
+                : `${task.subject || ""}_${task.chapter || ""}_${task.type || ""}_${task.lectureNumber || ""}_${task.text || ""}`;
+              mergedMap.set(key, task);
+            }
+
+            for (const localTask of prevLocal) {
+              if (!localTask) continue;
+              const key = localTask.id
+                ? `id_${localTask.id}`
+                : `${localTask.subject || ""}_${localTask.chapter || ""}_${localTask.type || ""}_${localTask.lectureNumber || ""}_${localTask.text || ""}`;
+              mergedMap.set(key, localTask);
+            }
+
+            return Array.from(mergedMap.values());
+          });
+        }
+
         if (cloudData.syllabus !== undefined) setSyllabus(cloudData.syllabus);
         if (cloudData.history !== undefined) setHistory(cloudData.history);
         if (cloudData.practiceSessions !== undefined)
@@ -776,14 +887,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setUnlockedItems(cloudData.unlockedItems);
         if (cloudData.ongoingChapters !== undefined)
           setOngoingChapters(cloudData.ongoingChapters);
-        if (cloudData.xpGainedToday !== undefined)
-          setXpGainedToday(cloudData.xpGainedToday);
         if (cloudData.spentXpToday !== undefined)
           setSpentXpToday(cloudData.spentXpToday);
         if (cloudData.totalSpentXp !== undefined)
           setTotalSpentXp(cloudData.totalSpentXp);
-        if (cloudData.hoursStudiedToday !== undefined)
-          setHoursStudiedToday(cloudData.hoursStudiedToday);
         if (cloudData.dailyTarget !== undefined)
           setDailyTarget(cloudData.dailyTarget);
         if (cloudData.accuracy !== undefined) setAccuracy(cloudData.accuracy);
@@ -801,21 +908,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsClass11SetupDone(cloudData.isClass11SetupDone);
         if (cloudData.backlogPriorities !== undefined)
           setBacklogPriorities(cloudData.backlogPriorities);
-        if (cloudData.loggedTasksToday !== undefined) {
-          const uniqueCloudTasks: Todo[] = [];
-          const seenCloudKeys = new Set<string>();
-          for (const task of cloudData.loggedTasksToday || []) {
-            if (!task) continue;
-            const key = task.id
-              ? `id_${task.id}`
-              : `${task.subject || ""}_${task.chapter || ""}_${task.type || ""}_${task.lectureNumber || ""}_${task.text || ""}`;
-            if (!seenCloudKeys.has(key)) {
-              seenCloudKeys.add(key);
-              uniqueCloudTasks.push(task);
-            }
-          }
-          setLoggedTasksToday(uniqueCloudTasks);
-        }
         if (cloudData.hasSeenRules !== undefined)
           setHasSeenRules(cloudData.hasSeenRules);
         if (cloudData.habits !== undefined) setHabits(cloudData.habits);
@@ -836,7 +928,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         setTimeout(() => {
           isRemoteSyncingRef.current = false;
-        }, 2000);
+        }, 1000);
       },
     );
 

@@ -106,7 +106,9 @@ export const saveUserDataToCloud = (userId: string, data: any, immediate: boolea
     return;
   }
 
-  if (saveTimer) return;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+  }
 
   saveTimer = setTimeout(async () => {
     saveTimer = null;
@@ -129,7 +131,7 @@ export const saveUserDataToCloud = (userId: string, data: any, immediate: boolea
       }
       handleFirestoreError(err, OperationType.WRITE, path);
     }
-  }, 15000); // 15s debounce for background auto-saves
+  }, 800); // Fast 800ms auto-save debounce
 };
 
 // Load user data from Firestore
@@ -153,13 +155,13 @@ export const loadUserDataFromCloud = async (userId: string) => {
 };
 
 // Listen to real-time changes from Firestore across devices
-export const subscribeToCloudUserData = (userId: string, callback: (data: any) => void) => {
+export const subscribeToCloudUserData = (userId: string, callback: (data: any, metadata?: { hasPendingWrites: boolean }) => void) => {
   if (!auth.currentUser || auth.currentUser.uid !== userId) return () => {};
   const path = `users/${userId}`;
   const userRef = doc(db, 'users', userId);
   return onSnapshot(userRef, (snap) => {
     if (snap.exists()) {
-      callback(snap.data());
+      callback(snap.data(), { hasPendingWrites: snap.metadata.hasPendingWrites });
     }
   }, (err: any) => {
     if (err?.code === 'permission-denied' || err?.message?.includes('permission')) {
