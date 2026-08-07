@@ -29,14 +29,14 @@ export const predictNextLecture = (subject: string, chapter: string, todos: any[
     !t.completed && 
     t.subject === subject && 
     t.chapter === chapter && 
-    t.type === 'Lecture' &&
+    (t.type === 'Lecture' || t.type === 'Theory') &&
     t.lectureNumber !== undefined
   );
 
   const completedLecTasks = history.flatMap((h: any) => h.completedTasks || []).filter((t: any) => 
     t.subject === subject && 
     t.chapter === chapter && 
-    t.type === 'Lecture' &&
+    (t.type === 'Lecture' || t.type === 'Theory') &&
     t.lectureNumber !== undefined
   );
 

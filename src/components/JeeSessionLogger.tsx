@@ -63,7 +63,8 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
         }
       }
     }
- }, [chapter, subject, sessionType, syllabus, todos]);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [chapter, subject, sessionType]);
 
  useEffect(() => {
  if (pendingSessionLog) {
@@ -210,7 +211,7 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  const isOneShot = (sessionType === 'Lecture' || sessionType === 'Theory') && numHours > 4;
  
  // Save to daily logged entry
- const taskDetails = sessionType === 'DPP' ? extraInfo.replace(' | ', '') : `(${numHours}h${isOneShot ? ' One-Shot' : ''}${numQuestions > 0 ? `, ${numQuestions} Qs` : ''})${extraInfo}`;
+ const taskDetails = sessionType === 'DPP' ? extraInfo.replace(' | ', '') : `${lectureNumber ? `Lec ${lectureNumber} ` : ''}(${numHours}h${isOneShot ? ' One-Shot' : ''}${numQuestions > 0 ? `, ${numQuestions} Qs` : ''})${extraInfo}`;
  const newLoggedTask = {
  id: Date.now(),
  text: `${subject} - ${chapter}: ${sessionType} ${taskDetails}`.trim(),
@@ -220,6 +221,7 @@ export default function JeeSessionLogger({ pendingSessionLog, clearPendingSessio
  subject,
  chapter,
  lectureHours: numHours,
+ lectureNumber: parseInt(lectureNumber as string) || undefined,
  dppDone: (sessionType === 'Lecture' || sessionType === 'Theory' || sessionType === 'DPP') ? (dppStatus === 'solved' || sessionType === 'DPP') : undefined
  };
  

@@ -528,7 +528,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           saveUserDataToCloud(firebaseUser.uid, stateToSave, false);
         }
       }
-    }, 15000);
+    }, 2000);
 
     const flushCloudSave = () => {
       const currentJson = JSON.stringify(stateToSave);

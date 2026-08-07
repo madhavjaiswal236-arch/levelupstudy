@@ -46,16 +46,13 @@ export default function Syllabus() {
  ), [syllabus]);
  
  const getLectureStats = (chapter: any) => {
+ if (chapter.lectures === 100) {
+ return { display: '100%', percentage: 100 };
+ }
  const maxLec = Math.max(
  chapter.lastLectureNumber || 0,
- ...pendingTasks.filter(t => t.chapter === chapter.name && t.subject === chapter.subject).map(t => {
- const match = t.text.match(/Lecture\s+(\d+)/i);
- return match ? parseInt(match[1]) : 0;
- }),
- ...todos.filter(t => t.chapter === chapter.name && t.subject === chapter.subject).map(t => {
- const match = t.text.match(/Lecture\s+(\d+)/i);
- return match ? parseInt(match[1]) : 0;
- })
+ ...pendingTasks.filter(t => t.chapter === chapter.name && t.subject === chapter.subject).map(t => t.lectureNumber || 0),
+ ...todos.filter(t => t.chapter === chapter.name && t.subject === chapter.subject).map(t => t.lectureNumber || 0)
  );
  
  if (maxLec > 0) {
