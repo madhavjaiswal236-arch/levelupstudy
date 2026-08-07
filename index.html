@@ -27,26 +27,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      const originalError = console.error;
-      console.error = function(...args) {
-        if (args[0] && typeof args[0] === 'string' && args[0].includes('failed to connect to websocket')) {
-          return;
-        }
-        if (args[0] && typeof args[0] === 'string' && args[0].includes('WebSocket connection to')) {
-          return;
-        }
-        originalError.apply(console, args);
-      };
-      
-      const originalLog = console.log;
-      console.log = function(...args) {
-        if (args[0] && typeof args[0] === 'string' && args[0].includes('server connection lost. polling for restart')) {
-          return;
-        }
-        originalLog.apply(console, args);
-      };
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -14,9 +14,9 @@ app.use(express.json());
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = ['http://localhost:3000', 'capacitor://localhost', 'http://localhost'];
-  if (allowedOrigins.includes(origin as string) || process.env.NODE_ENV !== 'production') {
-    res.header('Access-Control-Allow-Origin', origin || '*');
-  } else {
+  if (origin && (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production')) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else if (process.env.NODE_ENV !== 'production') {
     res.header('Access-Control-Allow-Origin', '*');
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -24,6 +24,15 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+// Helper to sanitize text inputs for AI prompts
+function sanitizePromptText(text: string): string {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/[^\w\s\-\.\,\?\!\:\;]/gi, ' ')
+    .slice(0, 100)
+    .trim();
+}
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -51,7 +60,10 @@ function generateFeedbackEngine(data: any) {
   let uncompletedTaskNames = [];
   if (plannedTasks && Array.isArray(plannedTasks)) {
     const completedIds = (completedTasks || []).map((t: any) => t.id);
-    uncompletedTaskNames = plannedTasks.filter(t => !completedIds.includes(t.id)).map(t => t.text);
+    uncompletedTaskNames = plannedTasks
+      .filter(t => !completedIds.includes(t.id))
+      .map(t => sanitizePromptText(t.text))
+      .filter(Boolean);
   }
 
   let questionsSolved = 0;
@@ -147,7 +159,10 @@ app.post('/api/ai-coach', async (req, res) => {
     let uncompletedTaskNames = [];
     if (plannedTasks && Array.isArray(plannedTasks)) {
       const completedIds = (completedTasks || []).map((t: any) => t.id);
-      uncompletedTaskNames = plannedTasks.filter(t => !completedIds.includes(t.id)).map(t => t.text);
+      uncompletedTaskNames = plannedTasks
+        .filter(t => !completedIds.includes(t.id))
+        .map(t => sanitizePromptText(t.text))
+        .filter(Boolean);
     }
 
     const prompt = `You are the LevelUp Study AI Engine, a hardcore, ruthless, David Goggins-style coach for a competitive exam student (like IIT-JEE).
