@@ -592,6 +592,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
      if (cloudData.equippedAura !== undefined) setEquippedAura(cloudData.equippedAura);
      if (cloudData.unlockedItems !== undefined) setUnlockedItems(cloudData.unlockedItems);
      if (cloudData.ongoingChapters !== undefined) setOngoingChapters(cloudData.ongoingChapters);
+     if (cloudData.xpGainedToday !== undefined) setXpGainedToday(cloudData.xpGainedToday);
+     if (cloudData.spentXpToday !== undefined) setSpentXpToday(cloudData.spentXpToday);
+     if (cloudData.totalSpentXp !== undefined) setTotalSpentXp(cloudData.totalSpentXp);
+     if (cloudData.hoursStudiedToday !== undefined) setHoursStudiedToday(cloudData.hoursStudiedToday);
+     if (cloudData.dailyTarget !== undefined) setDailyTarget(cloudData.dailyTarget);
+     if (cloudData.accuracy !== undefined) setAccuracy(cloudData.accuracy);
+     if (cloudData.speedScore !== undefined) setSpeedScore(cloudData.speedScore);
+     if (cloudData.lastStudyDate !== undefined) setLastStudyDate(cloudData.lastStudyDate);
+     if (cloudData.focusBadges !== undefined) setFocusBadges(cloudData.focusBadges);
+     if (cloudData.activeBoost !== undefined) setActiveBoost(cloudData.activeBoost);
+     if (cloudData.class11EndDate !== undefined) setClass11EndDate(cloudData.class11EndDate);
+     if (cloudData.isClass11SetupDone !== undefined) setIsClass11SetupDone(cloudData.isClass11SetupDone);
+     if (cloudData.backlogPriorities !== undefined) setBacklogPriorities(cloudData.backlogPriorities);
+     if (cloudData.loggedTasksToday !== undefined) setLoggedTasksToday(cloudData.loggedTasksToday);
+     if (cloudData.hasSeenRules !== undefined) setHasSeenRules(cloudData.hasSeenRules);
+     if (cloudData.habits !== undefined) setHabits(cloudData.habits);
+     if (cloudData.lifeMetrics !== undefined) setLifeMetrics(cloudData.lifeMetrics);
+     if (cloudData.monthlyGoals !== undefined) setMonthlyGoals(cloudData.monthlyGoals);
+     if (cloudData.lastBossDayDate !== undefined) setLastBossDayDate(cloudData.lastBossDayDate);
+     if (cloudData.bossDayTargetXp !== undefined) setBossDayTargetXp(cloudData.bossDayTargetXp);
+     if (cloudData.bossDayCompleted !== undefined) setBossDayCompleted(cloudData.bossDayCompleted);
+     if (cloudData.notificationSettings !== undefined) setNotificationSettings(cloudData.notificationSettings);
+     if (cloudData.totalXpGoal !== undefined) setTotalXpGoal(cloudData.totalXpGoal);
 
      setTimeout(() => {
        isRemoteSyncingRef.current = false;

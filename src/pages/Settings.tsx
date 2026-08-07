@@ -1,7 +1,33 @@
-import React, { useState } from 'react';
-import { Card } from '../components/ui/card';
-import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target, Terminal, RefreshCw, Zap, Flame, CheckCircle2, Sliders, Volume2, ShieldAlert, ExternalLink, Globe, Edit3, Plus, History as HistoryIcon, Save, FileText, Check } from 'lucide-react';
-import { useAppContext, PlayHistoryEntry } from '../context/AppContext';
+import React, { useState } from "react";
+import { Card } from "../components/ui/card";
+import {
+  Settings as SettingsIcon,
+  Clock,
+  Bell,
+  User,
+  Database,
+  ChevronRight,
+  LogOut,
+  Trash2,
+  Target,
+  Terminal,
+  RefreshCw,
+  Zap,
+  Flame,
+  CheckCircle2,
+  Sliders,
+  Volume2,
+  ShieldAlert,
+  ExternalLink,
+  Globe,
+  Edit3,
+  Plus,
+  History as HistoryIcon,
+  Save,
+  FileText,
+  Check,
+} from "lucide-react";
+import { useAppContext, PlayHistoryEntry } from "../context/AppContext";
 import {
   requestNotificationPermissions,
   triggerMotivationNotification,
@@ -10,111 +36,47 @@ import {
   triggerStreakProtectionAlert,
   sendNotification,
   getChromeNotificationPermissionState,
-  isInIframe
-} from '../lib/notifications';
+  isInIframe,
+} from "../lib/notifications";
 
 export default function Settings() {
-  const { 
-    notificationSettings, setNotificationSettings,
-    playerName, setPlayerName,
-    dailyTarget, setDailyTarget, class11EndDate, setClass11EndDate, totalXpGoal, setTotalXpGoal,
-    xp, setXp,
-    level, setLevel,
-    streakDays, setStreakDays,
-    hoursStudiedToday, setHoursStudiedToday,
-    questionsSolved, setQuestionsSolved,
-    xpGainedToday, setXpGainedToday,
-    history, setHistory,
-    resetApp, firebaseUser, todos
+  const {
+    notificationSettings,
+    setNotificationSettings,
+    playerName,
+    setPlayerName,
+    dailyTarget,
+    setDailyTarget,
+    class11EndDate,
+    setClass11EndDate,
+    totalXpGoal,
+    setTotalXpGoal,
+    xp,
+    setXp,
+    level,
+    setLevel,
+    streakDays,
+    setStreakDays,
+    hoursStudiedToday,
+    setHoursStudiedToday,
+    questionsSolved,
+    setQuestionsSolved,
+    xpGainedToday,
+    setXpGainedToday,
+    history,
+    setHistory,
+    resetApp,
+    firebaseUser,
+    todos,
   } = useAppContext();
 
   const [permStatus, setPermStatus] = useState<string | null>(null);
 
   // Progress Stats Editor State
-  const [editXp, setEditXp] = useState<number>(xp || 0);
-  const [editLevel, setEditLevel] = useState<number>(level || 1);
-  const [editStreak, setEditStreak] = useState<number>(streakDays || 0);
-  const [editHours, setEditHours] = useState<number>(hoursStudiedToday || 0);
-  const [editQuestions, setEditQuestions] = useState<number>(questionsSolved || 0);
-  const [editXpGained, setEditXpGained] = useState<number>(xpGainedToday || 0);
-  const [statsSavedMsg, setStatsSavedMsg] = useState(false);
-
-  // Sync state when context values load or update
-  React.useEffect(() => {
-    setEditXp(xp || 0);
-    setEditLevel(level || 1);
-    setEditStreak(streakDays || 0);
-    setEditHours(hoursStudiedToday || 0);
-    setEditQuestions(questionsSolved || 0);
-    setEditXpGained(xpGainedToday || 0);
-  }, [xp, level, streakDays, hoursStudiedToday, questionsSolved, xpGainedToday]);
-
-  const handleSaveStats = () => {
-    setXp(Number(editXp));
-    setLevel(Number(editLevel));
-    setStreakDays(Number(editStreak));
-    setHoursStudiedToday(Number(editHours));
-    setQuestionsSolved(Number(editQuestions));
-    setXpGainedToday(Number(editXpGained));
-    setStatsSavedMsg(true);
-    setTimeout(() => setStatsSavedMsg(false), 3000);
-  };
 
   // History Editor State
-  const [newHistDate, setNewHistDate] = useState(new Date().toISOString().split('T')[0]);
-  const [newHistHours, setNewHistHours] = useState(3);
-  const [newHistXp, setNewHistXp] = useState(600);
-  const [historyJsonStr, setHistoryJsonStr] = useState('');
-  const [showJsonModal, setShowJsonModal] = useState(false);
+
   const [histSavedMsg, setHistSavedMsg] = useState(false);
-
-  const handleAddOrUpdateHistory = () => {
-    if (!newHistDate) return;
-    setHistory((prev) => {
-      const existingIdx = prev.findIndex((h) => h.date === newHistDate);
-      if (existingIdx >= 0) {
-        const updated = [...prev];
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          hoursStudied: Number(newHistHours),
-          xpEarned: Number(newHistXp)
-        };
-        return updated;
-      } else {
-        const newEntry: PlayHistoryEntry = {
-          date: newHistDate,
-          hoursStudied: Number(newHistHours),
-          xpEarned: Number(newHistXp),
-          completedTasks: [],
-          screenTime: 0,
-          sleepTime: 7
-        };
-        return [...prev, newEntry].sort((a, b) => a.date.localeCompare(b.date));
-      }
-    });
-    setHistSavedMsg(true);
-    setTimeout(() => setHistSavedMsg(false), 3000);
-  };
-
-  const handleOpenJsonModal = () => {
-    setHistoryJsonStr(JSON.stringify(history || [], null, 2));
-    setShowJsonModal(true);
-  };
-
-  const handleImportHistoryJson = () => {
-    try {
-      const parsed = JSON.parse(historyJsonStr);
-      if (Array.isArray(parsed)) {
-        setHistory(parsed);
-        alert("Play history restored & updated successfully!");
-        setShowJsonModal(false);
-      } else {
-        alert("Invalid format: expected a JSON array of history logs.");
-      }
-    } catch (e: any) {
-      alert("JSON Syntax Error: " + e.message);
-    }
-  };
 
   const handleRequestPermissions = async () => {
     const granted = await requestNotificationPermissions();
@@ -122,7 +84,7 @@ export default function Settings() {
       setPermStatus("Permission Granted!");
       sendNotification("🎉 System Notifications Enabled", {
         body: "You will now receive high-priority study alerts, task reminders, and motivation!",
-        type: "general"
+        type: "general",
       });
     } else {
       setPermStatus("Permission Denied or Blocked by Browser/OS");
@@ -138,14 +100,20 @@ export default function Settings() {
 
   const handleSave = () => {
     // Save to local storage for now
-    localStorage.setItem('app_settings_extended', JSON.stringify({
-      rolloverTime, pomoTime, deepWorkTime, mainGoal
-    }));
+    localStorage.setItem(
+      "app_settings_extended",
+      JSON.stringify({
+        rolloverTime,
+        pomoTime,
+        deepWorkTime,
+        mainGoal,
+      }),
+    );
     alert("Settings saved successfully!");
   };
 
   React.useEffect(() => {
-    const saved = localStorage.getItem('app_settings_extended');
+    const saved = localStorage.getItem("app_settings_extended");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -164,134 +132,163 @@ export default function Settings() {
           <SettingsIcon className="w-8 h-8 text-slate-700 dark:text-slate-300" />
         </div>
         <div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white">Settings</h1>
-          <p className="text-slate-500 dark:text-slate-400">Tweak the system to your preference.</p>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white">
+            Settings
+          </h1>
+          <p className="text-slate-500 dark:text-slate-400">
+            Tweak the system to your preference.
+          </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
         {/* Identity & Goals */}
         <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
           <div className="flex items-center gap-2 mb-6">
             <User className="w-5 h-5 text-blue-500" />
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Identity & Goals</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              Identity & Goals
+            </h2>
           </div>
-          
+
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Player Name</label>
-              <input 
-                type="text" 
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Player Name
+              </label>
+              <input
+                type="text"
                 value={playerName || ""}
                 onChange={(e) => setPlayerName(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Main Objective</label>
-              <input 
-                type="text" 
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Main Objective
+              </label>
+              <input
+                type="text"
                 value={mainGoal || ""}
                 onChange={(e) => setMainGoal(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
-            
+
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Target End Date (Exam Date)</label>
-              <input 
-                type="date" 
-                value={class11EndDate ? class11EndDate.split('T')[0] : ''}
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Target End Date (Exam Date)
+              </label>
+              <input
+                type="date"
+                value={class11EndDate ? class11EndDate.split("T")[0] : ""}
                 onChange={(e) => setClass11EndDate(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
-              <p className="text-xs text-slate-500 mt-1">Daily Target is auto-calculated as 40% of the required daily XP to hit your goal.</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Daily Target is auto-calculated as 40% of the required daily XP
+                to hit your goal.
+              </p>
             </div>
-
           </div>
         </Card>
 
-        
         {/* Goal Estimator */}
         <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl md:col-span-2">
           <div className="flex items-center gap-2 mb-6">
             <Target className="w-5 h-5 text-emerald-500" />
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Goal Estimator & Target Calibrator</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              Goal Estimator & Target Calibrator
+            </h2>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-            Select your ultimate XP goal. We calculate the total hours of deep work required (assuming ~300 XP per hour). 
-            Set your Target End Date in Identity to see your daily required hours.
+            Select your ultimate XP goal. We calculate the total hours of deep
+            work required (assuming ~300 XP per hour). Set your Target End Date
+            in Identity to see your daily required hours.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[100000, 500000, 600000, 650000, 700000, 800000, 1000000].map(goalVal => {
-              const remainingXp = Math.max(0, goalVal - (xp || 0));
-              const totalHours = Math.ceil(remainingXp / 300);
-              
-              let dailyHoursStr = "";
-              if (class11EndDate) {
-                const end = new Date(class11EndDate).getTime();
-                const days = Math.max(1, Math.ceil((end - Date.now()) / (1000 * 3600 * 24)));
-                const daily = (totalHours / days).toFixed(1);
-                dailyHoursStr = daily + " hrs/day";
-              }
+            {[100000, 500000, 600000, 650000, 700000, 800000, 1000000].map(
+              (goalVal) => {
+                const remainingXp = Math.max(0, goalVal - (xp || 0));
+                const totalHours = Math.ceil(remainingXp / 300);
 
-              return (
-                <div 
-                  key={goalVal}
-                  onClick={() => setTotalXpGoal(goalVal)}
-                  className={`p-4 rounded-xl cursor-pointer border transition-all ${totalXpGoal === goalVal ? 'bg-emerald-500/10 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-emerald-500/50'}`}
-                >
-                  <div className="text-lg font-black dark:text-white text-slate-900 mb-1">
-                    {(goalVal / 1000)}k XP
-                  </div>
-                  <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                    {totalHours} hrs total
-                  </div>
-                  {dailyHoursStr && (
-                    <div className="text-xs text-slate-500 mt-2 font-mono">
-                      {dailyHoursStr}
+                let dailyHoursStr = "";
+                if (class11EndDate) {
+                  const end = new Date(class11EndDate).getTime();
+                  const days = Math.max(
+                    1,
+                    Math.ceil((end - Date.now()) / (1000 * 3600 * 24)),
+                  );
+                  const daily = (totalHours / days).toFixed(1);
+                  dailyHoursStr = daily + " hrs/day";
+                }
+
+                return (
+                  <div
+                    key={goalVal}
+                    onClick={() => setTotalXpGoal(goalVal)}
+                    className={`p-4 rounded-xl cursor-pointer border transition-all ${totalXpGoal === goalVal ? "bg-emerald-500/10 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-emerald-500/50"}`}
+                  >
+                    <div className="text-lg font-black dark:text-white text-slate-900 mb-1">
+                      {goalVal / 1000}k XP
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                      {totalHours} hrs total
+                    </div>
+                    {dailyHoursStr && (
+                      <div className="text-xs text-slate-500 mt-2 font-mono">
+                        {dailyHoursStr}
+                      </div>
+                    )}
+                  </div>
+                );
+              },
+            )}
           </div>
         </Card>
-
 
         {/* Timers & Schedule */}
         <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
           <div className="flex items-center gap-2 mb-6">
             <Clock className="w-5 h-5 text-purple-500" />
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Schedule & Timers</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              Schedule & Timers
+            </h2>
           </div>
-          
+
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Day Rollover Time (24h)</label>
-              <input 
-                type="time" 
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Day Rollover Time (24h)
+              </label>
+              <input
+                type="time"
                 value={rolloverTime || ""}
                 onChange={(e) => setRolloverTime(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 transition-colors"
               />
-              <p className="text-xs text-slate-500 mt-1">Default is 03:00 AM.</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Default is 03:00 AM.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Pomodoro (mins)</label>
-                <input 
-                  type="number" 
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Pomodoro (mins)
+                </label>
+                <input
+                  type="number"
                   value={pomoTime}
                   onChange={(e) => setPomoTime(Number(e.target.value))}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deep Work (mins)</label>
-                <input 
-                  type="number" 
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Deep Work (mins)
+                </label>
+                <input
+                  type="number"
                   value={deepWorkTime}
                   onChange={(e) => setDeepWorkTime(Number(e.target.value))}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -307,8 +304,13 @@ export default function Settings() {
             <div className="flex items-center gap-2">
               <Bell className="w-6 h-6 text-amber-500 animate-bounce" />
               <div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Smart Notification System</h2>
-                <p className="text-xs text-slate-500">Configure task reminders, study blocks, rival alerts & motivation pools</p>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Smart Notification System
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Configure task reminders, study blocks, rival alerts &
+                  motivation pools
+                </p>
               </div>
             </div>
 
@@ -327,12 +329,14 @@ export default function Settings() {
               <Globe className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-white">Chrome Desktop System Popups:</span>
-                  {getChromeNotificationPermissionState() === 'granted' ? (
+                  <span className="font-bold text-white">
+                    Chrome Desktop System Popups:
+                  </span>
+                  {getChromeNotificationPermissionState() === "granted" ? (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]">
                       ENABLED (Granted)
                     </span>
-                  ) : getChromeNotificationPermissionState() === 'denied' ? (
+                  ) : getChromeNotificationPermissionState() === "denied" ? (
                     <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold text-[10px]">
                       BLOCKED IN CHROME
                     </span>
@@ -343,11 +347,14 @@ export default function Settings() {
                   )}
                 </div>
                 <p className="text-slate-400 mt-1 leading-relaxed">
-                  Sends native OS desktop popups & audio chimes when study blocks start, tasks are due, or streak warnings trigger even if the tab is in the background.
+                  Sends native OS desktop popups & audio chimes when study
+                  blocks start, tasks are due, or streak warnings trigger even
+                  if the tab is in the background.
                 </p>
                 {isInIframe() && (
                   <p className="text-amber-400/90 mt-1 font-medium text-[11px]">
-                    💡 Running in AI Studio preview iframe: Chrome requires opening in a dedicated tab for desktop popups.
+                    💡 Running in AI Studio preview iframe: Chrome requires
+                    opening in a dedicated tab for desktop popups.
                   </p>
                 )}
               </div>
@@ -357,7 +364,7 @@ export default function Settings() {
               {isInIframe() && (
                 <button
                   type="button"
-                  onClick={() => window.open(window.location.href, '_blank')}
+                  onClick={() => window.open(window.location.href, "_blank")}
                   className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -387,13 +394,22 @@ export default function Settings() {
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                     Task & Objective Reminders
                   </p>
-                  <p className="text-xs text-slate-500">High-priority task alerts & start reminders</p>
+                  <p className="text-xs text-slate-500">
+                    High-priority task alerts & start reminders
+                  </p>
                 </div>
-                <div 
-                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.taskReminders ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                  onClick={() => setNotificationSettings(prev => ({ ...prev, taskReminders: !prev.taskReminders }))}
+                <div
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.taskReminders ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"}`}
+                  onClick={() =>
+                    setNotificationSettings((prev) => ({
+                      ...prev,
+                      taskReminders: !prev.taskReminders,
+                    }))
+                  }
                 >
-                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.taskReminders ? 'left-7' : 'left-1'}`} />
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.taskReminders ? "left-7" : "left-1"}`}
+                  />
                 </div>
               </div>
 
@@ -403,13 +419,22 @@ export default function Settings() {
                     <Zap className="w-4 h-4 text-yellow-400" />
                     Motivational & Rival Alerts
                   </p>
-                  <p className="text-xs text-slate-500">Competitor check-ins & tough-love boosts</p>
+                  <p className="text-xs text-slate-500">
+                    Competitor check-ins & tough-love boosts
+                  </p>
                 </div>
-                <div 
-                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.motivationalAlerts ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                  onClick={() => setNotificationSettings(prev => ({ ...prev, motivationalAlerts: !prev.motivationalAlerts }))}
+                <div
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.motivationalAlerts ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"}`}
+                  onClick={() =>
+                    setNotificationSettings((prev) => ({
+                      ...prev,
+                      motivationalAlerts: !prev.motivationalAlerts,
+                    }))
+                  }
                 >
-                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.motivationalAlerts ? 'left-7' : 'left-1'}`} />
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.motivationalAlerts ? "left-7" : "left-1"}`}
+                  />
                 </div>
               </div>
 
@@ -419,13 +444,22 @@ export default function Settings() {
                     <Clock className="w-4 h-4 text-cyan-400" />
                     Study Block Launch & Midway Alerts
                   </p>
-                  <p className="text-xs text-slate-500">Notifications at block start, halfway, & finish</p>
+                  <p className="text-xs text-slate-500">
+                    Notifications at block start, halfway, & finish
+                  </p>
                 </div>
-                <div 
-                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.studyBlockReminders ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                  onClick={() => setNotificationSettings(prev => ({ ...prev, studyBlockReminders: !prev.studyBlockReminders }))}
+                <div
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.studyBlockReminders ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"}`}
+                  onClick={() =>
+                    setNotificationSettings((prev) => ({
+                      ...prev,
+                      studyBlockReminders: !prev.studyBlockReminders,
+                    }))
+                  }
                 >
-                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.studyBlockReminders ? 'left-7' : 'left-1'}`} />
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.studyBlockReminders ? "left-7" : "left-1"}`}
+                  />
                 </div>
               </div>
 
@@ -435,13 +469,22 @@ export default function Settings() {
                     <Flame className="w-4 h-4 text-amber-500" />
                     Streak Shield Protection Alerts
                   </p>
-                  <p className="text-xs text-slate-500">Urgent warnings at 2 PM, 6 PM, 9 PM if hours low</p>
+                  <p className="text-xs text-slate-500">
+                    Urgent warnings at 2 PM, 6 PM, 9 PM if hours low
+                  </p>
                 </div>
-                <div 
-                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.streakProtectionAlerts ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                  onClick={() => setNotificationSettings(prev => ({ ...prev, streakProtectionAlerts: !prev.streakProtectionAlerts }))}
+                <div
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.streakProtectionAlerts ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"}`}
+                  onClick={() =>
+                    setNotificationSettings((prev) => ({
+                      ...prev,
+                      streakProtectionAlerts: !prev.streakProtectionAlerts,
+                    }))
+                  }
                 >
-                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.streakProtectionAlerts ? 'left-7' : 'left-1'}`} />
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.streakProtectionAlerts ? "left-7" : "left-1"}`}
+                  />
                 </div>
               </div>
 
@@ -451,13 +494,22 @@ export default function Settings() {
                     <Volume2 className="w-4 h-4 text-purple-400" />
                     Audio Cues & Haptic Vibrations
                   </p>
-                  <p className="text-xs text-slate-500">In-app audio chimes & mobile haptics</p>
+                  <p className="text-xs text-slate-500">
+                    In-app audio chimes & mobile haptics
+                  </p>
                 </div>
-                <div 
-                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.soundEnabled ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                  onClick={() => setNotificationSettings(prev => ({ ...prev, soundEnabled: !prev.soundEnabled }))}
+                <div
+                  className={`w-12 h-6 rounded-full cursor-pointer transition-colors relative shrink-0 ${notificationSettings.soundEnabled ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"}`}
+                  onClick={() =>
+                    setNotificationSettings((prev) => ({
+                      ...prev,
+                      soundEnabled: !prev.soundEnabled,
+                    }))
+                  }
                 >
-                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.soundEnabled ? 'left-7' : 'left-1'}`} />
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${notificationSettings.soundEnabled ? "left-7" : "left-1"}`}
+                  />
                 </div>
               </div>
             </div>
@@ -474,25 +526,42 @@ export default function Settings() {
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: 'high', label: 'High Intensity', desc: 'Every 20-30 mins' },
-                    { id: 'balanced', label: 'Balanced', desc: 'Every 45-60 mins' },
-                    { id: 'gentle', label: 'Gentle', desc: 'Every 2+ hours' }
-                  ].map(item => (
+                    {
+                      id: "high",
+                      label: "High Intensity",
+                      desc: "Every 20-30 mins",
+                    },
+                    {
+                      id: "balanced",
+                      label: "Balanced",
+                      desc: "Every 45-60 mins",
+                    },
+                    { id: "gentle", label: "Gentle", desc: "Every 2+ hours" },
+                  ].map((item) => (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setNotificationSettings(prev => ({ ...prev, frequency: item.id as any }))}
-                      className={`p-3 rounded-xl border text-left transition-all ${notificationSettings.frequency === item.id ? 'bg-amber-500/10 border-amber-500 text-amber-300 font-black shadow-md' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                      onClick={() =>
+                        setNotificationSettings((prev) => ({
+                          ...prev,
+                          frequency: item.id as any,
+                        }))
+                      }
+                      className={`p-3 rounded-xl border text-left transition-all ${notificationSettings.frequency === item.id ? "bg-amber-500/10 border-amber-500 text-amber-300 font-black shadow-md" : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:border-slate-700"}`}
                     >
                       <div className="text-xs font-bold">{item.label}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{item.desc}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {item.desc}
+                      </div>
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="pt-2">
-                <p className="text-xs font-bold text-slate-300 mb-2">Live Test Trigger Console</p>
+                <p className="text-xs font-bold text-slate-300 mb-2">
+                  Live Test Trigger Console
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -506,8 +575,11 @@ export default function Settings() {
                   <button
                     type="button"
                     onClick={() => {
-                      const urgent = todos.find(t => !t.completed);
-                      triggerTaskReminder(urgent ? urgent.text : "Solve 10 Physics PYQs", todos.filter(t => !t.completed).length || 3);
+                      const urgent = todos.find((t) => !t.completed);
+                      triggerTaskReminder(
+                        urgent ? urgent.text : "Solve 10 Physics PYQs",
+                        todos.filter((t) => !t.completed).length || 3,
+                      );
                     }}
                     className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
                   >
@@ -517,7 +589,9 @@ export default function Settings() {
 
                   <button
                     type="button"
-                    onClick={() => triggerStudyBlockNotification("Mathematics", "start")}
+                    onClick={() =>
+                      triggerStudyBlockNotification("Mathematics", "start")
+                    }
                     className="p-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
                   >
                     <Clock className="w-3.5 h-3.5 shrink-0" />
@@ -526,7 +600,12 @@ export default function Settings() {
 
                   <button
                     type="button"
-                    onClick={() => triggerStreakProtectionAlert(streakDays || 5, hoursStudiedToday || 0)}
+                    onClick={() =>
+                      triggerStreakProtectionAlert(
+                        streakDays || 5,
+                        hoursStudiedToday || 0,
+                      )
+                    }
                     className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
                   >
                     <Flame className="w-3.5 h-3.5 shrink-0" />
@@ -538,232 +617,24 @@ export default function Settings() {
           </div>
         </Card>
 
-        {/* Progress & Stats Modifier */}
-        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl md:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Edit3 className="w-5 h-5 text-amber-500" />
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Progress Stats Modifier & Recovery</h2>
-            </div>
-            {statsSavedMsg && (
-              <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 animate-in fade-in flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Stats Restored!
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-            If your stats were scaled down or wiped during testing or cloud sync, use these controls to manually correct your total XP, Level, Streak, and Daily metrics.
-          </p>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 mb-1">Total XP</label>
-              <input
-                type="number"
-                value={editXp}
-                onChange={(e) => setEditXp(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">Level</label>
-              <input
-                type="number"
-                value={editLevel}
-                onChange={(e) => setEditLevel(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-orange-600 dark:text-orange-400 mb-1">Streak Days</label>
-              <input
-                type="number"
-                value={editStreak}
-                onChange={(e) => setEditStreak(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-orange-500"
-              />
-            </div>
-
-            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Hours Studied Today</label>
-              <input
-                type="number"
-                step="0.5"
-                value={editHours}
-                onChange={(e) => setEditHours(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 mb-1">Questions Solved</label>
-              <input
-                type="number"
-                value={editQuestions}
-                onChange={(e) => setEditQuestions(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
-              />
-            </div>
-
-            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-cyan-600 dark:text-cyan-400 mb-1">XP Gained Today</label>
-              <input
-                type="number"
-                value={editXpGained}
-                onChange={(e) => setEditXpGained(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSaveStats}
-            className="w-full md:w-auto px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-xl transition-colors shadow-md flex items-center justify-center gap-2"
-          >
-            <Save className="w-4 h-4" />
-            Apply & Save Stat Corrections
-          </button>
-        </Card>
-
-        {/* History Repair & Log Editor */}
-        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl md:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <HistoryIcon className="w-5 h-5 text-indigo-500" />
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Play History Log Recovery</h2>
-            </div>
-            {histSavedMsg && (
-              <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 animate-in fade-in flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> History Log Updated!
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-            Add missing daily logs or restore full JSON history if past session history got lost.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-6 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Date</label>
-              <input
-                type="date"
-                value={newHistDate}
-                onChange={(e) => setNewHistDate(e.target.value)}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Hours Studied</label>
-              <input
-                type="number"
-                step="0.5"
-                value={newHistHours}
-                onChange={(e) => setNewHistHours(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">XP Earned</label>
-              <input
-                type="number"
-                value={newHistXp}
-                onChange={(e) => setNewHistXp(Number(e.target.value))}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleAddOrUpdateHistory}
-              className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              Add / Update Log
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              Total Recorded History Days: <strong className="text-slate-900 dark:text-white">{history?.length || 0} days</strong>
-            </span>
-            <button
-              type="button"
-              onClick={handleOpenJsonModal}
-              className="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-colors"
-            >
-              <FileText className="w-4 h-4 text-indigo-400" />
-              Advanced Raw JSON Backup / Import
-            </button>
-          </div>
-        </Card>
-
-        {/* JSON Backup Modal */}
-        {showJsonModal && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-indigo-400" />
-                  Raw History JSON Editor
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setShowJsonModal(false)}
-                  className="text-slate-400 hover:text-white font-bold text-sm"
-                >
-                  ✕
-                </button>
-              </div>
-              <p className="text-xs text-slate-400 mb-3">
-                Paste your history array JSON here to instantly restore lost history logs across devices or back up your current logs.
-              </p>
-              <textarea
-                rows={10}
-                value={historyJsonStr}
-                onChange={(e) => setHistoryJsonStr(e.target.value)}
-                className="w-full bg-black border border-slate-800 rounded-xl p-3 font-mono text-xs text-emerald-400 focus:outline-none focus:border-indigo-500 mb-4"
-              />
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowJsonModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleImportHistoryJson}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-colors"
-                >
-                  Apply & Restore History JSON
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Data & Account */}
         <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
           <div className="flex items-center gap-2 mb-6">
             <Database className="w-5 h-5 text-red-500" />
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Data & Account</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              Data & Account
+            </h2>
           </div>
-          
+
           <div className="space-y-4">
-            <button 
+            <button
               onClick={handleSave}
               className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-3 rounded-xl hover:opacity-90 transition-opacity shadow-md"
             >
               Save Configuration
             </button>
 
-            <button 
+            <button
               onClick={() => {
                 localStorage.removeItem("welcome_hero_dismissed_forever");
                 window.location.reload();
@@ -774,9 +645,13 @@ export default function Settings() {
               Return to Welcome Screen
             </button>
 
-            <button 
+            <button
               onClick={() => {
-                if (confirm("Are you sure you want to hard reset the app? This will wipe ALL your local data and progress!")) {
+                if (
+                  confirm(
+                    "Are you sure you want to hard reset the app? This will wipe ALL your local data and progress!",
+                  )
+                ) {
                   resetApp();
                 }
               }}
@@ -787,7 +662,6 @@ export default function Settings() {
             </button>
           </div>
         </Card>
-
       </div>
     </div>
   );
