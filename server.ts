@@ -174,21 +174,39 @@ Today's mission: [Specific, time-bound, actionable directive based on their exac
 
 Closing: [Goggins-style push. e.g. "The IIT paper doesn't care how you felt yesterday. Stay hard."]`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-    });
+    const generateWithTimeout = async (modelName: string) => {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("AI_TIMEOUT")), 4000)
+      );
+      const apiPromise = ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+      });
+      return Promise.race([apiPromise, timeoutPromise]) as Promise<any>;
+    };
+
+    let response;
+    try {
+      response = await generateWithTimeout('gemini-2.5-flash');
+    } catch (e: any) {
+      // Secondary fallback attempt with flash 2.0 or immediate static rule engine
+      try {
+        response = await generateWithTimeout('gemini-2.0-flash');
+      } catch (e2) {
+        throw e;
+      }
+    }
     
-    if (response.text) {
+    if (response?.text) {
       return res.json({ feedback: response.text.trim() });
     }
     return res.json({ feedback: fallbackResponse });
   } catch (error: any) {
     const msg = error?.message || String(error);
-    if (msg.includes('API key not valid') || msg.includes('API_KEY_INVALID')) {
-      // Suppress noisy output
+    if (msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand') || msg.includes('API_KEY') || msg.includes('AI_TIMEOUT')) {
+      console.log("[AI Coach Engine] Gemini API busy/unavailable. Using offline rule-engine fallback.");
     } else {
-      console.error("AI Generation Error:", error);
+      console.log("[AI Coach Engine] Rule-engine fallback engaged.");
     }
     return res.json({ feedback: fallbackResponse });
   }
@@ -230,21 +248,38 @@ Their live data right now:
 
 Make it brutal and direct. If their questions are low but hours are high, scold them for fake work. If accuracy is low, scold them for rushing. If they are doing great, tell them to stay humble and not let ego ruin tomorrow.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-    });
+    const generateWithTimeout = async (modelName: string) => {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("AI_TIMEOUT")), 3000)
+      );
+      const apiPromise = ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+      });
+      return Promise.race([apiPromise, timeoutPromise]) as Promise<any>;
+    };
+
+    let response;
+    try {
+      response = await generateWithTimeout('gemini-2.5-flash');
+    } catch (e) {
+      try {
+        response = await generateWithTimeout('gemini-2.0-flash');
+      } catch (e2) {
+        throw e;
+      }
+    }
     
-    if (response.text) {
+    if (response?.text) {
       return res.json({ insight: response.text.trim() });
     }
     return res.json({ insight: fallbackInsight });
   } catch (error: any) {
     const msg = error?.message || String(error);
-    if (msg.includes('API key not valid') || msg.includes('API_KEY_INVALID')) {
-      // Suppress noisy output for invalid API keys during testing
+    if (msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand') || msg.includes('API_KEY') || msg.includes('AI_TIMEOUT')) {
+      console.log("[Dynamic Insight] Gemini API busy/unavailable. Using offline rule-engine fallback.");
     } else {
-      console.error("AI Insight Error:", error);
+      console.log("[Dynamic Insight] Rule-engine fallback engaged.");
     }
     return res.json({ insight: fallbackInsight });
   }

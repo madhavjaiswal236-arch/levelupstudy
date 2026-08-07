@@ -157,28 +157,32 @@ export interface NotificationSettings {
 interface AppState {
  notificationSettings: NotificationSettings;
  setNotificationSettings: React.Dispatch<React.SetStateAction<NotificationSettings>>;
- xp: number;
- setXp: React.Dispatch<React.SetStateAction<number>>;
- xpGainedToday: number;
- spentXpToday: number;
- setSpentXpToday: React.Dispatch<React.SetStateAction<number>>;
- totalSpentXp: number;
- setTotalSpentXp: React.Dispatch<React.SetStateAction<number>>;
- hoursStudiedToday: number;
- setHoursStudiedToday: React.Dispatch<React.SetStateAction<number>>;
- level: number;
- setLevel: React.Dispatch<React.SetStateAction<number>>;
- questionsSolved: number;
- setQuestionsSolved: React.Dispatch<React.SetStateAction<number>>;
- practiceSessions: PracticeSession[];
- setPracticeSessions: React.Dispatch<React.SetStateAction<PracticeSession[]>>;
- dailyTarget: number;
- setDailyTarget: React.Dispatch<React.SetStateAction<number>>;
- accuracy: number;
- speedScore: number;
- streakDays: number;
- lastStudyDate: string | null;
- focusBadges: number;
+  xp: number;
+  setXp: React.Dispatch<React.SetStateAction<number>>;
+  xpGainedToday: number;
+  setXpGainedToday: React.Dispatch<React.SetStateAction<number>>;
+  spentXpToday: number;
+  setSpentXpToday: React.Dispatch<React.SetStateAction<number>>;
+  totalSpentXp: number;
+  setTotalSpentXp: React.Dispatch<React.SetStateAction<number>>;
+  hoursStudiedToday: number;
+  setHoursStudiedToday: React.Dispatch<React.SetStateAction<number>>;
+  level: number;
+  setLevel: React.Dispatch<React.SetStateAction<number>>;
+  questionsSolved: number;
+  setQuestionsSolved: React.Dispatch<React.SetStateAction<number>>;
+  practiceSessions: PracticeSession[];
+  setPracticeSessions: React.Dispatch<React.SetStateAction<PracticeSession[]>>;
+  dailyTarget: number;
+  setDailyTarget: React.Dispatch<React.SetStateAction<number>>;
+  accuracy: number;
+  speedScore: number;
+  streakDays: number;
+  setStreakDays: React.Dispatch<React.SetStateAction<number>>;
+  lastStudyDate: string | null;
+  setLastStudyDate: React.Dispatch<React.SetStateAction<string | null>>;
+  focusBadges: number;
+  setFocusBadges: React.Dispatch<React.SetStateAction<number>>;
  syllabus: SyllabusData;
  activeBoost: { multiplier: number; expiresAt: number } | null;
  class11EndDate: string | null;
@@ -1028,6 +1032,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     xp,
     setXp,
     xpGainedToday,
+    setXpGainedToday,
     spentXpToday,
     setSpentXpToday,
     totalSpentXp,
@@ -1041,8 +1046,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     accuracy,
     speedScore,
     streakDays,
+    setStreakDays,
     lastStudyDate,
+    setLastStudyDate,
     focusBadges,
+    setFocusBadges,
     syllabus,
     activeBoost,
     class11EndDate,

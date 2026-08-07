@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card } from '../components/ui/card';
-import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target, Terminal, RefreshCw, Zap, Flame, CheckCircle2, Sliders, Volume2, ShieldAlert, ExternalLink, Globe } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
+import { Settings as SettingsIcon, Clock, Bell, User, Database, ChevronRight, LogOut, Trash2, Target, Terminal, RefreshCw, Zap, Flame, CheckCircle2, Sliders, Volume2, ShieldAlert, ExternalLink, Globe, Edit3, Plus, History as HistoryIcon, Save, FileText, Check } from 'lucide-react';
+import { useAppContext, PlayHistoryEntry } from '../context/AppContext';
 import {
   requestNotificationPermissions,
   triggerMotivationNotification,
@@ -17,11 +17,104 @@ export default function Settings() {
   const { 
     notificationSettings, setNotificationSettings,
     playerName, setPlayerName,
-    dailyTarget, setDailyTarget, class11EndDate, setClass11EndDate, totalXpGoal, setTotalXpGoal, xp,
-    resetApp, firebaseUser, streakDays, hoursStudiedToday, todos
+    dailyTarget, setDailyTarget, class11EndDate, setClass11EndDate, totalXpGoal, setTotalXpGoal,
+    xp, setXp,
+    level, setLevel,
+    streakDays, setStreakDays,
+    hoursStudiedToday, setHoursStudiedToday,
+    questionsSolved, setQuestionsSolved,
+    xpGainedToday, setXpGainedToday,
+    history, setHistory,
+    resetApp, firebaseUser, todos
   } = useAppContext();
 
   const [permStatus, setPermStatus] = useState<string | null>(null);
+
+  // Progress Stats Editor State
+  const [editXp, setEditXp] = useState<number>(xp || 0);
+  const [editLevel, setEditLevel] = useState<number>(level || 1);
+  const [editStreak, setEditStreak] = useState<number>(streakDays || 0);
+  const [editHours, setEditHours] = useState<number>(hoursStudiedToday || 0);
+  const [editQuestions, setEditQuestions] = useState<number>(questionsSolved || 0);
+  const [editXpGained, setEditXpGained] = useState<number>(xpGainedToday || 0);
+  const [statsSavedMsg, setStatsSavedMsg] = useState(false);
+
+  // Sync state when context values load or update
+  React.useEffect(() => {
+    setEditXp(xp || 0);
+    setEditLevel(level || 1);
+    setEditStreak(streakDays || 0);
+    setEditHours(hoursStudiedToday || 0);
+    setEditQuestions(questionsSolved || 0);
+    setEditXpGained(xpGainedToday || 0);
+  }, [xp, level, streakDays, hoursStudiedToday, questionsSolved, xpGainedToday]);
+
+  const handleSaveStats = () => {
+    setXp(Number(editXp));
+    setLevel(Number(editLevel));
+    setStreakDays(Number(editStreak));
+    setHoursStudiedToday(Number(editHours));
+    setQuestionsSolved(Number(editQuestions));
+    setXpGainedToday(Number(editXpGained));
+    setStatsSavedMsg(true);
+    setTimeout(() => setStatsSavedMsg(false), 3000);
+  };
+
+  // History Editor State
+  const [newHistDate, setNewHistDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newHistHours, setNewHistHours] = useState(3);
+  const [newHistXp, setNewHistXp] = useState(600);
+  const [historyJsonStr, setHistoryJsonStr] = useState('');
+  const [showJsonModal, setShowJsonModal] = useState(false);
+  const [histSavedMsg, setHistSavedMsg] = useState(false);
+
+  const handleAddOrUpdateHistory = () => {
+    if (!newHistDate) return;
+    setHistory((prev) => {
+      const existingIdx = prev.findIndex((h) => h.date === newHistDate);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          hoursStudied: Number(newHistHours),
+          xpEarned: Number(newHistXp)
+        };
+        return updated;
+      } else {
+        const newEntry: PlayHistoryEntry = {
+          date: newHistDate,
+          hoursStudied: Number(newHistHours),
+          xpEarned: Number(newHistXp),
+          completedTasks: [],
+          screenTime: 0,
+          sleepTime: 7
+        };
+        return [...prev, newEntry].sort((a, b) => a.date.localeCompare(b.date));
+      }
+    });
+    setHistSavedMsg(true);
+    setTimeout(() => setHistSavedMsg(false), 3000);
+  };
+
+  const handleOpenJsonModal = () => {
+    setHistoryJsonStr(JSON.stringify(history || [], null, 2));
+    setShowJsonModal(true);
+  };
+
+  const handleImportHistoryJson = () => {
+    try {
+      const parsed = JSON.parse(historyJsonStr);
+      if (Array.isArray(parsed)) {
+        setHistory(parsed);
+        alert("Play history restored & updated successfully!");
+        setShowJsonModal(false);
+      } else {
+        alert("Invalid format: expected a JSON array of history logs.");
+      }
+    } catch (e: any) {
+      alert("JSON Syntax Error: " + e.message);
+    }
+  };
 
   const handleRequestPermissions = async () => {
     const granted = await requestNotificationPermissions();
@@ -444,6 +537,216 @@ export default function Settings() {
             </div>
           </div>
         </Card>
+
+        {/* Progress & Stats Modifier */}
+        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl md:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Edit3 className="w-5 h-5 text-amber-500" />
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Progress Stats Modifier & Recovery</h2>
+            </div>
+            {statsSavedMsg && (
+              <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 animate-in fade-in flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> Stats Restored!
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            If your stats were scaled down or wiped during testing or cloud sync, use these controls to manually correct your total XP, Level, Streak, and Daily metrics.
+          </p>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+              <label className="block text-xs font-bold text-amber-600 dark:text-amber-400 mb-1">Total XP</label>
+              <input
+                type="number"
+                value={editXp}
+                onChange={(e) => setEditXp(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+              <label className="block text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">Level</label>
+              <input
+                type="number"
+                value={editLevel}
+                onChange={(e) => setEditLevel(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+              <label className="block text-xs font-bold text-orange-600 dark:text-orange-400 mb-1">Streak Days</label>
+              <input
+                type="number"
+                value={editStreak}
+                onChange={(e) => setEditStreak(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+              <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-1">Hours Studied Today</label>
+              <input
+                type="number"
+                step="0.5"
+                value={editHours}
+                onChange={(e) => setEditHours(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+              <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 mb-1">Questions Solved</label>
+              <input
+                type="number"
+                value={editQuestions}
+                onChange={(e) => setEditQuestions(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+              <label className="block text-xs font-bold text-cyan-600 dark:text-cyan-400 mb-1">XP Gained Today</label>
+              <input
+                type="number"
+                value={editXpGained}
+                onChange={(e) => setEditXpGained(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveStats}
+            className="w-full md:w-auto px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-xl transition-colors shadow-md flex items-center justify-center gap-2"
+          >
+            <Save className="w-4 h-4" />
+            Apply & Save Stat Corrections
+          </button>
+        </Card>
+
+        {/* History Repair & Log Editor */}
+        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl md:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <HistoryIcon className="w-5 h-5 text-indigo-500" />
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Play History Log Recovery</h2>
+            </div>
+            {histSavedMsg && (
+              <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 animate-in fade-in flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> History Log Updated!
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            Add missing daily logs or restore full JSON history if past session history got lost.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-6 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Date</label>
+              <input
+                type="date"
+                value={newHistDate}
+                onChange={(e) => setNewHistDate(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Hours Studied</label>
+              <input
+                type="number"
+                step="0.5"
+                value={newHistHours}
+                onChange={(e) => setNewHistHours(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">XP Earned</label>
+              <input
+                type="number"
+                value={newHistXp}
+                onChange={(e) => setNewHistXp(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAddOrUpdateHistory}
+              className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              Add / Update Log
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Total Recorded History Days: <strong className="text-slate-900 dark:text-white">{history?.length || 0} days</strong>
+            </span>
+            <button
+              type="button"
+              onClick={handleOpenJsonModal}
+              className="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-colors"
+            >
+              <FileText className="w-4 h-4 text-indigo-400" />
+              Advanced Raw JSON Backup / Import
+            </button>
+          </div>
+        </Card>
+
+        {/* JSON Backup Modal */}
+        {showJsonModal && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-indigo-400" />
+                  Raw History JSON Editor
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowJsonModal(false)}
+                  className="text-slate-400 hover:text-white font-bold text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mb-3">
+                Paste your history array JSON here to instantly restore lost history logs across devices or back up your current logs.
+              </p>
+              <textarea
+                rows={10}
+                value={historyJsonStr}
+                onChange={(e) => setHistoryJsonStr(e.target.value)}
+                className="w-full bg-black border border-slate-800 rounded-xl p-3 font-mono text-xs text-emerald-400 focus:outline-none focus:border-indigo-500 mb-4"
+              />
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowJsonModal(false)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImportHistoryJson}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-colors"
+                >
+                  Apply & Restore History JSON
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Data & Account */}
         <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
