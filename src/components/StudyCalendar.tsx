@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -75,6 +75,7 @@ export function StudyCalendar({
   const {
     todos,
     setTodos,
+    notifyCalendarMutation,
     syllabus,
     xpGainedToday,
     dailyTarget,
@@ -85,6 +86,14 @@ export function StudyCalendar({
     history,
     getCurrentChapterForSubject,
   } = useAppContext();
+
+  const setCalendarTodos = useCallback<typeof setTodos>(
+    (action) => {
+      notifyCalendarMutation?.();
+      return setTodos(action);
+    },
+    [notifyCalendarMutation, setTodos],
+  );
 
   const [googleEvents, setGoogleEvents] = useState<any[]>([]);
 
@@ -542,7 +551,7 @@ export function StudyCalendar({
         : t,
     );
 
-    setTodos(updatedTodos);
+    setCalendarTodos(updatedTodos);
     showToast(
       `Scheduled ${task.text} for ${format(currentStart, "h:mm a")}`,
       "success",
@@ -560,7 +569,7 @@ export function StudyCalendar({
         end,
       );
       if (res && res.id) {
-        setTodos(
+        setCalendarTodos(
           updatedTodos.map((t) =>
             t.id === task.id ? { ...t, calendarEventId: res.id } : t,
           ),
@@ -640,7 +649,7 @@ export function StudyCalendar({
       currentStart = new Date(end.getTime() + 10 * 60000); // 10 min break
     }
 
-    setTodos(updatedTodos);
+    setCalendarTodos(updatedTodos);
     showToast("Study plan generated!", "success");
   };
 
@@ -1151,7 +1160,7 @@ export function StudyCalendar({
                             finalStart.getTime() + durationMilli,
                           );
 
-                          setTodos((prev) =>
+                          setCalendarTodos((prev) =>
                             prev.map((t) =>
                               t.id === ev.id
                                 ? {
@@ -1192,7 +1201,7 @@ export function StudyCalendar({
                                   res.id &&
                                   !res.id.startsWith("local-")
                                 ) {
-                                  setTodos((prev) =>
+                                  setCalendarTodos((prev) =>
                                     prev.map((t) =>
                                       t.id === ev.id
                                         ? { ...t, calendarEventId: res.id }
@@ -1238,7 +1247,7 @@ export function StudyCalendar({
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        setTodos((prev) => prev.filter((t) => t.id !== ev.id));
+                        setCalendarTodos((prev) => prev.filter((t) => t.id !== ev.id));
                         setUnsyncedChanges(true);
                         showToast("Task deleted", "success");
                         if ((ev as any).calendarEventId) {
@@ -1267,9 +1276,10 @@ export function StudyCalendar({
                               e.stopPropagation();
                               e.preventDefault();
                               const nextState = !ev.completed;
+                              notifyCalendarMutation?.();
                               if (onToggleTodo) onToggleTodo(ev.id);
                               else
-                                setTodos((prev) =>
+                                setCalendarTodos((prev) =>
                                   prev.map((t) =>
                                     t.id === ev.id
                                       ? { ...t, completed: nextState }
@@ -1348,9 +1358,10 @@ export function StudyCalendar({
                                   e.stopPropagation();
                                   e.preventDefault();
                                   const nextState = !ev.completed;
+                                  notifyCalendarMutation?.();
                                   if (onToggleTodo) onToggleTodo(ev.id);
                                   else
-                                    setTodos((prev) =>
+                                    setCalendarTodos((prev) =>
                                       prev.map((t) =>
                                         t.id === ev.id
                                           ? { ...t, completed: nextState }
@@ -1543,7 +1554,7 @@ export function StudyCalendar({
                             ev.start.getTime() + lastDurationMins * 60000,
                           );
 
-                          setTodos((prev) =>
+                          setCalendarTodos((prev) =>
                             prev.map((t) =>
                               t.id === ev.id
                                 ? { ...t, endTime: finalEnd.toISOString() }
@@ -1579,7 +1590,7 @@ export function StudyCalendar({
                                   res.id &&
                                   !res.id.startsWith("local-")
                                 ) {
-                                  setTodos((prev) =>
+                                  setCalendarTodos((prev) =>
                                     prev.map((t) =>
                                       t.id === ev.id
                                         ? { ...t, calendarEventId: res.id }
@@ -2315,7 +2326,7 @@ export function StudyCalendar({
                               !t.completed),
                         );
                         if (!isDuplicate) {
-                          setTodos([...todos, newTask]);
+                          setCalendarTodos([...todos, newTask]);
                         }
                         setShowTaskModal(false);
                         setDragSelection(null);

@@ -14,8 +14,10 @@ app.use(express.json());
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = ['http://localhost:3000', 'capacitor://localhost', 'http://localhost'];
-  if (origin && (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production')) {
-    res.header('Access-Control-Allow-Origin', origin);
+  if (origin) {
+    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      res.header('Access-Control-Allow-Origin', origin);
+    }
   } else if (process.env.NODE_ENV !== 'production') {
     res.header('Access-Control-Allow-Origin', '*');
   }

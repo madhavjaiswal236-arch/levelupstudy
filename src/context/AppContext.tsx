@@ -12,6 +12,7 @@ import React, {
   useEffect,
   useRef,
   useMemo,
+  useCallback,
 } from "react";
 import { initAuth } from "@/lib/firebase";
 import { Preferences } from "@capacitor/preferences";
@@ -222,6 +223,7 @@ interface AppState {
   setHasSeenReminder: (val: boolean) => void;
   hasSeenRules: boolean;
   setHasSeenRules: (val: boolean) => void;
+  notifyCalendarMutation: () => void;
   todos: Todo[];
   setTodos: React.Dispatch<React.SetStateAction<Todo[]>>;
   updateTask: (id: number, updates: Partial<Todo>) => void;
@@ -277,6 +279,7 @@ interface AppState {
   >;
   hasToken: boolean;
   setHasToken: React.Dispatch<React.SetStateAction<boolean>>;
+  isCloudSyncComplete: boolean;
   equippedTitle: string;
   setEquippedTitle: (title: string) => void;
   equippedAura: string;
@@ -391,14 +394,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     import("firebase/auth").User | null
   >(null);
   const [hasToken, setHasToken] = useState<boolean>(false);
+  const [isCloudSyncComplete, setIsCloudSyncComplete] = useState<boolean>(false);
   const lastSavedCloudJsonRef = useRef<string>("");
   const isRemoteSyncingRef = useRef<boolean>(false);
   const lastLocalMutationTimeRef = useRef<number>(0);
+  const lastCalendarMutationTimeRef = useRef<number>(0);
+
+  const notifyCalendarMutation = useCallback(() => {
+    lastCalendarMutationTimeRef.current = Date.now();
+    lastLocalMutationTimeRef.current = Date.now();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = initAuth((user, token) => {
       setFirebaseUser(user);
       setHasToken(!!token);
+      if (!user) {
+        setIsCloudSyncComplete(true);
+      }
     });
     return () => {
       if (typeof unsubscribe === "function") {
@@ -654,14 +667,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 200);
 
+    const isCalendarMutation =
+      Date.now() - lastCalendarMutationTimeRef.current < 60000;
+    const cloudDelay = isCalendarMutation ? 60000 : 400;
+
     const cloudTimeoutId = setTimeout(() => {
-      if (firebaseUser?.uid && !isRemoteSyncingRef.current) {
+      if (
+        firebaseUser?.uid &&
+        isCloudSyncComplete &&
+        !isRemoteSyncingRef.current
+      ) {
         if (jsonString !== lastSavedCloudJsonRef.current) {
           lastSavedCloudJsonRef.current = jsonString;
           saveUserDataToCloud(firebaseUser.uid, stateToSave, false);
         }
       }
-    }, 400);
+    }, cloudDelay);
 
     const flushCloudSave = () => {
       const currentJson = JSON.stringify(stateToSave);
@@ -672,6 +693,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       if (
         firebaseUser?.uid &&
+        isCloudSyncComplete &&
         !isRemoteSyncingRef.current &&
         currentJson !== lastSavedCloudJsonRef.current
       ) {
@@ -741,6 +763,101 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ongoingChapters,
   ]);
 
+  // Initial Cloud Data Fetch on Auth to ensure late-loading cloud state overrides stale local state before day rollover checks
+  useEffect(() => {
+    if (!firebaseUser?.uid) {
+      setIsCloudSyncComplete(true);
+      return;
+    }
+
+    setIsCloudSyncComplete(false);
+    let cancelled = false;
+
+    const syncCloudOnLogin = async () => {
+      try {
+        const cloudData = await loadUserDataFromCloud(firebaseUser.uid);
+        if (cancelled) return;
+
+        if (!cloudData) {
+          setIsCloudSyncComplete(true);
+          return;
+        }
+
+        const todayStr = getLogicalDate().toDateString();
+        const isCloudToday = cloudData.lastStudyDate === todayStr;
+
+        isRemoteSyncingRef.current = true;
+
+        if (isCloudToday) {
+          setNeedsRollover(false);
+          setPendingMissedDays([]);
+          setLastStudyDate(todayStr);
+          setXpGainedToday(cloudData.xpGainedToday ?? 0);
+          setHoursStudiedToday(cloudData.hoursStudiedToday ?? 0);
+          setSpentXpToday(cloudData.spentXpToday ?? 0);
+          setLoggedTasksToday(cloudData.loggedTasksToday ?? []);
+          if (cloudData.todos !== undefined) setTodos(cloudData.todos);
+          if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
+          if (cloudData.history !== undefined) setHistory(cloudData.history);
+        } else if (cloudData.lastStudyDate) {
+          setLastStudyDate(cloudData.lastStudyDate);
+          setNeedsRollover(true);
+          if (cloudData.xpGainedToday !== undefined) setXpGainedToday(cloudData.xpGainedToday);
+          if (cloudData.hoursStudiedToday !== undefined) setHoursStudiedToday(cloudData.hoursStudiedToday);
+          if (cloudData.todos !== undefined) setTodos(cloudData.todos);
+          if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
+          if (cloudData.history !== undefined) setHistory(cloudData.history);
+        }
+
+        if (cloudData.xp !== undefined) setXp(cloudData.xp);
+        if (cloudData.level !== undefined) setLevel(cloudData.level);
+        if (cloudData.streakDays !== undefined) setStreakDays(cloudData.streakDays);
+        if (cloudData.questionsSolved !== undefined) setQuestionsSolved(cloudData.questionsSolved);
+        if (cloudData.dailyTarget !== undefined) setDailyTarget(cloudData.dailyTarget);
+        if (cloudData.syllabus !== undefined) setSyllabus(cloudData.syllabus);
+        if (cloudData.playerName !== undefined) setPlayerName(cloudData.playerName);
+        if (cloudData.equippedTitle !== undefined) setEquippedTitle(cloudData.equippedTitle);
+        if (cloudData.equippedAura !== undefined) setEquippedAura(cloudData.equippedAura);
+        if (cloudData.unlockedItems !== undefined) setUnlockedItems(cloudData.unlockedItems);
+        if (cloudData.habits !== undefined) setHabits(cloudData.habits);
+        if (cloudData.lifeMetrics !== undefined) setLifeMetrics(cloudData.lifeMetrics);
+        if (cloudData.practiceSessions !== undefined) setPracticeSessions(cloudData.practiceSessions);
+        if (cloudData.ongoingChapters !== undefined) setOngoingChapters(cloudData.ongoingChapters);
+        if (cloudData.totalSpentXp !== undefined) setTotalSpentXp(cloudData.totalSpentXp);
+        if (cloudData.accuracy !== undefined) setAccuracy(cloudData.accuracy);
+        if (cloudData.speedScore !== undefined) setSpeedScore(cloudData.speedScore);
+        if (cloudData.focusBadges !== undefined) setFocusBadges(cloudData.focusBadges);
+        if (cloudData.activeBoost !== undefined) setActiveBoost(cloudData.activeBoost);
+        if (cloudData.class11EndDate !== undefined) setClass11EndDate(cloudData.class11EndDate);
+        if (cloudData.isClass11SetupDone !== undefined) setIsClass11SetupDone(cloudData.isClass11SetupDone);
+        if (cloudData.backlogPriorities !== undefined) setBacklogPriorities(cloudData.backlogPriorities);
+        if (cloudData.hasSeenRules !== undefined) setHasSeenRules(cloudData.hasSeenRules);
+        if (cloudData.monthlyGoals !== undefined) setMonthlyGoals(cloudData.monthlyGoals);
+        if (cloudData.lastBossDayDate !== undefined) setLastBossDayDate(cloudData.lastBossDayDate);
+        if (cloudData.bossDayTargetXp !== undefined) setBossDayTargetXp(cloudData.bossDayTargetXp);
+        if (cloudData.bossDayCompleted !== undefined) setBossDayCompleted(cloudData.bossDayCompleted);
+        if (cloudData.notificationSettings !== undefined) setNotificationSettings(cloudData.notificationSettings);
+        if (cloudData.totalXpGoal !== undefined) setTotalXpGoal(cloudData.totalXpGoal);
+
+        lastSavedCloudJsonRef.current = JSON.stringify(cloudData);
+
+        setTimeout(() => {
+          isRemoteSyncingRef.current = false;
+          setIsCloudSyncComplete(true);
+        }, 300);
+      } catch (err) {
+        console.error("Cloud login sync error:", err);
+        setIsCloudSyncComplete(true);
+      }
+    };
+
+    syncCloudOnLogin();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseUser]);
+
   // Real-Time Cloud Listener with Non-Reverting Smart Sync
   useEffect(() => {
     if (!firebaseUser?.uid) return;
@@ -753,8 +870,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Skip local optimistic write snapshots
         if (metadata?.hasPendingWrites) return;
 
-        // If a local mutation occurred within the last 2.5 seconds, ignore stale server snapshot
-        if (Date.now() - lastLocalMutationTimeRef.current < 2500) return;
+        // If a local mutation occurred recently or calendar mutation in last 60s, ignore stale server snapshot
+        if (
+          Date.now() - lastLocalMutationTimeRef.current < 2500 ||
+          Date.now() - lastCalendarMutationTimeRef.current < 60000
+        )
+          return;
 
         const cloudJson = JSON.stringify(cloudData);
         if (cloudJson === lastSavedCloudJsonRef.current) return;
@@ -762,173 +883,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
         lastSavedCloudJsonRef.current = cloudJson;
         isRemoteSyncingRef.current = true;
 
-        // Smart progression updates (never decrease local XP or progress)
+        const todayStr = getLogicalDate().toDateString();
+        const isCloudToday = cloudData.lastStudyDate === todayStr;
+
+        if (isCloudToday) {
+          setNeedsRollover(false);
+          setPendingMissedDays([]);
+          setLastStudyDate(todayStr);
+          if (cloudData.xpGainedToday !== undefined) setXpGainedToday(cloudData.xpGainedToday);
+          if (cloudData.hoursStudiedToday !== undefined) setHoursStudiedToday(cloudData.hoursStudiedToday);
+          if (cloudData.spentXpToday !== undefined) setSpentXpToday(cloudData.spentXpToday);
+          if (cloudData.loggedTasksToday !== undefined) setLoggedTasksToday(cloudData.loggedTasksToday);
+          if (cloudData.todos !== undefined) setTodos(cloudData.todos);
+          if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
+          if (cloudData.history !== undefined) setHistory(cloudData.history);
+        } else if (cloudData.lastStudyDate && cloudData.lastStudyDate !== lastStudyDateRef.current) {
+          setLastStudyDate(cloudData.lastStudyDate);
+          if (cloudData.xpGainedToday !== undefined) setXpGainedToday(cloudData.xpGainedToday);
+          if (cloudData.hoursStudiedToday !== undefined) setHoursStudiedToday(cloudData.hoursStudiedToday);
+          if (cloudData.todos !== undefined) setTodos(cloudData.todos);
+          if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
+          if (cloudData.history !== undefined) setHistory(cloudData.history);
+        }
+
+        // Smart progression updates (never decrease lifetime XP/level/streak)
         if (cloudData.xp !== undefined) setXp((prev) => Math.max(prev, cloudData.xp));
         if (cloudData.level !== undefined) setLevel((prev) => Math.max(prev, cloudData.level));
         if (cloudData.questionsSolved !== undefined)
           setQuestionsSolved((prev) => Math.max(prev, cloudData.questionsSolved));
         if (cloudData.streakDays !== undefined)
           setStreakDays((prev) => Math.max(prev, cloudData.streakDays));
-        if (cloudData.xpGainedToday !== undefined)
-          setXpGainedToday((prev) => Math.max(prev, cloudData.xpGainedToday));
-        if (cloudData.hoursStudiedToday !== undefined)
-          setHoursStudiedToday((prev) => Math.max(prev, cloudData.hoursStudiedToday));
-
-        // Smart merge for Todos (never lose locally created or locally completed tasks)
-        if (cloudData.todos !== undefined) {
-          setTodos((prevLocal) => {
-            const cloudTodos: Todo[] = cloudData.todos || [];
-            if (!cloudTodos.length) return prevLocal;
-
-            const cloudMap = new Map<string | number, Todo>();
-            for (const t of cloudTodos) {
-              if (t && t.id !== undefined) cloudMap.set(t.id, t);
-            }
-
-            const processedIds = new Set<string | number>();
-            const merged: Todo[] = [];
-
-            for (const localTask of prevLocal) {
-              processedIds.add(localTask.id);
-              const cloudTask = cloudMap.get(localTask.id);
-              if (cloudTask) {
-                const isCompleted = localTask.completed || cloudTask.completed;
-                merged.push({
-                  ...cloudTask,
-                  ...localTask,
-                  completed: isCompleted,
-                });
-              } else {
-                merged.push(localTask);
-              }
-            }
-
-            for (const cloudTask of cloudTodos) {
-              if (cloudTask && !processedIds.has(cloudTask.id)) {
-                merged.push(cloudTask);
-              }
-            }
-
-            return merged;
-          });
-        }
-
-        // Smart merge for Pending Tasks
-        if (cloudData.pendingTasks !== undefined) {
-          setPendingTasks((prevLocal) => {
-            const cloudPending: Todo[] = cloudData.pendingTasks || [];
-            if (!cloudPending.length) return prevLocal;
-
-            const cloudMap = new Map<string | number, Todo>();
-            for (const t of cloudPending) {
-              if (t && t.id !== undefined) cloudMap.set(t.id, t);
-            }
-
-            const processedIds = new Set<string | number>();
-            const merged: Todo[] = [];
-
-            for (const localTask of prevLocal) {
-              processedIds.add(localTask.id);
-              const cloudTask = cloudMap.get(localTask.id);
-              if (cloudTask) {
-                merged.push({ ...cloudTask, ...localTask });
-              } else {
-                merged.push(localTask);
-              }
-            }
-
-            for (const cloudTask of cloudPending) {
-              if (cloudTask && !processedIds.has(cloudTask.id)) {
-                merged.push(cloudTask);
-              }
-            }
-
-            return merged;
-          });
-        }
-
-        // Smart merge for Logged Tasks Today (union merge by unique key)
-        if (cloudData.loggedTasksToday !== undefined) {
-          setLoggedTasksToday((prevLocal) => {
-            const cloudTasks: Todo[] = cloudData.loggedTasksToday || [];
-            const mergedMap = new Map<string, Todo>();
-
-            for (const task of cloudTasks) {
-              if (!task) continue;
-              const key = task.id
-                ? `id_${task.id}`
-                : `${task.subject || ""}_${task.chapter || ""}_${task.type || ""}_${task.lectureNumber || ""}_${task.text || ""}`;
-              mergedMap.set(key, task);
-            }
-
-            for (const localTask of prevLocal) {
-              if (!localTask) continue;
-              const key = localTask.id
-                ? `id_${localTask.id}`
-                : `${localTask.subject || ""}_${localTask.chapter || ""}_${localTask.type || ""}_${localTask.lectureNumber || ""}_${localTask.text || ""}`;
-              mergedMap.set(key, localTask);
-            }
-
-            return Array.from(mergedMap.values());
-          });
-        }
 
         if (cloudData.syllabus !== undefined) setSyllabus(cloudData.syllabus);
-        if (cloudData.history !== undefined) setHistory(cloudData.history);
-        if (cloudData.practiceSessions !== undefined)
-          setPracticeSessions(cloudData.practiceSessions);
-        if (cloudData.playerName !== undefined)
-          setPlayerName(cloudData.playerName);
-        if (cloudData.equippedTitle !== undefined)
-          setEquippedTitle(cloudData.equippedTitle);
-        if (cloudData.equippedAura !== undefined)
-          setEquippedAura(cloudData.equippedAura);
-        if (cloudData.unlockedItems !== undefined)
-          setUnlockedItems(cloudData.unlockedItems);
-        if (cloudData.ongoingChapters !== undefined)
-          setOngoingChapters(cloudData.ongoingChapters);
-        if (cloudData.spentXpToday !== undefined)
-          setSpentXpToday(cloudData.spentXpToday);
-        if (cloudData.totalSpentXp !== undefined)
-          setTotalSpentXp(cloudData.totalSpentXp);
-        if (cloudData.dailyTarget !== undefined)
-          setDailyTarget(cloudData.dailyTarget);
-        if (cloudData.accuracy !== undefined) setAccuracy(cloudData.accuracy);
-        if (cloudData.speedScore !== undefined)
-          setSpeedScore(cloudData.speedScore);
-        if (cloudData.lastStudyDate !== undefined)
-          setLastStudyDate(cloudData.lastStudyDate);
-        if (cloudData.focusBadges !== undefined)
-          setFocusBadges(cloudData.focusBadges);
-        if (cloudData.activeBoost !== undefined)
-          setActiveBoost(cloudData.activeBoost);
-        if (cloudData.class11EndDate !== undefined)
-          setClass11EndDate(cloudData.class11EndDate);
-        if (cloudData.isClass11SetupDone !== undefined)
-          setIsClass11SetupDone(cloudData.isClass11SetupDone);
-        if (cloudData.backlogPriorities !== undefined)
-          setBacklogPriorities(cloudData.backlogPriorities);
-        if (cloudData.hasSeenRules !== undefined)
-          setHasSeenRules(cloudData.hasSeenRules);
+        if (cloudData.playerName !== undefined) setPlayerName(cloudData.playerName);
+        if (cloudData.equippedTitle !== undefined) setEquippedTitle(cloudData.equippedTitle);
+        if (cloudData.equippedAura !== undefined) setEquippedAura(cloudData.equippedAura);
+        if (cloudData.unlockedItems !== undefined) setUnlockedItems(cloudData.unlockedItems);
         if (cloudData.habits !== undefined) setHabits(cloudData.habits);
-        if (cloudData.lifeMetrics !== undefined)
-          setLifeMetrics(cloudData.lifeMetrics);
-        if (cloudData.monthlyGoals !== undefined)
-          setMonthlyGoals(cloudData.monthlyGoals);
-        if (cloudData.lastBossDayDate !== undefined)
-          setLastBossDayDate(cloudData.lastBossDayDate);
-        if (cloudData.bossDayTargetXp !== undefined)
-          setBossDayTargetXp(cloudData.bossDayTargetXp);
-        if (cloudData.bossDayCompleted !== undefined)
-          setBossDayCompleted(cloudData.bossDayCompleted);
-        if (cloudData.notificationSettings !== undefined)
-          setNotificationSettings(cloudData.notificationSettings);
-        if (cloudData.totalXpGoal !== undefined)
-          setTotalXpGoal(cloudData.totalXpGoal);
+        if (cloudData.lifeMetrics !== undefined) setLifeMetrics(cloudData.lifeMetrics);
+        if (cloudData.practiceSessions !== undefined) setPracticeSessions(cloudData.practiceSessions);
+        if (cloudData.ongoingChapters !== undefined) setOngoingChapters(cloudData.ongoingChapters);
+        if (cloudData.totalSpentXp !== undefined) setTotalSpentXp(cloudData.totalSpentXp);
+        if (cloudData.dailyTarget !== undefined) setDailyTarget(cloudData.dailyTarget);
+        if (cloudData.accuracy !== undefined) setAccuracy(cloudData.accuracy);
+        if (cloudData.speedScore !== undefined) setSpeedScore(cloudData.speedScore);
+        if (cloudData.focusBadges !== undefined) setFocusBadges(cloudData.focusBadges);
+        if (cloudData.activeBoost !== undefined) setActiveBoost(cloudData.activeBoost);
+        if (cloudData.class11EndDate !== undefined) setClass11EndDate(cloudData.class11EndDate);
+        if (cloudData.isClass11SetupDone !== undefined) setIsClass11SetupDone(cloudData.isClass11SetupDone);
+        if (cloudData.backlogPriorities !== undefined) setBacklogPriorities(cloudData.backlogPriorities);
+        if (cloudData.hasSeenRules !== undefined) setHasSeenRules(cloudData.hasSeenRules);
+        if (cloudData.monthlyGoals !== undefined) setMonthlyGoals(cloudData.monthlyGoals);
+        if (cloudData.lastBossDayDate !== undefined) setLastBossDayDate(cloudData.lastBossDayDate);
+        if (cloudData.bossDayTargetXp !== undefined) setBossDayTargetXp(cloudData.bossDayTargetXp);
+        if (cloudData.bossDayCompleted !== undefined) setBossDayCompleted(cloudData.bossDayCompleted);
+        if (cloudData.notificationSettings !== undefined) setNotificationSettings(cloudData.notificationSettings);
+        if (cloudData.totalXpGoal !== undefined) setTotalXpGoal(cloudData.totalXpGoal);
 
         setTimeout(() => {
           isRemoteSyncingRef.current = false;
-        }, 1000);
+        }, 500);
       },
     );
 
@@ -1233,6 +1247,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addXp = (amount: number): number => {
+    lastCalendarMutationTimeRef.current = 0;
     updateStreak();
     let finalAmount = amount * getStreakMultiplier();
 
@@ -1501,6 +1516,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHasSeenReminder,
       hasSeenRules,
       setHasSeenRules,
+      notifyCalendarMutation,
       todos,
       setTodos,
       updateTask,
@@ -1545,6 +1561,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFirebaseUser,
       hasToken,
       setHasToken,
+      isCloudSyncComplete,
       equippedTitle,
       setEquippedTitle,
       equippedAura,
@@ -1635,6 +1652,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFirebaseUser,
       hasToken,
       setHasToken,
+      isCloudSyncComplete,
       equippedTitle,
       setEquippedTitle,
       equippedAura,

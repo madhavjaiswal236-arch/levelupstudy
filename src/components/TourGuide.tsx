@@ -83,49 +83,55 @@ export function TourProvider({ children }: { children: ReactNode }) {
  const [tooltipReady, setTooltipReady] = useState(false);
  
  useEffect(() => {
- let rafId: number;
- let isReady = false;
+   let isReady = false;
 
- if (activeStep && activeRef?.current) {
- const updateTooltip = () => {
- if (!activeRef.current) return;
- const rect = activeRef.current.getBoundingClientRect();
- 
- let top = rect.top;
- let left = rect.left;
- 
- if (stepData?.position === 'top') {
- top = Math.max(16, rect.top - 16 - 220);
- left = Math.max(16, Math.min(window.innerWidth - 340, Math.max(16, rect.left)));
- } else if (stepData?.position === 'bottom') {
- top = Math.min(window.innerHeight - 240, rect.bottom + 16);
- left = Math.max(16, Math.min(window.innerWidth - 340, Math.max(16, rect.left)));
- } else if (stepData?.position === 'left') {
- top = rect.top;
- left = Math.max(16, Math.min(window.innerWidth - 340, rect.left - 320 - 16));
- } else if (stepData?.position === 'right') {
- top = rect.top;
- left = Math.max(16, Math.min(window.innerWidth - 340, rect.right + 16));
- }
- 
- tooltipX.set(left);
- tooltipY.set(top);
+   if (activeStep && activeRef?.current) {
+     const updateTooltip = () => {
+       if (!activeRef.current) return;
+       const rect = activeRef.current.getBoundingClientRect();
+       
+       let top = rect.top;
+       let left = rect.left;
+       
+       if (stepData?.position === 'top') {
+         top = Math.max(16, rect.top - 16 - 220);
+         left = Math.max(16, Math.min(window.innerWidth - 340, Math.max(16, rect.left)));
+       } else if (stepData?.position === 'bottom') {
+         top = Math.min(window.innerHeight - 240, rect.bottom + 16);
+         left = Math.max(16, Math.min(window.innerWidth - 340, Math.max(16, rect.left)));
+       } else if (stepData?.position === 'left') {
+         top = rect.top;
+         left = Math.max(16, Math.min(window.innerWidth - 340, rect.left - 320 - 16));
+       } else if (stepData?.position === 'right') {
+         top = rect.top;
+         left = Math.max(16, Math.min(window.innerWidth - 340, rect.right + 16));
+       }
+       
+       tooltipX.set(left);
+       tooltipY.set(top);
 
- if (!isReady) {
- isReady = true;
- setTooltipReady(true);
- }
- 
- rafId = requestAnimationFrame(updateTooltip);
- };
+       if (!isReady) {
+         isReady = true;
+         setTooltipReady(true);
+       }
+     };
 
- updateTooltip();
- 
- return () => {
- cancelAnimationFrame(rafId);
- setTooltipReady(false);
- };
- }
+     updateTooltip();
+
+     window.addEventListener('scroll', updateTooltip, { passive: true, capture: true });
+     window.addEventListener('resize', updateTooltip, { passive: true });
+
+     const targetEl = activeRef.current;
+     const observer = new ResizeObserver(updateTooltip);
+     if (targetEl) observer.observe(targetEl);
+
+     return () => {
+       window.removeEventListener('scroll', updateTooltip, { capture: true });
+       window.removeEventListener('resize', updateTooltip);
+       observer.disconnect();
+       setTooltipReady(false);
+     };
+   }
  }, [activeStep, activeRef, stepData, tooltipX, tooltipY]);
 
  return (
