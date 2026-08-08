@@ -70,26 +70,25 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
-let saveTimer: any = null;
-let pendingSaveData: { userId: string; data: any } | null = null;
+const userSaveTimers = new Map<string, any>();
+const pendingSaveDataMap = new Map<string, any>();
 
 export const saveUserDataToCloud = async (userId: string, data: any, immediate: boolean = false): Promise<boolean> => {
   if (!auth.currentUser || auth.currentUser.uid !== userId) return false;
-  pendingSaveData = { userId, data };
+  pendingSaveDataMap.set(userId, data);
 
   if (immediate) {
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
+    if (userSaveTimers.has(userId)) {
+      clearTimeout(userSaveTimers.get(userId));
+      userSaveTimers.delete(userId);
     }
-    if (!pendingSaveData) return false;
-    const { userId: targetUserId, data: targetData } = pendingSaveData;
-    pendingSaveData = null;
+    const targetData = pendingSaveDataMap.get(userId);
+    pendingSaveDataMap.delete(userId);
 
-    if (!auth.currentUser || auth.currentUser.uid !== targetUserId) return false;
-    const path = `users/${targetUserId}`;
+    if (!auth.currentUser || auth.currentUser.uid !== userId || !targetData) return false;
+    const path = `users/${userId}`;
     try {
-      const userRef = doc(db, 'users', targetUserId);
+      const userRef = doc(db, 'users', userId);
       await setDoc(userRef, {
         ...targetData,
         updatedAt: new Date().toISOString()
@@ -105,27 +104,23 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
     }
   }
 
-  if (saveTimer) {
-    clearTimeout(saveTimer);
+  if (userSaveTimers.has(userId)) {
+    clearTimeout(userSaveTimers.get(userId));
   }
 
   return new Promise((resolve) => {
-    saveTimer = setTimeout(async () => {
-      saveTimer = null;
-      if (!pendingSaveData) {
-        resolve(false);
-        return;
-      }
-      const { userId: targetUserId, data: targetData } = pendingSaveData;
-      pendingSaveData = null;
+    const timer = setTimeout(async () => {
+      userSaveTimers.delete(userId);
+      const targetData = pendingSaveDataMap.get(userId);
+      pendingSaveDataMap.delete(userId);
 
-      if (!auth.currentUser || auth.currentUser.uid !== targetUserId) {
+      if (!auth.currentUser || auth.currentUser.uid !== userId || !targetData) {
         resolve(false);
         return;
       }
-      const path = `users/${targetUserId}`;
+      const path = `users/${userId}`;
       try {
-        const userRef = doc(db, 'users', targetUserId);
+        const userRef = doc(db, 'users', userId);
         await setDoc(userRef, {
           ...targetData,
           updatedAt: new Date().toISOString()
@@ -141,6 +136,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
         resolve(false);
       }
     }, 800); // Reliable 800ms auto-save debounce
+    userSaveTimers.set(userId, timer);
   });
 };
 

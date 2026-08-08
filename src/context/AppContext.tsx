@@ -1445,18 +1445,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const roundedFinal = Math.round(finalAmount);
 
-    let newXpVal = 0;
-    let newLevelVal = 1;
+    const currentXp = xp;
+    const newXpVal = currentXp + roundedFinal;
+    const newLevelVal = Math.min(
+      100,
+      Math.floor(Math.pow(newXpVal / totalXpGoal, 0.5) * 99) + 1,
+    );
 
-    setXp((prev) => {
-      newXpVal = prev + roundedFinal;
-      newLevelVal = Math.min(
-        100,
-        Math.floor(Math.pow(newXpVal / totalXpGoal, 0.5) * 99) + 1,
-      );
-      return newXpVal;
-    });
-
+    setXp(newXpVal);
     setLevel(newLevelVal);
 
     setXpGainedToday((prev) => {

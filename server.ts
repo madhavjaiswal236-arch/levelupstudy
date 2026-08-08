@@ -163,10 +163,18 @@ function generateFeedbackEngine(data: any) {
 
 // API router - AI Coach
 app.post('/api/ai-coach', async (req, res) => {
-  const data = req.body;
-  const { hours, sleep, screenTime, completedTasks, plannedTasks, practiceSessions, xpEarned, targetXp, level, streakDays, history } = data;
+  const data = req.body || {};
+  const hours = sanitizeNumber(data.hours, 0, 24);
+  const sleep = sanitizeNumber(data.sleep, 0, 24);
+  const screenTime = sanitizeNumber(data.screenTime, 0, 24);
+  const { completedTasks, plannedTasks, practiceSessions, xpEarned, targetXp, level, streakDays, history } = data;
 
-  const fallbackResponse = generateFeedbackEngine(data);
+  const fallbackResponse = generateFeedbackEngine({
+    ...data,
+    hours,
+    sleep,
+    screenTime,
+  });
 
   if (!ai) {
     console.warn("GEMINI_API_KEY is not defined. Using pure logic engine.");
@@ -251,13 +259,15 @@ Closing: [Goggins-style push. e.g. "The IIT paper doesn't care how you felt yest
 });
 
 app.post("/api/dynamic-insight", async (req, res) => {
-  const { hoursToday, streak, accuracy, questionsSolved, target, pendingTasksCount, recentTaskTypes } = req.body;
+  const body = req.body || {};
+  const hrs = sanitizeNumber(body.hoursToday, 0, 24);
+  const streak = sanitizeNumber(body.streak, 0, 3650);
+  const acc = sanitizeNumber(body.accuracy, 0, 100);
+  const q = sanitizeNumber(body.questionsSolved, 0, 10000);
+  const tgt = sanitizeNumber(body.target, 0, 10000);
+  const pendingTasksCount = sanitizeNumber(body.pendingTasksCount, 0, 1000);
 
   let fallbackInsight = "Hours don't crack JEE. Output does. Hunt weaknesses and track problems solved.";
-  const hrs = hoursToday || 0;
-  const acc = accuracy || 0;
-  const q = questionsSolved || 0;
-  const tgt = target || 0;
 
   if (hrs < 2 && pendingTasksCount > 0) {
     fallbackInsight = `You didn't fail willpower; you failed environmental design. Phone in another room. Win the next 30 minutes.\n\n🔒 Lock: Motion beats stagnation. Break the pattern.`;
