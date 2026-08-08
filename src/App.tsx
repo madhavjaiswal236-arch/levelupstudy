@@ -192,16 +192,26 @@ function AppContent() {
   const processedHistoryRef = useRef(new Set<string>());
 
   const [showWelcomeHero, setShowWelcomeHero] = useState(false);
+  const [forceLoaded, setForceLoaded] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded) return;
+    const timer = setTimeout(() => {
+      setForceLoaded(true);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const effectiveLoaded = isLoaded || forceLoaded;
+
+  useEffect(() => {
+    if (!effectiveLoaded) return;
     const hasSeenForever = localStorage.getItem(
       "welcome_hero_dismissed_forever",
     );
     if (!hasSeenForever) {
       setShowWelcomeHero(true);
     }
-  }, [isLoaded]);
+  }, [effectiveLoaded]);
 
   const handleEnterApp = () => {
     localStorage.setItem("welcome_hero_dismissed_forever", "true");
@@ -988,19 +998,26 @@ function AppContent() {
     touchEndX.current = 0;
   };
 
-  if (!isLoaded) {
+  if (!effectiveLoaded) {
     return (
-      <div className="min-h-[100dvh] dark:bg-black bg-slate-50 flex flex-col items-center justify-center relative overflow-hidden dark:text-slate-200 text-slate-900 font-sans">
+      <div className="min-h-[100dvh] dark:bg-black bg-slate-50 flex flex-col items-center justify-center relative overflow-hidden dark:text-slate-200 text-slate-900 font-sans p-4">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(6,182,212,0.15)_0%,transparent_70%)]" />
         <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin z-10" />
         <p className="mt-4 dark:text-cyan-400 text-cyan-700/50 font-mono text-sm tracking-[0.3em] uppercase animate-pulse z-10">
           Initializing System...
         </p>
+        <button
+          type="button"
+          onClick={() => setForceLoaded(true)}
+          className="mt-6 z-10 px-5 py-2.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-mono text-xs tracking-wider uppercase transition-all cursor-pointer"
+        >
+          Open App Directly
+        </button>
       </div>
     );
   }
 
-  if (isLoaded && showWelcomeHero) {
+  if (effectiveLoaded && showWelcomeHero) {
     return (
       <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans select-none z-[10000]">
         {/* Background WebGL Shader Animation now rendered in front of the card */}
@@ -1008,11 +1025,13 @@ function AppContent() {
           className="absolute inset-0 z-30 opacity-90 pointer-events-none mix-blend-screen"
           style={{ mixBlendMode: "screen" }}
         >
-          <Suspense
-            fallback={<div className="absolute inset-0 bg-transparent" />}
-          >
-            <WebGLShader />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense
+              fallback={<div className="absolute inset-0 bg-transparent" />}
+            >
+              <WebGLShader />
+            </Suspense>
+          </ErrorBoundary>
         </div>
 
         {/* Ambient Overlay to darken background slightly and make text pop */}

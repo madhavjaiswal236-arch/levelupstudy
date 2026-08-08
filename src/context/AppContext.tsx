@@ -421,18 +421,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Load state on mount
+  // Load state on mount with safety fallback timeout
   useEffect(() => {
-    const loadState = async () => {
-      let saved: string | null = null;
-      if (Capacitor.isNativePlatform()) {
-        const { value } = await Preferences.get({ key: LOCAL_STORAGE_KEY });
-        saved = value;
-      } else {
-        saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    let unmounted = false;
+    const safetyTimeout = setTimeout(() => {
+      if (!unmounted) {
+        setIsLoaded(true);
       }
+    }, 1500);
 
-      if (saved) {
+    const loadState = async () => {
+      try {
+        let saved: string | null = null;
+        if (Capacitor.isNativePlatform()) {
+          const { value } = await Preferences.get({ key: LOCAL_STORAGE_KEY });
+          saved = value;
+        } else {
+          saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        }
+
+        if (saved) {
         try {
           const parsed = JSON.parse(saved);
           setXp(parsed.xp || 0);
@@ -481,20 +489,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
               );
             }
 
-            if (lastSessionXp < dailyRequiredForCalc * 0.4) {
-              missingDates.push(lastDate.toISOString());
-            }
+            if (!isNaN(lastDate.getTime())) {
+              const lastSessionXp = parsed.xpGainedToday || 0;
+              let dailyRequiredForCalc = parsed.dailyTarget || 100;
+              if (parsed.class11EndDate) {
+                const class11EndTimestamp = new Date(
+                  parsed.class11EndDate,
+                ).getTime();
+                const daysUntilExam = Math.max(
+                  1,
+                  Math.ceil(
+                    (class11EndTimestamp - Date.now()) / (1000 * 3600 * 24),
+                  ),
+                );
+                const totalXpRequired = Math.max(
+                  0,
+                  (parsed.totalXpGoal || 800000) - (parsed.xp || 0),
+                );
+                dailyRequiredForCalc = Math.max(
+                  100,
+                  Math.ceil(totalXpRequired / daysUntilExam),
+                );
+              }
 
-            const tempDate = new Date(lastDate);
-            tempDate.setDate(tempDate.getDate() + 1);
+              if (lastSessionXp < dailyRequiredForCalc * 0.4) {
+                missingDates.push(lastDate.toISOString());
+              }
 
-            while (tempDate.toDateString() !== todayDateString) {
-              missingDates.push(tempDate.toISOString());
+              const tempDate = new Date(lastDate);
               tempDate.setDate(tempDate.getDate() + 1);
-            }
 
-            if (missingDates.length > 0) {
-              setPendingMissedDays(missingDates);
+              let safetyCounter = 0;
+              while (
+                !isNaN(tempDate.getTime()) &&
+                tempDate.toDateString() !== todayDateString &&
+                tempDate < today &&
+                safetyCounter < 60
+              ) {
+                missingDates.push(tempDate.toISOString());
+                tempDate.setDate(tempDate.getDate() + 1);
+                safetyCounter++;
+              }
+
+              if (missingDates.length > 0) {
+                setPendingMissedDays(missingDates);
+              }
             }
           }
           setXpGainedToday(parsed.xpGainedToday || 0);
@@ -609,9 +648,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.error("Failed to parse local storage", e);
         }
       }
-      setIsLoaded(true);
+      } catch (err) {
+        console.error("Error in loadState:", err);
+      } finally {
+        if (!unmounted) {
+          clearTimeout(safetyTimeout);
+          setIsLoaded(true);
+        }
+      }
     };
     loadState();
+    return () => {
+      unmounted = true;
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   // Save state on change
@@ -1144,38 +1194,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         // 2. Fill in gaps up to yesterday if the lastDate was before yesterday
         let currDate = new Date(lastDate);
-        currDate.setDate(currDate.getDate() + 1);
-
-        while (currDate.toDateString() !== getLogicalDate().toDateString()) {
-          if (
-            !updatedHistory.some(
-              (h) =>
-                new Date(h.date).toDateString() === currDate.toDateString(),
-            )
-          ) {
-            const isYesterday =
-              currDate.toDateString() === yesterday.toDateString();
-
-            const sleepUsed =
-              isYesterday && overrideSleep !== undefined ? overrideSleep : 0;
-            const screenUsed =
-              isYesterday && overrideScreen !== undefined ? overrideScreen : 0;
-
-            const missedReason = "Unaccounted absence";
-
-            updatedHistory.push({
-              date: currDate.toISOString(),
-              hoursStudied: 0,
-              xpEarned: 0,
-              completedTasks: [],
-              plannedTasks: [],
-              sleepTime: sleepUsed,
-              screenTime: screenUsed,
-              isMissed: true,
-              missedReason: missedReason,
-            });
-          }
+        if (!isNaN(currDate.getTime())) {
           currDate.setDate(currDate.getDate() + 1);
+
+          let safetyCounter = 0;
+          const logicalToday = getLogicalDate();
+          const logicalTodayStr = logicalToday.toDateString();
+          while (
+            !isNaN(currDate.getTime()) &&
+            currDate.toDateString() !== logicalTodayStr &&
+            currDate < logicalToday &&
+            safetyCounter < 60
+          ) {
+            if (
+              !updatedHistory.some(
+                (h) =>
+                  new Date(h.date).toDateString() === currDate.toDateString(),
+              )
+            ) {
+              const isYesterday =
+                currDate.toDateString() === yesterday.toDateString();
+
+              const sleepUsed =
+                isYesterday && overrideSleep !== undefined ? overrideSleep : 0;
+              const screenUsed =
+                isYesterday && overrideScreen !== undefined ? overrideScreen : 0;
+
+              const missedReason = "Unaccounted absence";
+
+              updatedHistory.push({
+                date: currDate.toISOString(),
+                hoursStudied: 0,
+                xpEarned: 0,
+                completedTasks: [],
+                plannedTasks: [],
+                sleepTime: sleepUsed,
+                screenTime: screenUsed,
+                isMissed: true,
+                missedReason: missedReason,
+              });
+            }
+            currDate.setDate(currDate.getDate() + 1);
+            safetyCounter++;
+          }
         }
 
         return updatedHistory;
