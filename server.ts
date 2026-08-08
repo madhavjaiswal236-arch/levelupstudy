@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 
 const app = express();
 app.set('trust proxy', 1);
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Middleware to parse requests
 app.use(express.json());
@@ -49,6 +49,12 @@ function sanitizePromptText(text: string): string {
     .replace(/[^\w\s\-\.\,\?\!\:\;]/gi, ' ')
     .slice(0, 100)
     .trim();
+}
+
+function sanitizeNumber(val: any, min: number = 0, max: number = 100000): number {
+  const num = Number(val);
+  if (isNaN(num)) return min;
+  return Math.max(min, Math.min(max, num));
 }
 
 const apiLimiter = rateLimit({

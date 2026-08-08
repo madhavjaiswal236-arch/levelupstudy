@@ -658,13 +658,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setDailyTarget(parsed.dailyTarget || 100);
           setAccuracy(parsed.accuracy || 0);
           setSpeedScore(parsed.speedScore || 0);
-          setFocusBadges(parsed.focusBadges || 0);
-          setSyllabus(parsed.syllabus || initialSyllabusData);
-          setActiveBoost(parsed.activeBoost || null);
-          setPlayerName(parsed.playerName || "Player 1");
-          setLoggedTasksToday(parsed.loggedTasksToday || []);
-          if (parsed.notificationSettings)
-            setNotificationSettings(parsed.notificationSettings);
           if (parsed.notificationSettings) {
             setNotificationSettings(parsed.notificationSettings);
           }

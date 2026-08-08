@@ -311,7 +311,7 @@ export const getAccessTokenSync = (): string | null => {
   if (cachedAccessToken) {
     const expiresAtStr = sessionStorage.getItem('google_access_token_expires_at');
     const expiresAt = expiresAtStr ? parseInt(expiresAtStr) : 0;
-    if (expiresAt > 0 && Date.now() + 5 * 60 * 1000 > expiresAt) {
+    if (expiresAt > 0 && Date.now() >= expiresAt - 5 * 60 * 1000) {
       console.log("Access token expired (or expiring soon). Returning null.");
       cachedAccessToken = null;
       sessionStorage.removeItem('google_access_token');

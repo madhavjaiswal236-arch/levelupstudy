@@ -29,20 +29,26 @@ export function useNotificationScheduler({
   const lastStreakAlertRef = useRef<number>(0);
   const notifiedBlocksRef = useRef<Set<string>>(new Set());
 
+  const stateRef = useRef({ notificationSettings, todos, streakDays, hoursStudiedToday, dailyTarget });
+  useEffect(() => {
+    stateRef.current = { notificationSettings, todos, streakDays, hoursStudiedToday, dailyTarget };
+  });
+
   useEffect(() => {
     if (!isLoaded) return;
 
     const checkAndTrigger = () => {
+      const { notificationSettings: settings, todos: currentTodos, streakDays: streak, hoursStudiedToday: hours } = stateRef.current;
       const now = Date.now();
       const currentDate = new Date();
       const currentHour = currentDate.getHours();
 
       // 1. Motivational Notifications
-      if (notificationSettings.motivationalAlerts) {
+      if (settings.motivationalAlerts) {
         let minIntervalMs = 25 * 60 * 1000; // default 'high' (25 mins)
-        if (notificationSettings.frequency === 'balanced') {
+        if (settings.frequency === 'balanced') {
           minIntervalMs = 50 * 60 * 1000;
-        } else if (notificationSettings.frequency === 'gentle') {
+        } else if (settings.frequency === 'gentle') {
           minIntervalMs = 120 * 60 * 1000;
         }
 
@@ -53,12 +59,11 @@ export function useNotificationScheduler({
       }
 
       // 2. Task Reminders
-      if (notificationSettings.taskReminders) {
-        const pending = todos.filter(t => !t.completed);
-        const taskReminderIntervalMs = notificationSettings.frequency === 'high' ? 20 * 60 * 1000 : 45 * 60 * 1000;
+      if (settings.taskReminders) {
+        const pending = currentTodos.filter(t => !t.completed);
+        const taskReminderIntervalMs = settings.frequency === 'high' ? 20 * 60 * 1000 : 45 * 60 * 1000;
 
         if (pending.length > 0 && now - lastTaskReminderRef.current >= taskReminderIntervalMs) {
-          // Find high priority task or upcoming scheduled task
           const urgentTask = pending.find(t => t.priority === 'High') || pending[0];
           lastTaskReminderRef.current = now;
           triggerTaskReminder(urgentTask.text, pending.length);
@@ -66,8 +71,8 @@ export function useNotificationScheduler({
       }
 
       // 3. Scheduled Study Block Reminders
-      if (notificationSettings.studyBlockReminders) {
-        todos.forEach(task => {
+      if (settings.studyBlockReminders) {
+        currentTodos.forEach(task => {
           if (task.completed || !task.startTime) return;
           const startMs = new Date(task.startTime).getTime();
           const endMs = task.endTime ? new Date(task.endTime).getTime() : startMs + 45 * 60 * 1000;
@@ -93,13 +98,13 @@ export function useNotificationScheduler({
       }
 
       // 4. Streak Protection Alerts at crucial times (2 PM, 6 PM, 9 PM, 11 PM)
-      if (notificationSettings.streakProtectionAlerts) {
+      if (settings.streakProtectionAlerts) {
         const streakAlertHours = [14, 18, 21, 23];
-        if (streakAlertHours.includes(currentHour) && hoursStudiedToday < 0.5) {
+        if (streakAlertHours.includes(currentHour) && hours < 0.5) {
           const alertKey = `streak_alert_${currentDate.toDateString()}_${currentHour}`;
           if (!notifiedBlocksRef.current.has(alertKey)) {
             notifiedBlocksRef.current.add(alertKey);
-            triggerStreakProtectionAlert(streakDays, hoursStudiedToday);
+            triggerStreakProtectionAlert(streak, hours);
           }
         }
       }
@@ -115,12 +120,5 @@ export function useNotificationScheduler({
       clearTimeout(initialTimeout);
       clearInterval(interval);
     };
-  }, [
-    isLoaded,
-    notificationSettings,
-    todos,
-    streakDays,
-    hoursStudiedToday,
-    dailyTarget
-  ]);
+  }, [isLoaded]);
 }
