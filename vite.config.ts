@@ -16,15 +16,19 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      target: 'es2020',
+      cssCodeSplit: true,
       rollupOptions: {
         output: {
-          manualChunks: {
-             react: ['react', 'react-dom'],
-             firebase: ['firebase/app', 'firebase/firestore', 'firebase/auth'],
-             three: ['three', '@react-three/fiber', '@react-three/drei'],
-             icons: ['lucide-react'],
-             motion: ['motion'],
-             recharts: ['recharts']
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
+              if (id.includes('firebase')) return 'vendor-firebase';
+              if (id.includes('lucide-react')) return 'vendor-icons';
+              if (id.includes('recharts') || id.includes('d3')) return 'vendor-charts';
+              if (id.includes('three') || id.includes('@react-three')) return 'vendor-3d';
+              if (id.includes('motion')) return 'vendor-motion';
+            }
           }
         }
       }

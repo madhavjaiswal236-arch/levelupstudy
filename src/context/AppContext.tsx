@@ -773,10 +773,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsCloudSyncComplete(false);
     let cancelled = false;
 
+    // Timeout safety net: Ensure app is marked as synced within 1.5 seconds max
+    const syncTimeout = setTimeout(() => {
+      if (!cancelled) {
+        setIsCloudSyncComplete(true);
+      }
+    }, 1500);
+
     const syncCloudOnLogin = async () => {
       try {
         const cloudData = await loadUserDataFromCloud(firebaseUser.uid);
         if (cancelled) return;
+        clearTimeout(syncTimeout);
 
         if (!cloudData) {
           setIsCloudSyncComplete(true);
@@ -847,6 +855,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }, 300);
       } catch (err) {
         console.error("Cloud login sync error:", err);
+        clearTimeout(syncTimeout);
         setIsCloudSyncComplete(true);
       }
     };
@@ -855,6 +864,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      clearTimeout(syncTimeout);
     };
   }, [firebaseUser]);
 

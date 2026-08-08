@@ -41,10 +41,16 @@ async function initStorage() {
   }
 }
 
-initStorage().then(() => {
+const renderApp = () => {
   createRoot(document.getElementById('root')!).render(
-   <StrictMode>
-   <App />
-   </StrictMode>,
+    <StrictMode>
+      <App />
+    </StrictMode>,
   );
-});
+};
+
+if (Capacitor.isNativePlatform()) {
+  initStorage().then(renderApp);
+} else {
+  renderApp();
+}

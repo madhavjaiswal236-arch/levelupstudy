@@ -179,8 +179,9 @@ let pendingSignInPromise: Promise<{ user: User; accessToken: string } | null> | 
 export const initAuth = (
  onAuthChange?: (user: User | null, token: string | null) => void
 ) => {
- if (!Capacitor.isNativePlatform()) {
+ if (!Capacitor.isNativePlatform() && sessionStorage.getItem('auth_redirect_in_progress') === 'true') {
     getRedirectResult(auth).then((result) => {
+      sessionStorage.removeItem('auth_redirect_in_progress');
       if (result) {
         const credential = GoogleAuthProvider.credentialFromResult(result);
         if (credential?.accessToken) {
@@ -191,7 +192,10 @@ export const initAuth = (
           if (onAuthChange) onAuthChange(result.user, cachedAccessToken);
         }
       }
-    }).catch(console.error);
+    }).catch((err) => {
+      sessionStorage.removeItem('auth_redirect_in_progress');
+      console.error(err);
+    });
  }
 
  return onAuthStateChanged(auth, async (user: User | null) => {
@@ -271,6 +275,7 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
         // Check if popup was blocked or iframe restriction triggered
         if (useRedirectIfBlocked && !Capacitor.isNativePlatform()) {
           console.log('Attempting fallback signInWithRedirect...');
+          sessionStorage.setItem('auth_redirect_in_progress', 'true');
           await signInWithRedirect(auth, getProvider());
           return null;
         }
