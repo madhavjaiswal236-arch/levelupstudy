@@ -295,6 +295,8 @@ interface AppState {
   getCurrentChapterForSubject: (subj: string) => string | null;
   saveStateToCloudNow: (overrides?: Partial<Record<string, any>>) => Promise<boolean>;
   scheduleBacklogTask: (task: Todo) => Promise<void>;
+  notifyCalendarPreviewOpened: () => void;
+  notifyCalendarPreviewClosed: () => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -393,9 +395,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [equippedTitle, setEquippedTitle] = useState<string>("");
   const [equippedAura, setEquippedAura] = useState<string>("");
   const [unlockedItems, setUnlockedItems] = useState<string[]>([]);
-  const [ongoingChapters, setOngoingChapters] = useState<
-    Record<string, string>
-  >({});
+  const [ongoingChapters, setOngoingChapters] = useState<Record<string, string>>({});
+  const isCalendarPreviewOpenRef = useRef(false);
+  const calendarSyncTimerRef = useRef<any>(null);
+
+  const notifyCalendarPreviewOpened = useCallback(() => {
+    isCalendarPreviewOpenRef.current = true;
+    if (calendarSyncTimerRef.current) {
+      clearTimeout(calendarSyncTimerRef.current);
+      calendarSyncTimerRef.current = null;
+    }
+  }, []);
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>({
       taskReminders: true,
@@ -739,7 +749,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (
         firebaseUser?.uid &&
         isCloudSyncComplete &&
-        !isRemoteSyncingRef.current
+        !isRemoteSyncingRef.current &&
+        !isCalendarPreviewOpenRef.current
       ) {
         if (jsonString !== lastSavedCloudJsonRef.current) {
           lastSavedCloudJsonRef.current = jsonString;
@@ -1099,25 +1110,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
+  const latestStateRef = useRef<any>({});
+
+  useEffect(() => {
+    latestStateRef.current = {
+      xp,
+      xpGainedToday,
+      spentXpToday,
+      totalSpentXp,
+      hoursStudiedToday,
+      level,
+      questionsSolved,
+      dailyTarget,
+      accuracy,
+      speedScore,
+      streakDays,
+      lastStudyDate,
+      focusBadges,
+      syllabus,
+      activeBoost,
+      class11EndDate,
+      isClass11SetupDone,
+      backlogPriorities,
+      todos,
+      loggedTasksToday,
+      pendingTasks,
+      history,
+      practiceSessions,
+      playerName,
+      hasSeenRules,
+      habits,
+      lifeMetrics,
+      monthlyGoals,
+      lastBossDayDate,
+      bossDayTargetXp,
+      bossDayCompleted,
+      equippedTitle,
+      equippedAura,
+      unlockedItems,
+      notificationSettings,
+      totalXpGoal,
+      ongoingChapters,
+    };
+  });
+
   const updateTask = (id: number, updates: Partial<Todo>) => {
+    let updatedTodosList: Todo[] = [];
     setTodos((prev) => {
-      const newTodos = prev.map((t) =>
+      updatedTodosList = prev.map((t) =>
         t.id === id ? { ...t, ...updates } : t,
       );
-
-      // Dispatch a custom broadcast event so independent components (like Calendar Preview) can re-sync if needed
-      window.dispatchEvent(
-        new CustomEvent("task-updated", {
-          detail: { id, updates, updatedTodos: newTodos },
-        }),
-      );
-
-      return newTodos;
+      return updatedTodosList;
     });
+
+    // Dispatch a custom broadcast event so independent components (like Calendar Preview) can re-sync if needed
+    window.dispatchEvent(
+      new CustomEvent("task-updated", {
+        detail: { id, updates, updatedTodos: updatedTodosList },
+      }),
+    );
+
+    if (updates.completed !== undefined) {
+      queueMicrotask(() => {
+        saveStateToCloudNow({ todos: updatedTodosList });
+      });
+    }
   };
 
   const completeRollover = (sleepInput: number, screenTimeInput: number) => {
     updateStreak(sleepInput, screenTimeInput);
+    setTimeout(() => {
+      saveStateToCloudNow();
+    }, 100);
   };
 
   // Check and update streak on load or when logging session
@@ -1388,15 +1452,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const roundedFinal = Math.round(finalAmount);
 
+    let newXpVal = 0;
+    let newLevelVal = 1;
+
     setXp((prev) => {
-      const newXp = prev + roundedFinal;
-      const newLevel = Math.min(
+      newXpVal = prev + roundedFinal;
+      newLevelVal = Math.min(
         100,
-        Math.floor(Math.pow(newXp / totalXpGoal, 0.5) * 99) + 1,
+        Math.floor(Math.pow(newXpVal / totalXpGoal, 0.5) * 99) + 1,
       );
-      setLevel(newLevel);
-      return newXp;
+      return newXpVal;
     });
+
+    setLevel(newLevelVal);
+
     setXpGainedToday((prev) => {
       const newXpGained = prev + roundedFinal;
       // Check boss day completion
@@ -1409,6 +1478,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPendingBossDayBonus(true); // slight delay to avoid state overlap issues
       }
       return newXpGained;
+    });
+
+    queueMicrotask(() => {
+      saveStateToCloudNow({ xp: newXpVal, level: newLevelVal });
     });
 
     return roundedFinal;
@@ -1610,43 +1683,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
       if (!isLoaded) return false;
       const stateToSave = {
-        xp,
-        xpGainedToday,
-        spentXpToday,
-        totalSpentXp,
-        hoursStudiedToday,
-        level,
-        questionsSolved,
-        dailyTarget,
-        accuracy,
-        speedScore,
-        streakDays,
-        lastStudyDate,
-        focusBadges,
-        syllabus,
-        activeBoost,
-        class11EndDate,
-        isClass11SetupDone,
-        backlogPriorities,
-        todos,
-        loggedTasksToday,
-        pendingTasks,
-        history,
-        practiceSessions,
-        playerName,
-        hasSeenRules,
-        habits,
-        lifeMetrics,
-        monthlyGoals,
-        lastBossDayDate,
-        bossDayTargetXp,
-        bossDayCompleted,
-        equippedTitle,
-        equippedAura,
-        unlockedItems,
-        notificationSettings,
-        totalXpGoal,
-        ongoingChapters,
+        ...latestStateRef.current,
         ...overrides,
       };
       const jsonString = JSON.stringify(stateToSave);
@@ -1662,48 +1699,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return true;
     },
-    [
-      isLoaded,
-      firebaseUser,
-      xp,
-      xpGainedToday,
-      spentXpToday,
-      totalSpentXp,
-      hoursStudiedToday,
-      level,
-      questionsSolved,
-      dailyTarget,
-      accuracy,
-      speedScore,
-      streakDays,
-      lastStudyDate,
-      focusBadges,
-      syllabus,
-      activeBoost,
-      class11EndDate,
-      isClass11SetupDone,
-      backlogPriorities,
-      todos,
-      loggedTasksToday,
-      pendingTasks,
-      history,
-      practiceSessions,
-      playerName,
-      hasSeenRules,
-      habits,
-      lifeMetrics,
-      monthlyGoals,
-      lastBossDayDate,
-      bossDayTargetXp,
-      bossDayCompleted,
-      equippedTitle,
-      equippedAura,
-      unlockedItems,
-      notificationSettings,
-      totalXpGoal,
-      ongoingChapters,
-    ],
+    [isLoaded, firebaseUser],
   );
+
+  const notifyCalendarPreviewClosed = useCallback(() => {
+    isCalendarPreviewOpenRef.current = false;
+    if (calendarSyncTimerRef.current) {
+      clearTimeout(calendarSyncTimerRef.current);
+    }
+    // Schedule cloud sync 1 minute (60,000 ms) after calendar preview is closed
+    calendarSyncTimerRef.current = setTimeout(() => {
+      calendarSyncTimerRef.current = null;
+      saveStateToCloudNow();
+    }, 60000);
+  }, [saveStateToCloudNow]);
 
   const scheduleBacklogTask = useCallback(
     async (task: Todo): Promise<void> => {
@@ -1825,6 +1834,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       getCurrentChapterForSubject,
       saveStateToCloudNow,
       scheduleBacklogTask,
+      notifyCalendarPreviewOpened,
+      notifyCalendarPreviewClosed,
     }),
     [
       xp,
@@ -1917,6 +1928,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       getCurrentChapterForSubject,
       saveStateToCloudNow,
       scheduleBacklogTask,
+      notifyCalendarPreviewOpened,
+      notifyCalendarPreviewClosed,
     ],
   );
 

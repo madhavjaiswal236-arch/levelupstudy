@@ -85,7 +85,16 @@ export function StudyCalendar({
     xp,
     history,
     getCurrentChapterForSubject,
+    notifyCalendarPreviewOpened,
+    notifyCalendarPreviewClosed,
   } = useAppContext();
+
+  useEffect(() => {
+    notifyCalendarPreviewOpened?.();
+    return () => {
+      notifyCalendarPreviewClosed?.();
+    };
+  }, [notifyCalendarPreviewOpened, notifyCalendarPreviewClosed]);
 
   const setCalendarTodos = useCallback<typeof setTodos>(
     (action) => {

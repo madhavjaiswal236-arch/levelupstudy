@@ -857,7 +857,9 @@ export default function Dashboard() {
             !t.completed),
       );
       if (isDuplicate) return prev;
-      return [...prev, newTask];
+      const updated = [...prev, newTask];
+      saveStateToCloudNow({ todos: updated });
+      return updated;
     });
     resetTaskAdder();
 
@@ -1222,7 +1224,9 @@ export default function Dashboard() {
 
   const deleteTodo = async (id: number) => {
     const todoToDelete = todos.find((t) => t.id === id);
-    setTodos(todos.filter((t) => t.id !== id));
+    const updatedTodos = todos.filter((t) => t.id !== id);
+    setTodos(updatedTodos);
+    saveStateToCloudNow({ todos: updatedTodos });
 
     if (todoToDelete?.calendarEventId) {
       try {
