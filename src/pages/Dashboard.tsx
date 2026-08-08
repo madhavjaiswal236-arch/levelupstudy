@@ -254,6 +254,8 @@ export default function Dashboard() {
     setClass11EndDate,
     history,
     getCurrentChapterForSubject,
+    scheduleBacklogTask,
+    saveStateToCloudNow,
   } = useAppContext();
 
   const { activeStep, setActiveStep, hasCompleted } = useTour();
@@ -1000,9 +1002,8 @@ export default function Dashboard() {
   };
 
   const handleStartBacklog = async (task: any) => {
-    // 1. Move it to todos first to show immediately
-    setTodos((prev) => [...prev, { ...task, completed: false }]);
-    setPendingTasks((prev) => prev.filter((pt) => pt.id !== task.id));
+    // 1. Move to todos and immediately save to Firestore BEFORE calendar auth/sync!
+    await scheduleBacklogTask(task);
 
     // 2. Schedule it with calendar
     try {
@@ -1054,20 +1055,20 @@ export default function Dashboard() {
           );
         }
 
-        setTodos((prev) =>
-          prev.map((t) =>
-            t.id === task.id
-              ? {
-                  ...t,
-                  calendarSynced: true,
-                  calendarEventId: result.id,
-                  calendarTaskId: taskResult ? taskResult.id : undefined,
-                  startTime: result.startTime,
-                  endTime: result.endTime,
-                }
-              : t,
-          ),
+        const updatedTodos = todos.map((t) =>
+          t.id === task.id
+            ? {
+                ...t,
+                calendarSynced: true,
+                calendarEventId: result.id,
+                calendarTaskId: taskResult ? taskResult.id : undefined,
+                startTime: result.startTime,
+                endTime: result.endTime,
+              }
+            : t,
         );
+        setTodos(updatedTodos);
+        await saveStateToCloudNow({ todos: updatedTodos });
 
         if (result.hasConflict) {
           showToast(
@@ -1126,20 +1127,20 @@ export default function Dashboard() {
                   "Event created, but failed to sync Task. (Enable Tasks API in Cloud Console)",
                 );
               }
-              setTodos((prev) =>
-                prev.map((t) =>
-                  t.id === task.id
-                    ? {
-                        ...t,
-                        calendarSynced: true,
-                        calendarEventId: result.id,
-                        calendarTaskId: taskResult ? taskResult.id : undefined,
-                        startTime: result.startTime,
-                        endTime: result.endTime,
-                      }
-                    : t,
-                ),
+              const updatedTodos = todos.map((t) =>
+                t.id === task.id
+                  ? {
+                      ...t,
+                      calendarSynced: true,
+                      calendarEventId: result.id,
+                      calendarTaskId: taskResult ? taskResult.id : undefined,
+                      startTime: result.startTime,
+                      endTime: result.endTime,
+                    }
+                  : t,
               );
+              setTodos(updatedTodos);
+              await saveStateToCloudNow({ todos: updatedTodos });
               if (result.hasConflict) {
                 showToast(
                   "Warning: This task overlaps with an existing calendar event!",

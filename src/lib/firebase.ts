@@ -73,8 +73,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 let saveTimer: any = null;
 let pendingSaveData: { userId: string; data: any } | null = null;
 
-export const saveUserDataToCloud = (userId: string, data: any, immediate: boolean = false) => {
-  if (!auth.currentUser || auth.currentUser.uid !== userId) return;
+export const saveUserDataToCloud = async (userId: string, data: any, immediate: boolean = false): Promise<boolean> => {
+  if (!auth.currentUser || auth.currentUser.uid !== userId) return false;
   pendingSaveData = { userId, data };
 
   if (immediate) {
@@ -82,41 +82,11 @@ export const saveUserDataToCloud = (userId: string, data: any, immediate: boolea
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    if (!pendingSaveData) return;
+    if (!pendingSaveData) return false;
     const { userId: targetUserId, data: targetData } = pendingSaveData;
     pendingSaveData = null;
 
-    if (!auth.currentUser || auth.currentUser.uid !== targetUserId) return;
-    const path = `users/${targetUserId}`;
-    try {
-      const userRef = doc(db, 'users', targetUserId);
-      setDoc(userRef, {
-        ...targetData,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch((err: any) => {
-        if (err?.code === 'permission-denied' || err?.code === 'resource-exhausted' || err?.message?.includes('permission') || err?.message?.includes('exhausted')) {
-          console.warn('Firestore write throttled or waiting for connection:', err?.message || err);
-          return;
-        }
-        handleFirestoreError(err, OperationType.WRITE, path);
-      });
-    } catch (err: any) {
-      handleFirestoreError(err, OperationType.WRITE, path);
-    }
-    return;
-  }
-
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-  }
-
-  saveTimer = setTimeout(async () => {
-    saveTimer = null;
-    if (!pendingSaveData) return;
-    const { userId: targetUserId, data: targetData } = pendingSaveData;
-    pendingSaveData = null;
-
-    if (!auth.currentUser || auth.currentUser.uid !== targetUserId) return;
+    if (!auth.currentUser || auth.currentUser.uid !== targetUserId) return false;
     const path = `users/${targetUserId}`;
     try {
       const userRef = doc(db, 'users', targetUserId);
@@ -124,14 +94,54 @@ export const saveUserDataToCloud = (userId: string, data: any, immediate: boolea
         ...targetData,
         updatedAt: new Date().toISOString()
       }, { merge: true });
+      return true;
     } catch (err: any) {
       if (err?.code === 'permission-denied' || err?.code === 'resource-exhausted' || err?.message?.includes('permission') || err?.message?.includes('exhausted')) {
         console.warn('Firestore write throttled or waiting for connection:', err?.message || err);
-        return;
+        return false;
       }
       handleFirestoreError(err, OperationType.WRITE, path);
+      return false;
     }
-  }, 800); // Fast 800ms auto-save debounce
+  }
+
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+  }
+
+  return new Promise((resolve) => {
+    saveTimer = setTimeout(async () => {
+      saveTimer = null;
+      if (!pendingSaveData) {
+        resolve(false);
+        return;
+      }
+      const { userId: targetUserId, data: targetData } = pendingSaveData;
+      pendingSaveData = null;
+
+      if (!auth.currentUser || auth.currentUser.uid !== targetUserId) {
+        resolve(false);
+        return;
+      }
+      const path = `users/${targetUserId}`;
+      try {
+        const userRef = doc(db, 'users', targetUserId);
+        await setDoc(userRef, {
+          ...targetData,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        resolve(true);
+      } catch (err: any) {
+        if (err?.code === 'permission-denied' || err?.code === 'resource-exhausted' || err?.message?.includes('permission') || err?.message?.includes('exhausted')) {
+          console.warn('Firestore write throttled or waiting for connection:', err?.message || err);
+          resolve(false);
+          return;
+        }
+        handleFirestoreError(err, OperationType.WRITE, path);
+        resolve(false);
+      }
+    }, 800); // Reliable 800ms auto-save debounce
+  });
 };
 
 // Load user data from Firestore

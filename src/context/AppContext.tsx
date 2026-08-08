@@ -175,6 +175,7 @@ export interface NotificationSettings {
   streakProtectionAlerts: boolean;
   soundEnabled: boolean;
   frequency: "high" | "balanced" | "gentle";
+  rolloverTime?: string;
 }
 
 interface AppState {
@@ -292,23 +293,36 @@ interface AppState {
     React.SetStateAction<Record<string, string>>
   >;
   getCurrentChapterForSubject: (subj: string) => string | null;
+  saveStateToCloudNow: (overrides?: Partial<Record<string, any>>) => Promise<boolean>;
+  scheduleBacklogTask: (task: Todo) => Promise<void>;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
 
-export const getLogicalDate = () => {
+export const getLogicalDate = (customRolloverTime?: string) => {
   const d = new Date();
   let offset = 3;
-  try {
-    const saved = localStorage.getItem("app_settings_extended");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.rolloverTime) {
-        const [hours] = parsed.rolloverTime.split(":");
-        offset = parseInt(hours, 10);
+  let timeStr = customRolloverTime;
+  if (!timeStr) {
+    try {
+      const saved = localStorage.getItem("app_settings_extended");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.rolloverTime) {
+          timeStr = parsed.rolloverTime;
+        }
+      }
+    } catch (e) {}
+  }
+  if (timeStr) {
+    const [hours] = timeStr.split(":");
+    if (hours !== undefined) {
+      const parsedHours = parseInt(hours, 10);
+      if (!isNaN(parsedHours)) {
+        offset = parsedHours;
       }
     }
-  } catch (e) {}
+  }
   d.setHours(d.getHours() - offset);
   return d;
 };
@@ -718,8 +732,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 200);
 
-    // Firebase Spark Plan Optimization: Mid-session auto-save debounce set to 120 seconds (120000ms)
-    const cloudDelay = 120000;
+    // Auto-save debounce set to 1000ms (1 second)
+    const cloudDelay = 1000;
 
     const cloudTimeoutId = setTimeout(() => {
       if (
@@ -787,6 +801,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [
     isLoaded,
+    isCloudSyncComplete,
     firebaseUser,
     xp,
     xpGainedToday,
@@ -827,7 +842,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ongoingChapters,
   ]);
 
-  // Initial Cloud Data Fetch on Auth to ensure late-loading cloud state overrides stale local state before day rollover checks
+  // Initial Cloud Data Fetch on Auth to ensure cloud state is single source of truth
   useEffect(() => {
     if (!firebaseUser?.uid) {
       setIsCloudSyncComplete(true);
@@ -837,25 +852,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsCloudSyncComplete(false);
     let cancelled = false;
 
-    // Timeout safety net: Ensure app is marked as synced within 1.5 seconds max
-    const syncTimeout = setTimeout(() => {
-      if (!cancelled) {
-        setIsCloudSyncComplete(true);
-      }
-    }, 1500);
-
     const syncCloudOnLogin = async () => {
       try {
         const cloudData = await loadUserDataFromCloud(firebaseUser.uid);
         if (cancelled) return;
-        clearTimeout(syncTimeout);
 
         if (!cloudData) {
+          // If no cloud data exists, seed initial user doc to Firestore
+          const initialStateToSave = {
+            xp,
+            xpGainedToday,
+            spentXpToday,
+            totalSpentXp,
+            hoursStudiedToday,
+            level,
+            questionsSolved,
+            dailyTarget,
+            accuracy,
+            speedScore,
+            streakDays,
+            lastStudyDate,
+            focusBadges,
+            syllabus,
+            activeBoost,
+            class11EndDate,
+            isClass11SetupDone,
+            backlogPriorities,
+            todos,
+            loggedTasksToday,
+            pendingTasks,
+            history,
+            practiceSessions,
+            playerName,
+            hasSeenRules,
+            habits,
+            lifeMetrics,
+            monthlyGoals,
+            lastBossDayDate,
+            bossDayTargetXp,
+            bossDayCompleted,
+            equippedTitle,
+            equippedAura,
+            unlockedItems,
+            notificationSettings,
+            totalXpGoal,
+            ongoingChapters,
+          };
+          await saveUserDataToCloud(firebaseUser.uid, initialStateToSave, true);
+          lastSavedCloudJsonRef.current = JSON.stringify(initialStateToSave);
           setIsCloudSyncComplete(true);
           return;
         }
 
-        const todayStr = getLogicalDate().toDateString();
+        const todayStr = getLogicalDate(cloudData.notificationSettings?.rolloverTime).toDateString();
         const isCloudToday = cloudData.lastStudyDate === todayStr;
 
         isRemoteSyncingRef.current = true;
@@ -879,6 +928,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (cloudData.todos !== undefined) setTodos(cloudData.todos);
           if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
           if (cloudData.history !== undefined) setHistory(cloudData.history);
+        } else {
+          setLastStudyDate(todayStr);
+          setNeedsRollover(false);
         }
 
         if (cloudData.xp !== undefined) setXp(cloudData.xp);
@@ -919,7 +971,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }, 300);
       } catch (err) {
         console.error("Cloud login sync error:", err);
-        clearTimeout(syncTimeout);
         setIsCloudSyncComplete(true);
       }
     };
@@ -928,13 +979,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
-      clearTimeout(syncTimeout);
     };
   }, [firebaseUser]);
 
   // Real-Time Cloud Listener with Non-Reverting Smart Sync
   useEffect(() => {
-    if (!firebaseUser?.uid) return;
+    if (!firebaseUser?.uid || !isCloudSyncComplete) return;
 
     const unsubscribeCloud = subscribeToCloudUserData(
       firebaseUser.uid,
@@ -944,20 +994,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Skip local optimistic write snapshots
         if (metadata?.hasPendingWrites) return;
 
-        // If a local mutation occurred recently or calendar mutation in last 60s, ignore stale server snapshot
-        if (
-          Date.now() - lastLocalMutationTimeRef.current < 2500 ||
-          Date.now() - lastCalendarMutationTimeRef.current < 60000
-        )
-          return;
-
         const cloudJson = JSON.stringify(cloudData);
         if (cloudJson === lastSavedCloudJsonRef.current) return;
 
         lastSavedCloudJsonRef.current = cloudJson;
         isRemoteSyncingRef.current = true;
 
-        const todayStr = getLogicalDate().toDateString();
+        const todayStr = getLogicalDate(cloudData.notificationSettings?.rolloverTime).toDateString();
         const isCloudToday = cloudData.lastStudyDate === todayStr;
 
         if (isCloudToday) {
@@ -980,7 +1023,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (cloudData.history !== undefined) setHistory(cloudData.history);
         }
 
-        // Smart progression updates (never decrease lifetime XP/level/streak)
+        // Progression updates
         if (cloudData.xp !== undefined) setXp((prev) => Math.max(prev, cloudData.xp));
         if (cloudData.level !== undefined) setLevel((prev) => Math.max(prev, cloudData.level));
         if (cloudData.questionsSolved !== undefined)
@@ -1016,14 +1059,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         setTimeout(() => {
           isRemoteSyncingRef.current = false;
-        }, 500);
+        }, 300);
       },
     );
 
     return () => {
       unsubscribeCloud();
     };
-  }, [firebaseUser]);
+  }, [firebaseUser, isCloudSyncComplete]);
 
   // Handle Cross-Tab Synchronization
   useEffect(() => {
@@ -1563,6 +1606,126 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  const saveStateToCloudNow = useCallback(
+    async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
+      if (!isLoaded) return false;
+      const stateToSave = {
+        xp,
+        xpGainedToday,
+        spentXpToday,
+        totalSpentXp,
+        hoursStudiedToday,
+        level,
+        questionsSolved,
+        dailyTarget,
+        accuracy,
+        speedScore,
+        streakDays,
+        lastStudyDate,
+        focusBadges,
+        syllabus,
+        activeBoost,
+        class11EndDate,
+        isClass11SetupDone,
+        backlogPriorities,
+        todos,
+        loggedTasksToday,
+        pendingTasks,
+        history,
+        practiceSessions,
+        playerName,
+        hasSeenRules,
+        habits,
+        lifeMetrics,
+        monthlyGoals,
+        lastBossDayDate,
+        bossDayTargetXp,
+        bossDayCompleted,
+        equippedTitle,
+        equippedAura,
+        unlockedItems,
+        notificationSettings,
+        totalXpGoal,
+        ongoingChapters,
+        ...overrides,
+      };
+      const jsonString = JSON.stringify(stateToSave);
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      }
+
+      if (firebaseUser?.uid) {
+        lastSavedCloudJsonRef.current = jsonString;
+        return await saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
+      }
+      return true;
+    },
+    [
+      isLoaded,
+      firebaseUser,
+      xp,
+      xpGainedToday,
+      spentXpToday,
+      totalSpentXp,
+      hoursStudiedToday,
+      level,
+      questionsSolved,
+      dailyTarget,
+      accuracy,
+      speedScore,
+      streakDays,
+      lastStudyDate,
+      focusBadges,
+      syllabus,
+      activeBoost,
+      class11EndDate,
+      isClass11SetupDone,
+      backlogPriorities,
+      todos,
+      loggedTasksToday,
+      pendingTasks,
+      history,
+      practiceSessions,
+      playerName,
+      hasSeenRules,
+      habits,
+      lifeMetrics,
+      monthlyGoals,
+      lastBossDayDate,
+      bossDayTargetXp,
+      bossDayCompleted,
+      equippedTitle,
+      equippedAura,
+      unlockedItems,
+      notificationSettings,
+      totalXpGoal,
+      ongoingChapters,
+    ],
+  );
+
+  const scheduleBacklogTask = useCallback(
+    async (task: Todo): Promise<void> => {
+      const updatedPending = pendingTasks.filter((pt) => pt.id !== task.id);
+      const taskToMove: Todo = {
+        ...task,
+        completed: false,
+        startTime: task.startTime || new Date().toISOString(),
+      };
+      const updatedTodos = [...todos.filter((t) => t.id !== task.id), taskToMove];
+
+      setPendingTasks(updatedPending);
+      setTodos(updatedTodos);
+
+      await saveStateToCloudNow({
+        pendingTasks: updatedPending,
+        todos: updatedTodos,
+      });
+    },
+    [pendingTasks, todos, saveStateToCloudNow],
+  );
+
   const contextValue = useMemo(
     () => ({
       xp,
@@ -1660,6 +1823,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ongoingChapters,
       setOngoingChapters,
       getCurrentChapterForSubject,
+      saveStateToCloudNow,
+      scheduleBacklogTask,
     }),
     [
       xp,
@@ -1750,6 +1915,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setNotificationSettings,
       ongoingChapters,
       getCurrentChapterForSubject,
+      saveStateToCloudNow,
+      scheduleBacklogTask,
     ],
   );
 
