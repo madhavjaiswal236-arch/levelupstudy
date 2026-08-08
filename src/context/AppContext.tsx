@@ -17,6 +17,7 @@ import React, {
 import { initAuth } from "@/lib/firebase";
 import { Preferences } from "@capacitor/preferences";
 import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 
 export interface Chapter {
   name: string;
@@ -667,9 +668,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 200);
 
-    const isCalendarMutation =
-      Date.now() - lastCalendarMutationTimeRef.current < 60000;
-    const cloudDelay = isCalendarMutation ? 60000 : 400;
+    // Firebase Spark Plan Optimization: Mid-session auto-save debounce set to 120 seconds (120000ms)
+    const cloudDelay = 120000;
 
     const cloudTimeoutId = setTimeout(() => {
       if (
@@ -715,11 +715,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    let capAppStateListener: any = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", (state) => {
+        if (!state.isActive) {
+          flushCloudSave();
+        }
+      }).then((listener) => {
+        capAppStateListener = listener;
+      });
+    }
+
     return () => {
       clearTimeout(localTimeoutId);
       clearTimeout(cloudTimeoutId);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (capAppStateListener) {
+        capAppStateListener.remove();
+      }
     };
   }, [
     isLoaded,
