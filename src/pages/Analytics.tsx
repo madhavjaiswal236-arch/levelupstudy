@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { TiltWrapper } from '../components/TiltWrapper';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, Cell, PieChart, Pie } from 'recharts';
 import { Activity, Brain, TrendingUp, AlertCircle, Target, Zap, Clock, Plus, BookOpen, X } from 'lucide-react';
-import { useAppContext, SyllabusData } from '../context/AppContext';
+import { useAppContext, SyllabusData, getLogicalDate } from '../context/AppContext';
 import { TourStep, useTour } from '../components/TourGuide';
 
 const MISTAKE_TYPES = [
@@ -64,7 +64,7 @@ export default function Analytics() {
  });
 
  let habitsTotal = habits.length;
- let habitsDone = habits.filter(h => h.completedDays.includes(new Date().getDate())).length;
+ let habitsDone = habits.filter(h => h.completedDays.includes(getLogicalDate().getDate())).length;
  let todoTotal = todos.length;
  let todoDone = todos.filter(t => t.completed).length;
 
@@ -79,7 +79,7 @@ export default function Analytics() {
  const xpTrendData = useMemo(() => {
  const last7Days = [];
  for (let i = 6; i >= 0; i--) {
- const d = new Date();
+ const d = getLogicalDate();
  d.setDate(d.getDate() - i);
  const dayStr = d.toLocaleDateString(undefined, { weekday: 'short' });
  
@@ -100,7 +100,7 @@ export default function Analytics() {
  const heatmapData = useMemo(() => {
  const days = [];
  for (let i = 29; i >= 0; i--) {
- const d = new Date();
+ const d = getLogicalDate();
  d.setDate(d.getDate() - i);
  d.setHours(0,0,0,0);
  
@@ -132,7 +132,7 @@ export default function Analytics() {
  const trackerData = useMemo(() => {
  const data = [];
  for (let i = 13; i >= 0; i--) {
- const d = new Date();
+ const d = getLogicalDate();
  d.setDate(d.getDate() - i);
  const dayStr = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
  

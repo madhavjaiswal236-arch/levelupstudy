@@ -524,7 +524,7 @@ function AppContent() {
             screenTime: entry.screenTime !== undefined ? entry.screenTime : 0,
             completedTasks: entry.completedTasks || [],
             plannedTasks: planned || [],
-            practiceSessions: practiceSessions || [],
+            practiceSessions: (entry as any).practiceSessions || practiceSessions || [],
             xpEarned: entry.xpEarned || 0,
             targetXp: stateRef.current?.dailyTarget || 1000,
             level: stateRef.current?.level || 1,
@@ -1443,11 +1443,7 @@ function AppContent() {
                           history.length > 0
                             ? history[history.length - 1]
                             : null;
-                        const latestWithFeedback =
-                          history
-                            .slice()
-                            .reverse()
-                            .find((e) => e.aiFeedback) || latestEntry;
+                        const latestWithFeedback = latestEntry;
                         if (!latestEntry)
                           return (
                             <div className="dark:text-white text-slate-900">

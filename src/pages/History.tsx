@@ -50,8 +50,8 @@ export default function History() {
  return entryDateStr !== todayStr && entryDateStr !== yesterdayStr && entryDateStr !== dayBeforeStr;
  });
 
- const latestEntry = reversedHistory[0] || null;
-  const latestWithFeedback = reversedHistory.find(e => e.aiFeedback) || latestEntry;
+  const latestEntry = reversedHistory[0] || null;
+  const latestWithFeedback = latestEntry;
 
  const yesterdayEntry = reversedHistory.find(entry => new Date(entry.date).toDateString() === yesterdayStr) || null;
 

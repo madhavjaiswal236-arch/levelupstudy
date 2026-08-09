@@ -998,6 +998,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Skip local optimistic write snapshots
         if (metadata?.hasPendingWrites) return;
 
+        // Skip remote overrides if local state was updated in the last 3 seconds (sync shield)
+        if (Date.now() - lastLocalMutationTimeRef.current < 3000) return;
+
         const cloudJson = JSON.stringify(cloudData);
         if (cloudJson === lastSavedCloudJsonRef.current) return;
 
