@@ -205,11 +205,10 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
-  const effectiveLoaded = isLoaded || forceLoaded;
+  const effectiveLoaded = (isLoaded || forceLoaded) && (isCloudSyncComplete || forceLoaded);
 
   useEffect(() => {
     if (!effectiveLoaded) return;
-    if (firebaseUser && !isCloudSyncComplete) return;
 
     const hasSeenForever = localStorage.getItem(
       "welcome_hero_dismissed_forever",
@@ -226,7 +225,7 @@ function AppContent() {
     } else {
       setShowWelcomeHero(true);
     }
-  }, [effectiveLoaded, firebaseUser, isCloudSyncComplete, lastStudyDate, playerName, xp]);
+  }, [effectiveLoaded, firebaseUser, lastStudyDate, playerName, xp]);
 
   const handleEnterApp = () => {
     localStorage.setItem("welcome_hero_dismissed_forever", "true");
@@ -1019,7 +1018,7 @@ function AppContent() {
     touchEndX.current = 0;
   };
 
-  if (!effectiveLoaded || (firebaseUser && !isCloudSyncComplete)) {
+  if (!effectiveLoaded) {
     return (
       <div className="min-h-[100dvh] dark:bg-black bg-slate-50 flex flex-col items-center justify-center relative overflow-hidden dark:text-slate-200 text-slate-900 font-sans p-4">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(6,182,212,0.15)_0%,transparent_70%)]" />

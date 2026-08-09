@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -91,7 +91,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
       const userRef = doc(db, 'users', userId);
       await setDoc(userRef, {
         ...targetData,
-        updatedAt: new Date().toISOString()
+        updatedAt: serverTimestamp()
       }, { merge: true });
       return true;
     } catch (err: any) {
@@ -123,7 +123,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
         const userRef = doc(db, 'users', userId);
         await setDoc(userRef, {
           ...targetData,
-          updatedAt: new Date().toISOString()
+          updatedAt: serverTimestamp()
         }, { merge: true });
         resolve(true);
       } catch (err: any) {

@@ -391,9 +391,22 @@ export const hasTodayProtocolRecord = (
   const inHistory = history.some((entry) => isSameLogicalDay(entry.date, todayLogicalDate));
   if (inHistory) return true;
 
-  const inMetrics = lifeMetrics.some(
-    (metric) => metric.day === todayLogicalDate.getDate() && (metric.sleep > 0 || metric.screenTime > 0)
-  );
+  const inMetrics = lifeMetrics.some((metric) => {
+    if ((metric as any).date) {
+      return isSameLogicalDay((metric as any).date, todayLogicalDate) && (metric.sleep > 0 || metric.screenTime > 0);
+    }
+    const metricKey = getStandardDateKey((metric as any).createdAt);
+    if (metricKey) {
+      return metricKey === todayKey && (metric.sleep > 0 || metric.screenTime > 0);
+    }
+    const now = getLogicalDate();
+    return (
+      metric.day === todayLogicalDate.getDate() &&
+      now.getMonth() === todayLogicalDate.getMonth() &&
+      now.getFullYear() === todayLogicalDate.getFullYear() &&
+      (metric.sleep > 0 || metric.screenTime > 0)
+    );
+  });
   if (inMetrics) return true;
 
   if (typeof sessionStorage !== "undefined") {
@@ -1133,11 +1146,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Skip local optimistic write snapshots
         if (metadata?.hasPendingWrites) return;
 
-        // Skip remote overrides if local state has unsaved changes or was updated in the last 65s (sync shield)
-        if (hasUnsavedLocalChangesRef.current || (Date.now() - lastLocalMutationTimeRef.current < 65000)) return;
-
         const cloudJson = JSON.stringify(cloudData);
         if (cloudJson === lastSavedCloudJsonRef.current) return;
+
+        // If local state has pending unsaved mutations that are newer than cloud snapshot, preserve local edits
+        if (hasUnsavedLocalChangesRef.current && cloudData.lastSyncTimestamp && cloudData.lastSyncTimestamp <= lastLocalMutationTimeRef.current) {
+          // Merge non-conflicting progression values without clobbering pending local mutations
+          if (cloudData.xp !== undefined) setXp((prev) => Math.max(prev, cloudData.xp));
+          if (cloudData.level !== undefined) setLevel((prev) => Math.max(prev, cloudData.level));
+          if (cloudData.streakDays !== undefined) setStreakDays((prev) => Math.max(prev, cloudData.streakDays));
+          return;
+        }
 
         lastSavedCloudJsonRef.current = cloudJson;
         isRemoteSyncingRef.current = true;
@@ -1214,7 +1233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         setTimeout(() => {
           isRemoteSyncingRef.current = false;
-        }, 300);
+        }, 500);
       },
     );
 
@@ -1228,6 +1247,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === LOCAL_STORAGE_KEY && e.newValue) {
         try {
+          isRemoteSyncingRef.current = true;
           const parsed = JSON.parse(e.newValue);
           setXp(parsed.xp || 0);
           setTodos(parsed.todos || []);
@@ -1244,6 +1264,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setEquippedAura(parsed.equippedAura || "");
           setUnlockedItems(parsed.unlockedItems || []);
           setOngoingChapters(parsed.ongoingChapters || {});
+          setTimeout(() => {
+            isRemoteSyncingRef.current = false;
+          }, 300);
         } catch (err) {
           console.error("Storage event parse error", err);
         }
@@ -1630,6 +1653,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addXp = (amount: number): number => {
+    hasUnsavedLocalChangesRef.current = true;
+    lastLocalMutationTimeRef.current = Date.now();
     lastCalendarMutationTimeRef.current = 0;
     updateStreak();
     let finalAmount = amount * getStreakMultiplier();
@@ -1643,15 +1668,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const roundedFinal = Math.round(finalAmount);
 
-    const currentXp = xp;
-    const newXpVal = currentXp + roundedFinal;
-    const newLevelVal = Math.min(
-      100,
-      Math.floor(Math.pow(newXpVal / totalXpGoal, 0.5) * 99) + 1,
-    );
+    let calculatedNewXp = 0;
+    let calculatedNewLevel = 1;
 
-    setXp(newXpVal);
-    setLevel(newLevelVal);
+    setXp((prevXp) => {
+      calculatedNewXp = prevXp + roundedFinal;
+      calculatedNewLevel = Math.min(
+        100,
+        Math.floor(Math.pow(calculatedNewXp / totalXpGoal, 0.5) * 99) + 1,
+      );
+      setLevel(calculatedNewLevel);
+      return calculatedNewXp;
+    });
 
     setXpGainedToday((prev) => {
       const newXpGained = prev + roundedFinal;
@@ -1668,7 +1696,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     queueMicrotask(() => {
-      saveStateToCloudNow({ xp: newXpVal, level: newLevelVal });
+      saveStateToCloudNow({ xp: calculatedNewXp, level: calculatedNewLevel });
     });
 
     return roundedFinal;
@@ -1868,7 +1896,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const saveStateToCloudNow = useCallback(
     async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
-      if (!isLoaded) return false;
+      if (!isLoaded || !isCloudSyncComplete) return false;
       const now = Date.now();
       lastSyncTimestampRef.current = now;
       const stateToSave = {
@@ -1894,7 +1922,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return true;
     },
-    [isLoaded, firebaseUser],
+    [isLoaded, isCloudSyncComplete, firebaseUser],
   );
 
   const notifyCalendarPreviewClosed = useCallback(() => {
