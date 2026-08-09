@@ -424,6 +424,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isRemoteSyncingRef = useRef<boolean>(false);
   const lastLocalMutationTimeRef = useRef<number>(0);
   const lastCalendarMutationTimeRef = useRef<number>(0);
+  const hasUnsavedLocalChangesRef = useRef<boolean>(false);
 
   const notifyCalendarMutation = useCallback(() => {
     lastCalendarMutationTimeRef.current = Date.now();
@@ -684,7 +685,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Save state on change
   useEffect(() => {
     if (!isLoaded) return;
-    lastLocalMutationTimeRef.current = Date.now();
+
+    if (isRemoteSyncingRef.current) {
+      // Change came from cloud listener, do not flag as local mutation
+      isRemoteSyncingRef.current = false;
+    } else {
+      // Genuine local mutation
+      hasUnsavedLocalChangesRef.current = true;
+      lastLocalMutationTimeRef.current = Date.now();
+    }
 
     const stateToSave = {
       xp,
@@ -735,19 +744,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 200);
 
-    // Auto-save debounce set to 1000ms (1 second)
-    const cloudDelay = 1000;
+    // Auto-save debounce set to 1 minute (60,000ms) to ensure clean, quota-safe writes
+    const cloudDelay = 60000;
 
-    const cloudTimeoutId = setTimeout(() => {
+    const cloudTimeoutId = setTimeout(async () => {
       if (
         firebaseUser?.uid &&
-        isCloudSyncComplete &&
-        !isRemoteSyncingRef.current &&
-        !isCalendarPreviewOpenRef.current
+        isCloudSyncComplete
       ) {
         if (jsonString !== lastSavedCloudJsonRef.current) {
           lastSavedCloudJsonRef.current = jsonString;
-          saveUserDataToCloud(firebaseUser.uid, stateToSave, false);
+          const ok = await saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
+          if (ok) {
+            hasUnsavedLocalChangesRef.current = false;
+          }
+        } else {
+          hasUnsavedLocalChangesRef.current = false;
         }
       }
     }, cloudDelay);
@@ -762,11 +774,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (
         firebaseUser?.uid &&
         isCloudSyncComplete &&
-        !isRemoteSyncingRef.current &&
         currentJson !== lastSavedCloudJsonRef.current
       ) {
         lastSavedCloudJsonRef.current = currentJson;
-        saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
+        saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
+          if (ok) {
+            hasUnsavedLocalChangesRef.current = false;
+          }
+        });
       }
     };
 
@@ -998,8 +1013,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Skip local optimistic write snapshots
         if (metadata?.hasPendingWrites) return;
 
-        // Skip remote overrides if local state was updated in the last 3 seconds (sync shield)
-        if (Date.now() - lastLocalMutationTimeRef.current < 3000) return;
+        // Skip remote overrides if local state has unsaved changes or was updated in the last 65s (sync shield)
+        if (hasUnsavedLocalChangesRef.current || (Date.now() - lastLocalMutationTimeRef.current < 65000)) return;
 
         const cloudJson = JSON.stringify(cloudData);
         if (cloudJson === lastSavedCloudJsonRef.current) return;
@@ -1687,7 +1702,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (firebaseUser?.uid) {
         lastSavedCloudJsonRef.current = jsonString;
-        return await saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
+        const ok = await saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
+        if (ok) {
+          hasUnsavedLocalChangesRef.current = false;
+        }
+        return ok;
       }
       return true;
     },
@@ -1698,12 +1717,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isCalendarPreviewOpenRef.current = false;
     if (calendarSyncTimerRef.current) {
       clearTimeout(calendarSyncTimerRef.current);
-    }
-    // Schedule cloud sync 1 minute (60,000 ms) after calendar preview is closed
-    calendarSyncTimerRef.current = setTimeout(() => {
       calendarSyncTimerRef.current = null;
-      saveStateToCloudNow();
-    }, 60000);
+    }
+    saveStateToCloudNow();
   }, [saveStateToCloudNow]);
 
   const scheduleBacklogTask = useCallback(

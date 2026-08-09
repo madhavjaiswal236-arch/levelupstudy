@@ -135,7 +135,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
         handleFirestoreError(err, OperationType.WRITE, path);
         resolve(false);
       }
-    }, 800); // Reliable 800ms auto-save debounce
+    }, 300); // Fast 300ms auto-save debounce
     userSaveTimers.set(userId, timer);
   });
 };
