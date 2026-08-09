@@ -245,7 +245,9 @@ interface AppState {
   setMonthlyGoals: React.Dispatch<React.SetStateAction<MonthlyGoal[]>>;
   isLoaded: boolean;
   needsRollover: boolean;
-  setNeedsRollover: (val: boolean) => void;
+  setNeedsRollover: (val: boolean, reason?: string) => void;
+  lastSyncTimestamp: number;
+  setLastSyncTimestamp: React.Dispatch<React.SetStateAction<number>>;
   consistencyBroken: boolean;
   setConsistencyBroken: (val: boolean) => void;
   completeRollover: (sleep: number, screenTime: number) => void;
@@ -329,11 +331,104 @@ export const getLogicalDate = (customRolloverTime?: string) => {
   return d;
 };
 
+export const getStandardDateKey = (dateInput?: string | Date | number | null): string => {
+  if (!dateInput) return "";
+  if (typeof dateInput === "object" && dateInput instanceof Date) {
+    if (isNaN(dateInput.getTime())) return "";
+    const y = dateInput.getFullYear();
+    const m = String(dateInput.getMonth() + 1).padStart(2, "0");
+    const d = String(dateInput.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof dateInput === "number") {
+    const dObj = new Date(dateInput);
+    if (isNaN(dObj.getTime())) return "";
+    const y = dObj.getFullYear();
+    const m = String(dObj.getMonth() + 1).padStart(2, "0");
+    const d = String(dObj.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const str = String(dateInput).trim();
+  if (!str) return "";
+
+  const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+  }
+
+  const parsed = new Date(str);
+  if (isNaN(parsed.getTime())) return str;
+  const y = parsed.getFullYear();
+  const m = String(parsed.getMonth() + 1).padStart(2, "0");
+  const d = String(parsed.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+export const isSameLogicalDay = (
+  dateA?: string | Date | number | null,
+  dateB?: string | Date | number | null
+): boolean => {
+  if (!dateA || !dateB) return false;
+  const keyA = getStandardDateKey(dateA);
+  const keyB = getStandardDateKey(dateB);
+  if (keyA && keyB && keyA === keyB) return true;
+
+  const strA = String(dateA).trim();
+  const strB = String(dateB).trim();
+  if (strA === strB) return true;
+
+  return false;
+};
+
+export const hasTodayProtocolRecord = (
+  history: PlayHistoryEntry[] = [],
+  lifeMetrics: LifeMetric[] = [],
+  todayLogicalDate: Date
+): boolean => {
+  const todayKey = getStandardDateKey(todayLogicalDate);
+  if (!todayKey) return false;
+
+  const inHistory = history.some((entry) => isSameLogicalDay(entry.date, todayLogicalDate));
+  if (inHistory) return true;
+
+  const inMetrics = lifeMetrics.some(
+    (metric) => metric.day === todayLogicalDate.getDate() && (metric.sleep > 0 || metric.screenTime > 0)
+  );
+  if (inMetrics) return true;
+
+  if (typeof sessionStorage !== "undefined") {
+    const sessionCompleted = sessionStorage.getItem(`rollover_completed_${todayKey}`);
+    if (sessionCompleted === "true") return true;
+  }
+
+  return false;
+};
+
 const LOCAL_STORAGE_KEY = "jee_tracker_state";
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [needsRollover, setNeedsRollover] = useState(false);
+  const [needsRolloverState, setNeedsRolloverState] = useState(false);
+  const [lastSyncTimestamp, setLastSyncTimestampState] = useState<number>(0);
+  const lastSyncTimestampRef = useRef<number>(0);
+
+  const setLastSyncTimestamp = useCallback((val: number | ((prev: number) => number)) => {
+    setLastSyncTimestampState((prev) => {
+      const nextVal = typeof val === "function" ? val(prev) : val;
+      lastSyncTimestampRef.current = nextVal;
+      return nextVal;
+    });
+  }, []);
+
+  const setNeedsRollover = useCallback((val: boolean, reason?: string) => {
+    const today = getLogicalDate();
+    const todayKey = getStandardDateKey(today);
+    console.log(
+      `[Rollover Guard] setNeedsRollover(${val}) | Reason: ${reason || "Unspecified"} | lastStudyDate: "${lastStudyDateRef.current}" | Today: "${today.toDateString()}" (Key: ${todayKey})`
+    );
+    setNeedsRolloverState(val);
+  }, []);
+
   const [consistencyBroken, setConsistencyBroken] = useState(false);
   const [xp, setXp] = useState(0);
   const [xpGainedToday, setXpGainedToday] = useState(0);
@@ -479,11 +574,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
           const today = getLogicalDate();
           const todayDateString = today.toDateString();
-          if (
-            parsed.lastStudyDate &&
-            parsed.lastStudyDate !== todayDateString
-          ) {
-            setNeedsRollover(true);
+          const isToday = isSameLogicalDay(parsed.lastStudyDate, today);
+          const protocolRecordExists = hasTodayProtocolRecord(parsed.history || [], parsed.lifeMetrics || [], today);
+
+          console.log(`[Local Storage Load] lastStudyDate: "${parsed.lastStudyDate}", TodayKey: "${getStandardDateKey(today)}", isToday: ${isToday}, protocolRecordExists: ${protocolRecordExists}`);
+
+          if (isToday || protocolRecordExists) {
+            setNeedsRollover(false, "Local storage load: today is already completed or matches lastStudyDate");
+            setLastStudyDate(getStandardDateKey(today));
+          } else if (parsed.lastStudyDate) {
+            setNeedsRollover(true, "Local storage load: lastStudyDate is from a previous day");
 
             // Check for missed days or underperformance
             const lastDate = new Date(parsed.lastStudyDate);
@@ -923,33 +1023,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const todayStr = getLogicalDate(cloudData.notificationSettings?.rolloverTime).toDateString();
-        const isCloudToday = cloudData.lastStudyDate === todayStr;
+        const todayObj = getLogicalDate(cloudData.notificationSettings?.rolloverTime);
+        const todayKey = getStandardDateKey(todayObj);
+        const isCloudToday = isSameLogicalDay(cloudData.lastStudyDate, todayObj);
+        const isLocalToday = isSameLogicalDay(lastStudyDateRef.current, todayObj);
+        const protocolRecordExists = hasTodayProtocolRecord(
+          cloudData.history || history,
+          cloudData.lifeMetrics || lifeMetrics,
+          todayObj
+        );
+
+        console.log(`[Cloud Login Sync] cloudLastStudyDate: "${cloudData.lastStudyDate}", localLastStudyDate: "${lastStudyDateRef.current}", TodayKey: "${todayKey}", isCloudToday: ${isCloudToday}, isLocalToday: ${isLocalToday}, protocolRecordExists: ${protocolRecordExists}`);
+
+        if (cloudData.lastSyncTimestamp) {
+          setLastSyncTimestamp(cloudData.lastSyncTimestamp);
+        }
 
         isRemoteSyncingRef.current = true;
 
-        if (isCloudToday) {
-          setNeedsRollover(false);
+        if (isCloudToday || isLocalToday || protocolRecordExists) {
+          setNeedsRollover(false, "Cloud Login Sync: Today is already recorded or active");
           setPendingMissedDays([]);
-          setLastStudyDate(todayStr);
-          setXpGainedToday(cloudData.xpGainedToday ?? 0);
-          setHoursStudiedToday(cloudData.hoursStudiedToday ?? 0);
-          setSpentXpToday(cloudData.spentXpToday ?? 0);
-          setLoggedTasksToday(cloudData.loggedTasksToday ?? []);
-          if (cloudData.todos !== undefined) setTodos(cloudData.todos);
-          if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
-          if (cloudData.history !== undefined) setHistory(cloudData.history);
+          setLastStudyDate(todayKey);
+          if (isCloudToday || protocolRecordExists) {
+            setXpGainedToday(cloudData.xpGainedToday ?? 0);
+            setHoursStudiedToday(cloudData.hoursStudiedToday ?? 0);
+            setSpentXpToday(cloudData.spentXpToday ?? 0);
+            setLoggedTasksToday(cloudData.loggedTasksToday ?? []);
+            if (cloudData.todos !== undefined) setTodos(cloudData.todos);
+            if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
+            if (cloudData.history !== undefined) setHistory(cloudData.history);
+          } else {
+            // Local is already today, push state to cloud immediately to align Firestore
+            saveStateToCloudNow({ lastStudyDate: todayKey });
+          }
         } else if (cloudData.lastStudyDate) {
-          setLastStudyDate(cloudData.lastStudyDate);
-          setNeedsRollover(true);
+          setLastStudyDate(getStandardDateKey(cloudData.lastStudyDate));
+          setNeedsRollover(true, "Cloud Login Sync: cloud lastStudyDate is older than today");
           if (cloudData.xpGainedToday !== undefined) setXpGainedToday(cloudData.xpGainedToday);
           if (cloudData.hoursStudiedToday !== undefined) setHoursStudiedToday(cloudData.hoursStudiedToday);
           if (cloudData.todos !== undefined) setTodos(cloudData.todos);
           if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
           if (cloudData.history !== undefined) setHistory(cloudData.history);
         } else {
-          setLastStudyDate(todayStr);
-          setNeedsRollover(false);
+          setLastStudyDate(todayKey);
+          setNeedsRollover(false, "Cloud Login Sync: no cloud lastStudyDate found, initializing to today");
         }
 
         if (cloudData.xp !== undefined) setXp(cloudData.xp);
@@ -983,6 +1101,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cloudData.totalXpGoal !== undefined) setTotalXpGoal(cloudData.totalXpGoal);
 
         lastSavedCloudJsonRef.current = JSON.stringify(cloudData);
+        hasUnsavedLocalChangesRef.current = false;
+        lastLocalMutationTimeRef.current = 0;
 
         setTimeout(() => {
           isRemoteSyncingRef.current = false;
@@ -1022,13 +1142,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         lastSavedCloudJsonRef.current = cloudJson;
         isRemoteSyncingRef.current = true;
 
-        const todayStr = getLogicalDate(cloudData.notificationSettings?.rolloverTime).toDateString();
-        const isCloudToday = cloudData.lastStudyDate === todayStr;
+        const todayObj = getLogicalDate(cloudData.notificationSettings?.rolloverTime);
+        const todayKey = getStandardDateKey(todayObj);
+        const isCloudToday = isSameLogicalDay(cloudData.lastStudyDate, todayObj);
+        const isLocalToday = isSameLogicalDay(lastStudyDateRef.current, todayObj);
+        const protocolRecordExists = hasTodayProtocolRecord(
+          cloudData.history || history,
+          cloudData.lifeMetrics || lifeMetrics,
+          todayObj
+        );
 
-        if (isCloudToday) {
-          setNeedsRollover(false);
+        console.log(`[Cloud Realtime Listener] cloudLastStudyDate: "${cloudData.lastStudyDate}", localLastStudyDate: "${lastStudyDateRef.current}", TodayKey: "${todayKey}", isCloudToday: ${isCloudToday}, isLocalToday: ${isLocalToday}, protocolRecordExists: ${protocolRecordExists}`);
+
+        if (cloudData.lastSyncTimestamp) {
+          setLastSyncTimestamp(cloudData.lastSyncTimestamp);
+        }
+
+        if (isCloudToday || isLocalToday || protocolRecordExists) {
+          setNeedsRollover(false, "Cloud Realtime: Today is already recorded or active");
           setPendingMissedDays([]);
-          setLastStudyDate(todayStr);
+          setLastStudyDate(todayKey);
           if (cloudData.xpGainedToday !== undefined) setXpGainedToday(cloudData.xpGainedToday);
           if (cloudData.hoursStudiedToday !== undefined) setHoursStudiedToday(cloudData.hoursStudiedToday);
           if (cloudData.spentXpToday !== undefined) setSpentXpToday(cloudData.spentXpToday);
@@ -1036,8 +1169,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (cloudData.todos !== undefined) setTodos(cloudData.todos);
           if (cloudData.pendingTasks !== undefined) setPendingTasks(cloudData.pendingTasks);
           if (cloudData.history !== undefined) setHistory(cloudData.history);
-        } else if (cloudData.lastStudyDate && cloudData.lastStudyDate !== lastStudyDateRef.current) {
-          setLastStudyDate(cloudData.lastStudyDate);
+        } else if (cloudData.lastStudyDate && !isSameLogicalDay(cloudData.lastStudyDate, lastStudyDateRef.current)) {
+          setLastStudyDate(getStandardDateKey(cloudData.lastStudyDate));
           if (cloudData.xpGainedToday !== undefined) setXpGainedToday(cloudData.xpGainedToday);
           if (cloudData.hoursStudiedToday !== undefined) setHoursStudiedToday(cloudData.hoursStudiedToday);
           if (cloudData.todos !== undefined) setTodos(cloudData.todos);
@@ -1162,6 +1295,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       notificationSettings,
       totalXpGoal,
       ongoingChapters,
+      lastSyncTimestamp: lastSyncTimestampRef.current,
     };
   });
 
@@ -1190,15 +1324,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const completeRollover = (sleepInput: number, screenTimeInput: number) => {
     updateStreak(sleepInput, screenTimeInput);
-    setTimeout(() => {
-      saveStateToCloudNow();
-    }, 100);
+    setNeedsRollover(false, "completeRollover user submitted protocol");
+    setPendingMissedDays([]);
+    const todayKey = getStandardDateKey(getLogicalDate());
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem(`rollover_completed_${todayKey}`, "true");
+    }
+    const now = Date.now();
+    setLastSyncTimestamp(now);
+    saveStateToCloudNow({
+      lastStudyDate: todayKey,
+      lastSyncTimestamp: now,
+      lastRolloverTimestamp: now,
+      xpGainedToday: 0,
+      spentXpToday: 0,
+      hoursStudiedToday: 0,
+      questionsSolved: 0,
+      loggedTasksToday: [],
+    });
   };
 
   // Check and update streak on load or when logging session
   const updateStreak = (overrideSleep?: number, overrideScreen?: number) => {
-    const today = getLogicalDate().toDateString();
-    if (lastStudyDateRef.current === today) return; // Already studied today
+    const todayObj = getLogicalDate();
+    const today = getStandardDateKey(todayObj);
+    if (isSameLogicalDay(lastStudyDateRef.current, todayObj)) return; // Already studied today
 
     if (lastStudyDateRef.current) {
       const lastDate = new Date(lastStudyDateRef.current);
@@ -1392,6 +1542,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStreakDays(1); // First day
     }
     setLastStudyDate(today);
+    setNeedsRollover(false, "updateStreak set lastStudyDate to today");
+    setPendingMissedDays([]);
+    hasUnsavedLocalChangesRef.current = true;
+    lastLocalMutationTimeRef.current = Date.now();
     setHasSeenReminder(false);
     setXpGainedToday(0); // Reset daily XP on a new day
     setSpentXpToday(0); // Reset daily spent XP
@@ -1689,10 +1843,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const saveStateToCloudNow = useCallback(
     async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
       if (!isLoaded) return false;
+      const now = Date.now();
+      lastSyncTimestampRef.current = now;
       const stateToSave = {
         ...latestStateRef.current,
+        lastSyncTimestamp: now,
         ...overrides,
       };
+      latestStateRef.current = stateToSave;
       const jsonString = JSON.stringify(stateToSave);
       if (Capacitor.isNativePlatform()) {
         await Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
@@ -1808,7 +1966,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateChapterStats,
       resetApp,
       isLoaded,
-      needsRollover,
+      needsRollover: needsRolloverState,
       setNeedsRollover,
       consistencyBroken,
       setConsistencyBroken,
@@ -1844,6 +2002,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       scheduleBacklogTask,
       notifyCalendarPreviewOpened,
       notifyCalendarPreviewClosed,
+      lastSyncTimestamp,
+      setLastSyncTimestamp,
     }),
     [
       xp,
@@ -1903,8 +2063,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateChapterStats,
       resetApp,
       isLoaded,
-      needsRollover,
+      needsRolloverState,
       setNeedsRollover,
+      lastSyncTimestamp,
+      setLastSyncTimestamp,
       consistencyBroken,
       setConsistencyBroken,
       completeRollover,

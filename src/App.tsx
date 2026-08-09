@@ -38,6 +38,9 @@ import {
   AppProvider,
   useAppContext,
   getLogicalDate,
+  getStandardDateKey,
+  isSameLogicalDay,
+  hasTodayProtocolRecord,
 } from "./context/AppContext";
 import { getXpForLevel } from "./lib/utils";
 import { useHaptic } from "./hooks/useHaptic";
@@ -125,6 +128,7 @@ function AppContent() {
     setConsistencyBroken,
     completeRollover,
     history,
+    lifeMetrics,
     setHistory,
     pendingMissedDays,
     submitMissedDayReasons,
@@ -208,10 +212,17 @@ function AppContent() {
     const hasSeenForever = localStorage.getItem(
       "welcome_hero_dismissed_forever",
     );
-    if (!hasSeenForever) {
+    if (
+      firebaseUser &&
+      isCloudSyncComplete &&
+      (lastStudyDate || (playerName && playerName !== "Player 1") || xp > 0)
+    ) {
+      setShowWelcomeHero(false);
+      localStorage.setItem("welcome_hero_dismissed_forever", "true");
+    } else if (!hasSeenForever) {
       setShowWelcomeHero(true);
     }
-  }, [effectiveLoaded]);
+  }, [effectiveLoaded, firebaseUser, isCloudSyncComplete, lastStudyDate, playerName, xp]);
 
   const handleEnterApp = () => {
     localStorage.setItem("welcome_hero_dismissed_forever", "true");
@@ -261,12 +272,19 @@ function AppContent() {
     const interval = setInterval(
       () => {
         const currentLogicalDate = getLogicalDate();
+        const isToday = isSameLogicalDay(lastStudyDate, currentLogicalDate);
+        const protocolExists = hasTodayProtocolRecord(history, lifeMetrics, currentLogicalDate);
 
-        if (
-          lastStudyDate !== currentLogicalDate.toDateString() &&
-          !needsRollover
-        ) {
-          setNeedsRollover(true);
+        console.log(
+          `[Rollover Monitor] lastStudyDate: "${lastStudyDate}", logicalToday: "${getStandardDateKey(currentLogicalDate)}", isToday: ${isToday}, protocolExists: ${protocolExists}, needsRollover: ${needsRollover}`
+        );
+
+        if (!isToday && !protocolExists && !needsRollover) {
+          console.log(`[Rollover Monitor] New day boundary detected! Setting needsRollover = true`);
+          setNeedsRollover(true, "Periodic monitor detected day boundary shift");
+        } else if ((isToday || protocolExists) && needsRollover) {
+          console.log(`[Rollover Monitor] Today protocol already present or matched. Clearing needsRollover.`);
+          setNeedsRollover(false, "Periodic monitor cleared needsRollover because today is completed");
         }
       },
       isPowerSaver ? 300000 : 60000,
@@ -281,6 +299,8 @@ function AppContent() {
     isPowerSaver,
     firebaseUser,
     isCloudSyncComplete,
+    history,
+    lifeMetrics,
   ]);
 
   const [showLevelUp, setShowLevelUp] = useState(false);
@@ -998,13 +1018,15 @@ function AppContent() {
     touchEndX.current = 0;
   };
 
-  if (!effectiveLoaded) {
+  if (!effectiveLoaded || (firebaseUser && !isCloudSyncComplete)) {
     return (
       <div className="min-h-[100dvh] dark:bg-black bg-slate-50 flex flex-col items-center justify-center relative overflow-hidden dark:text-slate-200 text-slate-900 font-sans p-4">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(6,182,212,0.15)_0%,transparent_70%)]" />
         <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin z-10" />
         <p className="mt-4 dark:text-cyan-400 text-cyan-700/50 font-mono text-sm tracking-[0.3em] uppercase animate-pulse z-10">
-          Initializing System...
+          {firebaseUser && !isCloudSyncComplete
+            ? "Verifying Cloud Progress..."
+            : "Initializing System..."}
         </p>
         <button
           type="button"
@@ -1339,7 +1361,7 @@ function AppContent() {
       {/* Rollover Modal */}
       {createPortal(
         <AnimatePresence>
-          {needsRollover && !showNameModal && (
+          {needsRollover && (!firebaseUser || isCloudSyncComplete) && !showNameModal && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1589,7 +1611,7 @@ function AppContent() {
       {/* Missed Days Modal */}
       {createPortal(
         <AnimatePresence>
-          {pendingMissedDays.length > 0 && !needsRollover && !showNameModal && (
+          {pendingMissedDays.length > 0 && !needsRollover && (!firebaseUser || isCloudSyncComplete) && !showNameModal && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
