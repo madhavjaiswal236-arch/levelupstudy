@@ -1255,6 +1255,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const latestStateRef = useRef<any>({});
+  const pendingRolloverSaveRef = useRef<boolean>(false);
 
   useEffect(() => {
     latestStateRef.current = {
@@ -1297,6 +1298,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ongoingChapters,
       lastSyncTimestamp: lastSyncTimestampRef.current,
     };
+
+    if (pendingRolloverSaveRef.current) {
+      pendingRolloverSaveRef.current = false;
+      const todayKey = getStandardDateKey(getLogicalDate());
+      const now = Date.now();
+      const stateToSave = {
+        ...latestStateRef.current,
+        lastStudyDate: todayKey,
+        lastSyncTimestamp: now,
+        lastRolloverTimestamp: now,
+        xpGainedToday: 0,
+        spentXpToday: 0,
+        hoursStudiedToday: 0,
+        questionsSolved: 0,
+        loggedTasksToday: [],
+      };
+      latestStateRef.current = stateToSave;
+      const jsonString = JSON.stringify(stateToSave);
+      if (Capacitor.isNativePlatform()) {
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      }
+      if (firebaseUser?.uid && isCloudSyncComplete) {
+        lastSavedCloudJsonRef.current = jsonString;
+        saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
+          if (ok) {
+            hasUnsavedLocalChangesRef.current = false;
+          }
+        });
+      }
+    }
   });
 
   const updateTask = (id: number, updates: Partial<Todo>) => {
@@ -1332,16 +1365,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const now = Date.now();
     setLastSyncTimestamp(now);
-    saveStateToCloudNow({
-      lastStudyDate: todayKey,
-      lastSyncTimestamp: now,
-      lastRolloverTimestamp: now,
-      xpGainedToday: 0,
-      spentXpToday: 0,
-      hoursStudiedToday: 0,
-      questionsSolved: 0,
-      loggedTasksToday: [],
-    });
+    hasUnsavedLocalChangesRef.current = true;
+    lastLocalMutationTimeRef.current = now;
+    pendingRolloverSaveRef.current = true;
   };
 
   // Check and update streak on load or when logging session

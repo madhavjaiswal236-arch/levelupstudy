@@ -201,7 +201,7 @@ function AppContent() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setForceLoaded(true);
-    }, 1200);
+    }, 2500);
     return () => clearTimeout(timer);
   }, []);
 
@@ -209,17 +209,21 @@ function AppContent() {
 
   useEffect(() => {
     if (!effectiveLoaded) return;
+    if (firebaseUser && !isCloudSyncComplete) return;
+
     const hasSeenForever = localStorage.getItem(
       "welcome_hero_dismissed_forever",
     );
     if (
-      firebaseUser &&
-      isCloudSyncComplete &&
-      (lastStudyDate || (playerName && playerName !== "Player 1") || xp > 0)
+      firebaseUser ||
+      lastStudyDate ||
+      (playerName && playerName !== "Player 1") ||
+      xp > 0 ||
+      hasSeenForever
     ) {
       setShowWelcomeHero(false);
       localStorage.setItem("welcome_hero_dismissed_forever", "true");
-    } else if (!hasSeenForever) {
+    } else {
       setShowWelcomeHero(true);
     }
   }, [effectiveLoaded, firebaseUser, isCloudSyncComplete, lastStudyDate, playerName, xp]);
@@ -556,11 +560,8 @@ function AppContent() {
             ...entry,
             aiFeedback: feedback,
           };
+          setHistory([...updatedHistory]);
         }
-      }
-
-      if (needsUpdate) {
-        setHistory(updatedHistory);
       }
     };
 
@@ -1024,17 +1025,8 @@ function AppContent() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(6,182,212,0.15)_0%,transparent_70%)]" />
         <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin z-10" />
         <p className="mt-4 dark:text-cyan-400 text-cyan-700/50 font-mono text-sm tracking-[0.3em] uppercase animate-pulse z-10">
-          {firebaseUser && !isCloudSyncComplete
-            ? "Verifying Cloud Progress..."
-            : "Initializing System..."}
+          Initializing System...
         </p>
-        <button
-          type="button"
-          onClick={() => setForceLoaded(true)}
-          className="mt-6 z-10 px-5 py-2.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-mono text-xs tracking-wider uppercase transition-all cursor-pointer"
-        >
-          Open App Directly
-        </button>
       </div>
     );
   }
