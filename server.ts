@@ -2,7 +2,7 @@ import rateLimit from 'express-rate-limit';
 import express from 'express';
 import path from 'path';
 import { GoogleGenAI } from '@google/genai';
-import { generateDeterministicCoachReport } from './src/lib/coach/engine';
+import { generateDeterministicCoachReport, generateDeterministicDynamicInsight } from './src/lib/coach/engine';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -189,19 +189,14 @@ app.post("/api/dynamic-insight", async (req, res) => {
   const tgt = sanitizeNumber(body.target, 0, 10000);
   const pendingTasksCount = sanitizeNumber(body.pendingTasksCount, 0, 1000);
 
-  let fallbackInsight = "Hours don't crack JEE. Output does. Hunt weaknesses and track problems solved.";
-
-  if (hrs < 2 && pendingTasksCount > 0) {
-    fallbackInsight = `You didn't fail willpower; you failed environmental design. Phone in another room. Win the next 30 minutes.\n\n🔒 Lock: Motion beats stagnation. Break the pattern.`;
-  } else if (hrs > 4 && q < 15) {
-    fallbackInsight = `Reading theory is hiding from failure. Close the book. Give me one 25-minute problem sprint.\n\n🔒 Lock: Fake productivity alert. Chase friction.`;
-  } else if (acc < 60 && q > 10) {
-    fallbackInsight = `You are recognizing theory, not recalling concepts. Read less. Solve more.\n\n🔒 Lock: Your error rate is bleeding out gains. Accuracy > Speed today.`;
-  } else if (q >= tgt && tgt > 0) {
-    fallbackInsight = `Elite execution. You put up numbers today. Now drop it. The ego hangover will kill tomorrow's momentum.\n\n🔒 Lock: Targets hit. Acknowledge it, then drop it.`;
-  } else if (streak >= 3) {
-    fallbackInsight = `Discipline is boring replication. The top 100 ranks aren't built on motivation.\n\n🔒 Lock: Protect the ${streak}-day streak. Return fast.`;
-  }
+  const fallbackInsight = generateDeterministicDynamicInsight({
+    hoursToday: hrs,
+    streak,
+    accuracy: acc,
+    questionsSolved: q,
+    target: tgt,
+    pendingTasksCount
+  });
 
   if (!ai) {
     return res.json({ insight: fallbackInsight });

@@ -1,9 +1,10 @@
 import { Capacitor } from '@capacitor/core';
-import { generateDeterministicCoachReport } from './coach/engine';
+import { generateDeterministicCoachReport, generateDeterministicDynamicInsight } from './coach/engine';
 
 const API_BASE_URL = Capacitor.isNativePlatform() 
   ? 'https://ais-pre-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app' 
   : '';
+
 
 export async function getAICoachFeedback(metrics: {
   hours: number;
@@ -88,24 +89,7 @@ export function getStaticDynamicInsight(metrics: {
   pendingTasksCount: number,
   recentTaskTypes: string
 }) {
-  const hrs = metrics.hoursToday || 0;
-  const acc = metrics.accuracy || 0;
-  const q = metrics.questionsSolved || 0;
-  const tgt = metrics.target || 0;
-  const streak = metrics.streak || 0;
-
-  if (hrs < 2 && metrics.pendingTasksCount > 0) {
-    return `You didn't fail willpower; you failed environmental design. Phone in another room. Win the next 30 minutes.\n\n🔒 Lock: Motion beats stagnation. Break the pattern.`;
-  } else if (hrs > 4 && q < 15) {
-    return `Reading theory is hiding from failure. Close the book. Give me one 25-minute problem sprint.\n\n🔒 Lock: Fake productivity alert. Chase friction.`;
-  } else if (acc < 60 && q > 10) {
-    return `You are recognizing theory, not recalling concepts. Read less. Solve more.\n\n🔒 Lock: Your error rate is bleeding out gains. Accuracy > Speed today.`;
-  } else if (q >= tgt && tgt > 0) {
-    return `Elite execution. You put up numbers today. Now drop it. The ego hangover will kill tomorrow's momentum.\n\n🔒 Lock: Targets hit. Acknowledge it, then drop it.`;
-  } else if (streak >= 3) {
-    return `Discipline is boring replication. The top 100 ranks aren't built on motivation.\n\n🔒 Lock: Protect the ${streak}-day streak. Return fast.`;
-  }
-  return "Hours don't crack JEE. Output does. Hunt weaknesses and track problems solved.\n\n🔒 Lock: Focus on execution.";
+  return generateDeterministicDynamicInsight(metrics);
 }
 
 export function generateStaticFeedback(data: any) {
