@@ -879,7 +879,13 @@ export function StudyCalendar({
                       clearInterval(scrollInterval);
                       scrollInterval = null;
                     }
-                    target.releasePointerCapture(e.pointerId);
+                    try {
+                      if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
+                        target.releasePointerCapture(e.pointerId);
+                      }
+                    } catch (err) {
+                      // ignore pointer capture release error
+                    }
                     target.removeEventListener(
                       "pointermove",
                       handlePointerMove as EventListener,
@@ -1138,7 +1144,13 @@ export function StudyCalendar({
                         setDragEventId(null);
                         setUnsyncedChanges(true);
                         document.body.classList.remove("is-dragging");
-                        target.releasePointerCapture(e.pointerId);
+                        try {
+                          if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
+                            target.releasePointerCapture(e.pointerId);
+                          }
+                        } catch (err) {
+                          // ignore pointer capture release error
+                        }
                         target.removeEventListener(
                           "pointermove",
                           handlePointerMove as EventListener,
@@ -1238,7 +1250,9 @@ export function StudyCalendar({
                       e.stopPropagation();
                       e.preventDefault();
                     }}
-                    className={`absolute rounded-xl px-2.5 py-1.5 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? "opacity-80 shadow-2xl z-50 ring-2 ring-indigo-500" : "z-40 shadow-sm"} ${dragEventId === ev.id || resizingEventId === ev.id ? "" : "transition-all duration-300"} group`}
+                    data-no-swipe="true"
+                    data-calendar-event="true"
+                    className={`absolute rounded-xl px-2.5 py-1.5 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? "opacity-80 shadow-2xl z-50 ring-2 ring-indigo-500" : "z-40 shadow-sm"} ${dragEventId === ev.id || resizingEventId === ev.id ? "" : "transition-all duration-300"} group touch-none select-none no-swipe`}
                     style={{
                       left: `calc(${dayIndex * (100 / visibleDays.length)}% + 3px)`,
                       width: `calc(${100 / visibleDays.length}% - 6px)`,
@@ -1544,7 +1558,13 @@ export function StudyCalendar({
                           setResizingEventId(null);
                           setUnsyncedChanges(true);
                           document.body.classList.remove("is-dragging");
-                          target.releasePointerCapture(e.pointerId);
+                          try {
+                            if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
+                              target.releasePointerCapture(e.pointerId);
+                            }
+                          } catch (err) {
+                            // ignore pointer capture release error
+                          }
                           target.removeEventListener(
                             "pointermove",
                             handlePointerMove as EventListener,
@@ -1957,10 +1977,11 @@ export function StudyCalendar({
 
   return (
     <div
+      data-no-swipe="true"
       className={
         onClose
-          ? "fixed inset-0 z-[100] bg-white dark:bg-[#121212] flex items-center justify-center overflow-hidden"
-          : "w-full h-full overflow-hidden"
+          ? "fixed inset-0 z-[100] bg-white dark:bg-[#121212] flex items-center justify-center overflow-hidden study-calendar-container no-swipe"
+          : "w-full h-full overflow-hidden study-calendar-container no-swipe"
       }
     >
       <motion.div

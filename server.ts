@@ -222,7 +222,7 @@ Closing: [Goggins-style push. e.g. "The IIT paper doesn't care how you felt yest
 
     const generateWithTimeout = async (modelName: string) => {
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("AI_TIMEOUT")), 4000)
+        setTimeout(() => reject(new Error("AI_TIMEOUT")), 12000)
       );
       const apiPromise = ai.models.generateContent({
         model: modelName,
@@ -298,7 +298,7 @@ Make it brutal and direct. If their questions are low but hours are high, scold 
 
     const generateWithTimeout = async (modelName: string) => {
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("AI_TIMEOUT")), 3000)
+        setTimeout(() => reject(new Error("AI_TIMEOUT")), 12000)
       );
       const apiPromise = ai.models.generateContent({
         model: modelName,

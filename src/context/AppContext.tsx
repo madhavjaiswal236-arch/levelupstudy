@@ -1380,6 +1380,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const completeRollover = (sleepInput: number, screenTimeInput: number) => {
     updateStreak(sleepInput, screenTimeInput);
+
+    const yesterdayObj = getLogicalDate();
+    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+    const yesterdayStr = yesterdayObj.toDateString();
+
+    setLifeMetrics((prev) => {
+      const dayNum = yesterdayObj.getDate();
+      const exists = prev.some((m) => m.day === dayNum);
+      if (exists) {
+        return prev.map((m) =>
+          m.day === dayNum
+            ? { ...m, sleep: sleepInput, screenTime: screenTimeInput }
+            : m,
+        );
+      }
+      return [...prev, { day: dayNum, sleep: sleepInput, screenTime: screenTimeInput }];
+    });
+
+    setHistory((prevHistory) => {
+      let updated = [...prevHistory];
+      const idx = updated.findIndex(
+        (h) => new Date(h.date).toDateString() === yesterdayStr,
+      );
+      if (idx >= 0) {
+        updated[idx] = {
+          ...updated[idx],
+          sleepTime: sleepInput,
+          screenTime: screenTimeInput,
+          aiFeedback: undefined,
+        };
+      } else {
+        const completedTasks = todos.filter((t) => t.completed);
+        updated.push({
+          date: yesterdayObj.toISOString(),
+          hoursStudied: Number(hoursStudiedToday.toFixed(1)),
+          xpEarned: xpGainedToday,
+          completedTasks: [...completedTasks, ...loggedTasksToday],
+          plannedTasks: [...todos, ...loggedTasksToday],
+          sleepTime: sleepInput,
+          screenTime: screenTimeInput,
+        });
+      }
+      return updated;
+    });
+
     setNeedsRollover(false, "completeRollover user submitted protocol");
     setPendingMissedDays([]);
     const todayKey = getStandardDateKey(getLogicalDate());
@@ -1397,7 +1442,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateStreak = (overrideSleep?: number, overrideScreen?: number) => {
     const todayObj = getLogicalDate();
     const today = getStandardDateKey(todayObj);
-    if (isSameLogicalDay(lastStudyDateRef.current, todayObj)) return; // Already studied today
+    if (isSameLogicalDay(lastStudyDateRef.current, todayObj) && overrideSleep === undefined && overrideScreen === undefined) return; // Already studied today
 
     if (lastStudyDateRef.current) {
       const lastDate = new Date(lastStudyDateRef.current);

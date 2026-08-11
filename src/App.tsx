@@ -486,7 +486,7 @@ function AppContent() {
     }
   };
 
-  const handleRolloverSubmit = (e: React.FormEvent) => {
+  const handleRolloverSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     let parsedSleepHrs = parseFloat(sleepInput) || 0;
     let parsedSleepMins = parseFloat(sleepMinsInput) || 0;
@@ -508,6 +508,79 @@ function AppContent() {
 
     completeRollover(finalSleep, finalScreen);
     setRolloverStep(2);
+
+    const yesterdayObj = new Date();
+    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+    const yesterdayKey = yesterdayObj.toDateString();
+
+    processedHistoryRef.current.delete(yesterdayObj.toISOString());
+
+    const yesterdayEntry = history.find(
+      (h) => new Date(h.date).toDateString() === yesterdayKey,
+    ) || {
+      date: yesterdayObj.toISOString(),
+      hoursStudied: hoursStudiedToday || 0,
+      xpEarned: xpGainedToday || 0,
+      completedTasks: todos.filter((t) => t.completed),
+      plannedTasks: todos,
+      sleepTime: finalSleep,
+      screenTime: finalScreen,
+    };
+
+    let planned = yesterdayEntry.plannedTasks;
+    if (!planned || planned.length === 0) {
+      planned = (yesterdayEntry.completedTasks || []).map((t) => ({ ...t }));
+      if (planned.length === 0) {
+        planned = [
+          {
+            id: "dummy",
+            text: "Daily Planned Tasks",
+            completed: false,
+          } as any,
+        ];
+      }
+    }
+
+    try {
+      const feedback = await getAICoachFeedback({
+        hours: yesterdayEntry.hoursStudied || 0,
+        sleep: finalSleep,
+        screenTime: finalScreen,
+        completedTasks: yesterdayEntry.completedTasks || [],
+        plannedTasks: planned || [],
+        practiceSessions: practiceSessions || [],
+        xpEarned: yesterdayEntry.xpEarned || 0,
+        targetXp: dailyTarget || 1000,
+        level: level || 1,
+        streakDays: streakDays || 0,
+        history: history.slice(Math.max(0, history.length - 7)),
+      });
+
+      setHistory((prev) => {
+        const next = [...prev];
+        const idx = next.findIndex(
+          (h) => new Date(h.date).toDateString() === yesterdayKey,
+        );
+        if (idx >= 0) {
+          next[idx] = {
+            ...next[idx],
+            sleepTime: finalSleep,
+            screenTime: finalScreen,
+            aiFeedback: feedback,
+          };
+        } else {
+          next.push({
+            ...yesterdayEntry,
+            sleepTime: finalSleep,
+            screenTime: finalScreen,
+            aiFeedback: feedback,
+          });
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error("Error generating AI Coach feedback on rollover submit:", err);
+    }
   };
 
   useEffect(() => {
@@ -565,7 +638,7 @@ function AppContent() {
     };
 
     processHistory();
-  }, [history.length, isLoaded, setHistory, practiceSessions]);
+  }, [JSON.stringify(history.map(h => ({ d: h.date, fb: h.aiFeedback, sl: h.sleepTime, sc: h.screenTime }))), isLoaded, setHistory, practiceSessions]);
 
   const closeRollover = () => {
     setNeedsRollover(false);
@@ -994,11 +1067,23 @@ function AppContent() {
   const touchEndY = React.useRef(0);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      target.closest(
+        '[data-no-swipe="true"], .study-calendar-container, .no-swipe, [draggable="true"], [data-calendar-event="true"], input, textarea, select, button, canvas, .cursor-grab, .cursor-grabbing',
+      )
+    ) {
+      touchStartX.current = 0;
+      touchStartY.current = 0;
+      return;
+    }
     touchStartX.current = e.targetTouches[0].clientX;
     touchStartY.current = e.targetTouches[0].clientY;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartX.current) return;
     touchEndX.current = e.targetTouches[0].clientX;
     touchEndY.current = e.targetTouches[0].clientY;
   };
@@ -1008,7 +1093,7 @@ function AppContent() {
     const distanceX = touchStartX.current - touchEndX.current;
     const distanceY = touchStartY.current - touchEndY.current;
     const isHorizontalSwipe = Math.abs(distanceX) > Math.abs(distanceY);
-    const isValidSwipe = Math.abs(distanceX) > 50;
+    const isValidSwipe = Math.abs(distanceX) > 60;
 
     if (isHorizontalSwipe && isValidSwipe) {
       if (distanceX > 0) handleSwipeLeft();
