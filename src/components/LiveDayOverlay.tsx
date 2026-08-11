@@ -12,6 +12,7 @@ import {
  Plus,
 } from "lucide-react";
 import { useAppContext } from "@/context/AppContext";
+import { generateDeterministicCoachReport } from "@/lib/coach/engine";
 
 interface LiveDayOverlayProps {
  onClose: () => void;
@@ -29,7 +30,13 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
  playerName,
  lifeMetrics,
  xp,
- class11EndDate
+ class11EndDate,
+ practiceSessions,
+ level,
+ streakDays,
+ history,
+ syllabus,
+ accuracy,
  } = useAppContext();
 
  const class11EndTimestamp = class11EndDate ? new Date(class11EndDate).getTime() : 0;
@@ -81,122 +88,39 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
  new Date(t.id).toDateString() === new Date().toDateString(),
  ), [todos]);
 
- // AI Coach Analysis logic (Enhanced)
- const progressPercent = dailyXpRequired > 0 ? (xpGainedToday / dailyXpRequired) * 100 : 0;
- const xpRemaining = Math.max(0, dailyXpRequired - xpGainedToday);
- 
+ // AI Coach Analysis logic (Canonical Engine)
  const todayMetric = lifeMetrics.find(m => m.day === new Date().getDate()) || { sleep: 0, screenTime: 0 };
  const sleep = todayMetric.sleep;
  const screen = todayMetric.screenTime;
 
- // Plan Execution
- const plannedTasks = todos.length;
- const completedTasks = todos.filter(t => t.completed).length;
+ const coachReport = useMemo(() => {
+ return generateDeterministicCoachReport({
+ hours: hoursStudiedToday,
+ sleep,
+ screenTime: screen,
+ completedTasks: todos.filter((t) => t.completed),
+ plannedTasks: todos,
+ practiceSessions,
+ xpEarned: xpGainedToday,
+ targetXp: dailyXpRequired,
+ level,
+ streakDays,
+ history,
+ syllabus,
+ accuracy,
+ loggedTasksToday,
+ });
+ }, [hoursStudiedToday, sleep, screen, todos, practiceSessions, xpGainedToday, dailyXpRequired, level, streakDays, history, syllabus, accuracy, loggedTasksToday]);
 
- // Output Quality
- // Calculate total output score: 1 question = 1 point, 1 task = 10 points, 1 logged session = 15 points
- const outputScore = questionsSolved + (completedTasks * 10) + (loggedTasksToday.length * 15);
- const outputPerHour = hoursStudiedToday > 0 ? (outputScore / hoursStudiedToday) : 0;
- 
- const lectureHours = loggedTasksToday.filter(t => t.type === 'Lecture' || t.type === 'Theory').reduce((acc, t) => acc + (t.lectureHours || 0), 0);
-
- // Severity Scoring
- let severity = 5;
- 
- // XP Progress
- if (progressPercent >= 100) severity -= 2;
- else if (progressPercent >= 50) severity -= 1;
- else if (progressPercent === 0) severity += 3;
- else if (progressPercent < 25) severity += 2;
-
- let flags: string[] = [];
-
- // Fake work vs Lecture Heavy
- if (hoursStudiedToday > 1 && outputPerHour < 15) {
- if (lectureHours > hoursStudiedToday * 0.5) {
- severity += 1;
- flags.push('lecture_heavy');
- } else {
- severity += 2;
- flags.push('fake_work');
- }
- }
-
- // Sleep sabotage
- if (sleep > 0 && sleep < 6) {
- severity += 1;
- flags.push('sleep_sabotage');
- }
-
- // Dopamine drift
- if (screen > 4) {
- severity += 1;
- flags.push('dopamine_drift');
- }
-
- severity = Math.max(1, Math.min(10, severity));
-
+ const severityScore = coachReport.explanation.severity.overall;
  let mentorHeading = "";
- if (severity <= 2) mentorHeading = "DOMINATION. BUT THE WAR ISN'T OVER.";
- else if (severity <= 4) mentorHeading = "STEADY. DON'T CONFUSE MOTION WITH PROGRESS.";
- else if (severity <= 6) mentorHeading = "YOU'RE BLEEDING THE DAY. WAKE UP.";
- else if (severity <= 8) mentorHeading = "SELF-SABOTAGE IN PROGRESS.";
+ if (severityScore <= 2) mentorHeading = "DOMINATION. BUT THE WAR ISN'T OVER.";
+ else if (severityScore <= 4) mentorHeading = "STEADY. DON'T CONFUSE MOTION WITH PROGRESS.";
+ else if (severityScore <= 6) mentorHeading = "YOU'RE BLEEDING THE DAY. WAKE UP.";
+ else if (severityScore <= 8) mentorHeading = "SELF-SABOTAGE IN PROGRESS.";
  else mentorHeading = "YOU SURRENDERED. PROVE YOU'RE NOT DONE.";
 
- // Cold Numbers
- let coldNumbers = `XP: ${Math.floor(xpGainedToday)}/${dailyXpRequired} (${Math.min(100, Math.floor(progressPercent))}%). Study: ${hoursStudiedToday.toFixed(1)}h. Tasks: ${completedTasks}/${plannedTasks}. Sleep: ${sleep}h. Screen: ${screen}h. Questions solved: ${questionsSolved}.`;
-
- // Wounds
- let woundText = "";
- if (flags.includes('lecture_heavy')) {
- woundText += `${hoursStudiedToday.toFixed(1)}h of study, but mostly just watching lectures. Passive learning feels like work, but active practice gets you the rank. `;
- } else if (flags.includes('fake_work')) {
- woundText += `${hoursStudiedToday.toFixed(1)}h of 'study' but dangerously low output (few questions/tasks completed). That's mental jogging, not training. Hours without output is vanity. `;
- }
- if (flags.includes('dopamine_drift')) {
- woundText += `${screen}h of screen time burned your focus before you even opened a book. Cheap dopamine beats your dream every time you let it. `;
- }
- if (flags.includes('sleep_sabotage')) {
- woundText += `${sleep}h of sleep is cognitive decay. You're grinding with a blunt blade. `;
- }
-
- if (woundText === "") {
- woundText = "You're on track, but the margin for error is zero. Don't coast.";
- }
-
- // Verdict
- let verdictText = "";
- if (severity <= 2) verdictText = "Today was a victory. But the IIT list is full of one-day champions. Come back tomorrow and do it again.";
- else if (severity <= 4) verdictText = "Acceptable, not exceptional. The next rank requires you to stretch the acceptable into the savage.";
- else if (severity <= 6) verdictText = "This is a day that will quietly kill your rank. Fix it before the sun sets, or let it stain your week.";
- else if (severity <= 8) verdictText = "You are actively eroding your own potential. This isn't a bad day—it's a choice to stay comfortable.";
- else verdictText = "You stepped out of the ring today. The exam doesn't care. The only thing that matters now is whether you get back in tomorrow.";
-
- // Prescription
- let missionText = "";
- if (flags.includes('lecture_heavy')) {
- missionText = "Tomorrow's first session must be pure practice. No lectures, no theory. Just problems and you. Minimum 30 questions before touching a video.";
- } else if (flags.includes('fake_work')) {
- missionText = "Starting your next session, track only output. I want 20 questions or 2 major tasks completed per hour. Any hour below that doesn't count.";
- } else if (severity >= 9) {
- missionText = "Your only job tomorrow is to win a single 30-minute block. One DPP. Phone out of the room. Build from that tiny win.";
- } else {
- missionText = `Sustain the rhythm. Target ${hoursStudiedToday + 1}h of deep work, with a non-negotiable 90-minute block on your weakest topic.`;
- }
- if (screen > 3) {
- missionText += " Phone locked/outside room until the first 90-minute block is complete.";
- }
-
- // Goggins Push
- const pushLibrary = [
- "Stay hard.",
- "The mirror. That's your only enemy.",
- "One more day of savage discipline, or one more day closer to regret. Choose.",
- "Your family's sacrifice doesn't pay for comfort. Go earn it."
- ];
- const pushText = pushLibrary[Math.floor(Math.random() * pushLibrary.length)];
-
- const finalMentorText = `${coldNumbers}\n\n${woundText}\n\nVerdict: ${verdictText}\n\nMission for tomorrow: ${missionText}\n\n${pushText}`;
+ const finalMentorText = coachReport.fullFormattedText;
 
  return (
  <motion.div
@@ -324,26 +248,26 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
 
  <div className="space-y-4">
  <p className="dark:text-slate-400 text-slate-600 text-xs font-mono bg-slate-950/50 p-2 rounded-lg border dark:border-slate-800 border-slate-200">
- {coldNumbers}
+ {coachReport.rawReport}
  </p>
  <p className="dark:text-slate-300 text-slate-600 text-base leading-relaxed font-medium">
- {woundText}
+ {coachReport.diagnosis}
  </p>
  <div className="dark:bg-slate-900/50 bg-white p-3 rounded-lg border dark:border-slate-800 border-slate-200/50">
  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-1">Verdict</span>
- <p className="dark:text-slate-200 text-slate-900 text-sm font-medium">{verdictText}</p>
+ <p className="dark:text-slate-200 text-slate-900 text-sm font-medium">{coachReport.verdict}</p>
  </div>
  <div className="bg-blue-950/30 p-4 rounded-lg border border-blue-900/50 mt-4 relative overflow-hidden group">
  <div className="absolute inset-0 bg-blue-500/5 group-hover:bg-blue-500/10 transition-colors" />
  <span className="text-xs font-bold dark:text-blue-400 text-blue-700 uppercase tracking-widest block mb-2 relative z-10 flex items-center gap-2">
  <Target className="w-4 h-4" /> Tactical Correction
  </span>
- <p className="text-blue-100 text-sm font-medium mb-3 relative z-10">{missionText}</p>
+ <p className="text-blue-100 text-sm font-medium mb-3 relative z-10">{coachReport.todayMission}</p>
  <button
  onClick={() => {
  setTodos(prev => [...prev, {
  id: Date.now(),
- text: `Tactical Mission: ${missionText}`,
+ text: `Tactical Mission: ${coachReport.todayMission}`,
  completed: false,
  xpReward: 150,
  type: 'Practice',
@@ -357,7 +281,7 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
  </button>
  </div>
  <p className="dark:text-cyan-400 text-cyan-700 font-bold text-lg uppercase tracking-widest mt-6">
- "{pushText}"
+ "{coachReport.closing}"
  </p>
  </div>
 

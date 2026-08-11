@@ -143,6 +143,9 @@ function AppContent() {
     setFirebaseUser,
     setHasToken,
     isCloudSyncComplete,
+    syllabus,
+    accuracy,
+    loggedTasksToday,
   } = useAppContext();
 
   useNotificationScheduler({
@@ -554,6 +557,9 @@ function AppContent() {
         level: level || 1,
         streakDays: streakDays || 0,
         history: history.slice(Math.max(0, history.length - 7)),
+        syllabus,
+        accuracy,
+        loggedTasksToday,
       });
 
       setHistory((prev) => {
