@@ -20,8 +20,9 @@ export function computeBaseline(history: PlayHistoryEntry[]): StudentBaseline {
   let emaHours = valid[0].hoursStudied || 0;
   let emaSleep = valid[0].sleepTime || 7;
   let emaScreen = valid[0].screenTime || 3.5;
-  let totalQuestionsSum = 0;
-  let totalCompletionRateSum = 0;
+  let emaCompletionRate = 0.75;
+  let totalQuestionsCount = 0;
+  let daysWithQuestions = 0;
 
   for (let i = 0; i < valid.length; i++) {
     const h = valid[i];
@@ -29,27 +30,32 @@ export function computeBaseline(history: PlayHistoryEntry[]): StudentBaseline {
     const slp = Math.max(0, h.sleepTime || 7);
     const scr = Math.max(0, h.screenTime || 3.5);
 
+    const planned = h.plannedTasks?.length || 0;
+    const completed = h.completedTasks?.length || 0;
+    const rate = planned > 0 ? completed / planned : 0.8;
+
     if (i === 0) {
       emaHours = hrs;
       emaSleep = slp;
       emaScreen = scr;
+      emaCompletionRate = rate;
     } else {
       emaHours = alpha * hrs + (1 - alpha) * emaHours;
       emaSleep = alpha * slp + (1 - alpha) * emaSleep;
       emaScreen = alpha * scr + (1 - alpha) * emaScreen;
+      emaCompletionRate = alpha * rate + (1 - alpha) * emaCompletionRate;
     }
 
-    const planned = h.plannedTasks?.length || 0;
-    const completed = h.completedTasks?.length || 0;
-    if (planned > 0) {
-      totalCompletionRateSum += completed / planned;
-    } else {
-      totalCompletionRateSum += 0.8;
+    if (typeof h.xpEarned === "number" && h.xpEarned > 0) {
+      // Estimate questions from XP if question count isn't stored explicitly
+      const approxQ = Math.round(h.xpEarned / 5);
+      totalQuestionsCount += approxQ;
+      daysWithQuestions++;
     }
   }
 
-  const avgCompletionRate = valid.length > 0 ? totalCompletionRateSum / valid.length : 0.75;
-  const avgQuestions = Math.round(emaHours * 8);
+  const avgCompletionRate = emaCompletionRate;
+  const avgQuestions = daysWithQuestions > 0 ? Math.round(totalQuestionsCount / daysWithQuestions) : Math.round(emaHours * 6);
 
   const confidence = valid.length >= 10 ? "HIGH" : valid.length >= 4 ? "MEDIUM" : "LOW";
 

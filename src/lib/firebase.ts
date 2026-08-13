@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, getDocFromCache, onSnapshot, serverTimestamp, enableIndexedDbPersistence } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -21,6 +21,16 @@ const mergedFirebaseConfig = {
 const app = getApps().length > 0 ? getApp() : initializeApp(mergedFirebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore persistence failed-precondition: multiple tabs open.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore persistence unimplemented in this browser environment.');
+    }
+  });
+}
 
 // Save user data to Firestore
 export enum OperationType {
@@ -70,8 +80,97 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
+export function sanitizeForFirestore(val: any): any {
+  if (val === undefined) {
+    return null;
+  }
+  if (val === null || typeof val !== 'object') {
+    return val;
+  }
+
+  // Preserve Special objects like Firestore FieldValue (e.g. serverTimestamp) or Date objects
+  if (val.constructor && val.constructor.name !== 'Object' && val.constructor.name !== 'Array') {
+    return val;
+  }
+
+  if (Array.isArray(val)) {
+    return val.map((item) => (item === undefined ? null : sanitizeForFirestore(item)));
+  }
+
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(val)) {
+    if (value !== undefined) {
+      cleaned[key] = sanitizeForFirestore(value);
+    }
+  }
+  return cleaned;
+}
+
 const userSaveTimers = new Map<string, any>();
 const pendingSaveDataMap = new Map<string, any>();
+const activeSaveWorkersMap = new Map<string, Promise<boolean>>();
+const lastWriteTimestampMap = new Map<string, number>();
+
+const processSaveQueue = async (userId: string): Promise<boolean> => {
+  if (activeSaveWorkersMap.has(userId)) {
+    return activeSaveWorkersMap.get(userId)!;
+  }
+
+  const workerPromise = (async () => {
+    let success = true;
+    while (pendingSaveDataMap.has(userId)) {
+      if (!auth.currentUser || auth.currentUser.uid !== userId) {
+        pendingSaveDataMap.delete(userId);
+        break;
+      }
+
+      // Enforce minimum 1200ms spacing between consecutive network writes to prevent rate limiting & queue overflow
+      const lastWrite = lastWriteTimestampMap.get(userId) || 0;
+      const timeSinceLastWrite = Date.now() - lastWrite;
+      if (timeSinceLastWrite < 1200) {
+        await new Promise((r) => setTimeout(r, 1200 - timeSinceLastWrite));
+      }
+
+      const targetData = pendingSaveDataMap.get(userId);
+      pendingSaveDataMap.delete(userId);
+      if (!targetData) break;
+
+      const path = `users/${userId}`;
+      try {
+        const userRef = doc(db, 'users', userId);
+        const sanitizedData = sanitizeForFirestore(targetData);
+        await setDoc(userRef, {
+          ...sanitizedData,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+        lastWriteTimestampMap.set(userId, Date.now());
+      } catch (err: any) {
+        success = false;
+        const isOfflineOrThrottled =
+          err?.code === 'permission-denied' ||
+          err?.code === 'resource-exhausted' ||
+          err?.code === 'unavailable' ||
+          err?.message?.includes('permission') ||
+          err?.message?.includes('exhausted') ||
+          err?.message?.includes('offline') ||
+          err?.message?.includes('backend') ||
+          err?.message?.includes('Could not reach');
+
+        if (isOfflineOrThrottled) {
+          console.warn('Firestore write queued or waiting for network/auth connection:', err?.message || err);
+        } else {
+          handleFirestoreError(err, OperationType.WRITE, path);
+        }
+        break;
+      }
+    }
+    activeSaveWorkersMap.delete(userId);
+    return success;
+  })();
+
+  activeSaveWorkersMap.set(userId, workerPromise);
+  return workerPromise;
+};
 
 export const saveUserDataToCloud = async (userId: string, data: any, immediate: boolean = false): Promise<boolean> => {
   if (!auth.currentUser || auth.currentUser.uid !== userId) return false;
@@ -82,26 +181,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
       clearTimeout(userSaveTimers.get(userId));
       userSaveTimers.delete(userId);
     }
-    const targetData = pendingSaveDataMap.get(userId);
-    pendingSaveDataMap.delete(userId);
-
-    if (!auth.currentUser || auth.currentUser.uid !== userId || !targetData) return false;
-    const path = `users/${userId}`;
-    try {
-      const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, {
-        ...targetData,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-      return true;
-    } catch (err: any) {
-      if (err?.code === 'permission-denied' || err?.code === 'resource-exhausted' || err?.message?.includes('permission') || err?.message?.includes('exhausted')) {
-        console.warn('Firestore write throttled or waiting for connection:', err?.message || err);
-        return false;
-      }
-      handleFirestoreError(err, OperationType.WRITE, path);
-      return false;
-    }
+    return processSaveQueue(userId);
   }
 
   if (userSaveTimers.has(userId)) {
@@ -111,31 +191,9 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
   return new Promise((resolve) => {
     const timer = setTimeout(async () => {
       userSaveTimers.delete(userId);
-      const targetData = pendingSaveDataMap.get(userId);
-      pendingSaveDataMap.delete(userId);
-
-      if (!auth.currentUser || auth.currentUser.uid !== userId || !targetData) {
-        resolve(false);
-        return;
-      }
-      const path = `users/${userId}`;
-      try {
-        const userRef = doc(db, 'users', userId);
-        await setDoc(userRef, {
-          ...targetData,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-        resolve(true);
-      } catch (err: any) {
-        if (err?.code === 'permission-denied' || err?.code === 'resource-exhausted' || err?.message?.includes('permission') || err?.message?.includes('exhausted')) {
-          console.warn('Firestore write throttled or waiting for connection:', err?.message || err);
-          resolve(false);
-          return;
-        }
-        handleFirestoreError(err, OperationType.WRITE, path);
-        resolve(false);
-      }
-    }, 300); // Fast 300ms auto-save debounce
+      const result = await processSaveQueue(userId);
+      resolve(result);
+    }, 1500);
     userSaveTimers.set(userId, timer);
   });
 };
@@ -146,13 +204,41 @@ export const loadUserDataFromCloud = async (userId: string) => {
   const path = `users/${userId}`;
   try {
     const userRef = doc(db, 'users', userId);
-    const snap = await getDoc(userRef);
-    if (snap.exists()) {
-      return snap.data();
+    try {
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        return snap.data();
+      }
+    } catch (readErr: any) {
+      const isOfflineErr =
+        readErr?.code === 'unavailable' ||
+        readErr?.message?.includes('offline') ||
+        readErr?.message?.includes('backend') ||
+        readErr?.message?.includes('Could not reach');
+
+      if (isOfflineErr) {
+        console.warn('Firestore client is offline or backend unreachable. Attempting cache read.');
+        try {
+          const cacheSnap = await getDocFromCache(userRef);
+          if (cacheSnap.exists()) {
+            return cacheSnap.data();
+          }
+        } catch (cacheErr) {
+          console.warn('No cached data found for user doc in offline mode.');
+        }
+        return null;
+      }
+      throw readErr;
     }
   } catch (err: any) {
-    if (err?.code === 'permission-denied' || err?.message?.includes('permission')) {
-      console.warn('Firestore read waiting for security rules propagation or auth context refresh.');
+    if (
+      err?.code === 'permission-denied' ||
+      err?.message?.includes('permission') ||
+      err?.code === 'unavailable' ||
+      err?.message?.includes('offline') ||
+      err?.message?.includes('backend')
+    ) {
+      console.warn('Firestore read operating in offline mode or waiting for auth.');
       return null;
     }
     handleFirestoreError(err, OperationType.GET, path);
@@ -170,8 +256,14 @@ export const subscribeToCloudUserData = (userId: string, callback: (data: any, m
       callback(snap.data(), { hasPendingWrites: snap.metadata.hasPendingWrites });
     }
   }, (err: any) => {
-    if (err?.code === 'permission-denied' || err?.message?.includes('permission')) {
-      console.warn('Firestore listener waiting for security rules propagation or auth context refresh.');
+    if (
+      err?.code === 'permission-denied' ||
+      err?.code === 'unavailable' ||
+      err?.message?.includes('permission') ||
+      err?.message?.includes('offline') ||
+      err?.message?.includes('backend')
+    ) {
+      console.warn('Firestore listener operating in offline mode or waiting for auth context.');
       return;
     }
     handleFirestoreError(err, OperationType.GET, path);

@@ -93,6 +93,35 @@ export function runCoachTests(): { passed: boolean; testResults: { name: string;
   const t5Success = res5.explanation.facts.hoursToday === 0 && res5.explanation.facts.sleepToday === 7 && res5.explanation.facts.screenToday === 24;
   results.push({ name: "Test 5: Edge Case Bounds Normalization", success: t5Success, detail: `Normalized hours: ${res5.explanation.facts.hoursToday}, sleep: ${res5.explanation.facts.sleepToday}, screen: ${res5.explanation.facts.screenToday}` });
 
+  // Test 6: Overplanning Detection
+  const test6Input: RawCoachInput = {
+    hours: 5.0,
+    sleep: 7.5,
+    screenTime: 2.0,
+    plannedTasks: Array(8).fill(null).map((_, i) => ({ id: i, text: `Task ${i}`, completed: i < 2, xpReward: 50, type: "Practice" as const })),
+    completedTasks: [
+      { id: 0, text: "Task 0", completed: true, xpReward: 50, type: "Practice" as const },
+      { id: 1, text: "Task 1", completed: true, xpReward: 50, type: "Practice" as const }
+    ],
+  };
+  const res6 = generateDeterministicCoachReport(test6Input);
+  const t6Success = res6.explanation.states.planning === "OVERPLANNING";
+  results.push({ name: "Test 6: Overplanning State Classification", success: t6Success, detail: `Planning state: ${res6.explanation.states.planning}` });
+
+  // Test 7: Subject Avoidance & Weakest Subject Computation
+  const test7Input: RawCoachInput = {
+    hours: 5.0,
+    sleep: 7.0,
+    screenTime: 2.0,
+    practiceSessions: [
+      { id: "s1", subject: "Physics", chapter: "Mechanics", attempted: 30, correct: 25, timeSpent: 60, mistakes: [], date: "2026-08-11" },
+      { id: "s2", subject: "Mathematics", chapter: "Calculus", attempted: 30, correct: 25, timeSpent: 60, mistakes: [], date: "2026-08-11" },
+    ],
+  };
+  const res7 = generateDeterministicCoachReport(test7Input);
+  const t7Success = res7.explanation.derivedMetrics.neglectedSubjects.includes("Chemistry") && res7.explanation.derivedMetrics.weakestSubject === "Chemistry";
+  results.push({ name: "Test 7: Subject Avoidance & Weakest Subject", success: t7Success, detail: `Neglected: ${res7.explanation.derivedMetrics.neglectedSubjects.join(", ")}, Weakest: ${res7.explanation.derivedMetrics.weakestSubject}` });
+
   const allPassed = results.every((r) => r.success);
   return { passed: allPassed, testResults: results };
 }

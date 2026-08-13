@@ -57,6 +57,7 @@ const Analytics = lazy(() => import("./pages/Analytics"));
 const Syllabus = lazy(() => import("./pages/Syllabus"));
 import { HAPTIC_PATTERNS, vibrate } from "./lib/haptics";
 import { sendNotification } from "./lib/notifications";
+import { runSyncSimulations } from "./lib/sync/syncTestRunner";
 import { useNotificationScheduler } from "./hooks/useNotificationScheduler";
 import { NotificationToastContainer } from "./components/NotificationToastContainer";
 import { googleSignIn } from "./lib/firebase";
@@ -205,6 +206,15 @@ function AppContent() {
     const timer = setTimeout(() => {
       setForceLoaded(true);
     }, 2500);
+
+    // Run Forensic Data-Safety Simulations
+    const syncTest = runSyncSimulations();
+    console.log("%c[Data Safety Guard] 11 Synchronization Simulations Execution:", "color: #10B981; font-weight: bold; font-size: 13px;");
+    console.log(`[Data Safety Guard] Status: ${syncTest.passed ? "ALL 11 SIMULATIONS PASSED" : "FAILED"}`);
+    syncTest.results.forEach((r, idx) => {
+      console.log(` %c${idx + 1}. [${r.passed ? "PASS" : "FAIL"}] ${r.name}`, r.passed ? "color: #10B981" : "color: #EF4444", `- ${r.detail}`);
+    });
+
     return () => clearTimeout(timer);
   }, []);
 

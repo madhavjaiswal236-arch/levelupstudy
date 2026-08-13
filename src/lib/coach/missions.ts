@@ -33,7 +33,7 @@ export function buildCoachReport(
   severity: SeverityAnalysis,
   priority: PriorityResolution
 ): DeterministicCoachReport {
-  const seedKey = `${data.dateStr}_${state.performance}_${state.recovery}_${state.screen}_${priority.primaryFocus}`;
+  const seedKey = `${data.dateStr}_${state.performance}_${state.recovery}_${state.screen}_${priority.primaryFocus}_streak${data.streakDays}`;
 
   // 1. Raw Report
   let rawReport = `Yesterday's raw report: Sleep ${data.sleep}h. Screen ${data.screenTime}h. `;
@@ -94,7 +94,10 @@ export function buildCoachReport(
   verdict = verdict.replace(/\$\{neglectedSubject\}/g, neglectedSub);
 
   // 4. Today's Mission
-  const missionCategory = priority.primaryFocus;
+  let missionCategory = priority.primaryFocus as string;
+  if (priority.primaryFocus === "practice" && state.practice === "SUBJECT_AVOIDANCE") {
+    missionCategory = "subject";
+  }
   const missionPool = TEMPLATES.missions[missionCategory] || TEMPLATES.missions.performance;
   let todayMission = selectItem(missionPool, `${seedKey}_mission`, TEMPLATES.missions.performance[0]);
 

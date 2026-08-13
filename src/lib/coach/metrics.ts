@@ -24,7 +24,18 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
   let lectureHours = 0;
   let practiceHours = 0;
 
-  const allTasks = [...data.loggedTasksToday, ...data.completedTasks];
+  // Deduplicate tasks by ID/text between loggedTasksToday and completedTasks
+  const seenTaskIds = new Set<string>();
+  const allTasks: typeof data.loggedTasksToday = [];
+
+  for (const t of [...data.loggedTasksToday, ...data.completedTasks]) {
+    const key = t.id ? String(t.id) : t.text;
+    if (!seenTaskIds.has(key)) {
+      seenTaskIds.add(key);
+      allTasks.push(t);
+    }
+  }
+
   for (const task of allTasks) {
     const taskHours = task.lectureHours || (task.durationMinutes ? task.durationMinutes / 60 : 0.5);
     const typeLower = (task.type || "").toLowerCase();
@@ -65,6 +76,17 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
     }
   }
 
+  // Determine weakest subject (subject with least studied hours or lowest practice score)
+  let weakestSubject: string | undefined = undefined;
+  let minVal = Infinity;
+  for (const sub of standardSubjects) {
+    const hoursSpent = subjectDistribution[sub] || 0;
+    if (hoursSpent < minVal) {
+      minVal = hoursSpent;
+      weakestSubject = sub;
+    }
+  }
+
   const sleepDebtToday = Math.max(0, 7.5 - data.sleep);
   const screenDeviation = Math.max(0, data.screenTime - 3.5);
 
@@ -85,6 +107,7 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
     uncompletedTaskNames,
     subjectDistribution,
     neglectedSubjects,
+    weakestSubject,
     sleepDebtToday,
     screenDeviation,
   };

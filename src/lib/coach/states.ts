@@ -45,9 +45,9 @@ export function classifyMultiState(
   } else if (trends.hoursVolatility > 2.5) {
     trend = "OSCILLATING";
   } else if (data.hours >= baselineHrs + 1.5 && trends.hoursSlope < 0) {
-    trend = "RECOVERY_REBOUND";
-  } else if (data.hours < baselineHrs - 1.5 && trends.hoursSlope > 0) {
     trend = "POST_PEAK_DROP";
+  } else if (data.hours < baselineHrs - 1.5 && trends.hoursSlope > 0) {
+    trend = "RECOVERY_REBOUND";
   }
 
   // 3. Planning State
