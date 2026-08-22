@@ -744,12 +744,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setEquippedAura(parsed.equippedAura || "");
           setUnlockedItems(parsed.unlockedItems || []);
           setOngoingChapters(parsed.ongoingChapters || {});
-          setLevel(parsed.level || 1);
-          setStreakDays(parsed.streakDays || 0);
-          setLastStudyDate(parsed.lastStudyDate || null);
-          setDailyTarget(parsed.dailyTarget || 100);
-          setAccuracy(parsed.accuracy || 0);
-          setSpeedScore(parsed.speedScore || 0);
           if (parsed.notificationSettings) {
             setNotificationSettings(parsed.notificationSettings);
           }
@@ -858,59 +852,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, cloudDelay);
 
-    const flushCloudSave = () => {
-      const currentJson = JSON.stringify(stateToSave);
-      if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: currentJson });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, currentJson);
-      }
-      if (
-        firebaseUser?.uid &&
-        isCloudSyncComplete &&
-        currentJson !== lastSavedCloudJsonRef.current
-      ) {
-        lastSavedCloudJsonRef.current = currentJson;
-        saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
-          if (ok) {
-            hasUnsavedLocalChangesRef.current = false;
-          }
-        });
-      }
-    };
-
-    const handleBeforeUnload = () => {
-      flushCloudSave();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        flushCloudSave();
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    let capAppStateListener: any = null;
-    if (Capacitor.isNativePlatform()) {
-      CapApp.addListener("appStateChange", (state) => {
-        if (!state.isActive) {
-          flushCloudSave();
-        }
-      }).then((listener) => {
-        capAppStateListener = listener;
-      });
-    }
-
     return () => {
       clearTimeout(localTimeoutId);
       clearTimeout(cloudTimeoutId);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (capAppStateListener) {
-        capAppStateListener.remove();
-      }
     };
   }, [
     isLoaded,
@@ -954,6 +898,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     totalXpGoal,
     ongoingChapters,
   ]);
+
+  // Dedicated single-instance listener for page unload, visibility hidden and mobile pause
+  useEffect(() => {
+    const flushCurrentState = () => {
+      const stateToSave = latestStateRef.current;
+      if (!stateToSave || Object.keys(stateToSave).length === 0) return;
+      const currentJson = JSON.stringify(stateToSave);
+      if (Capacitor.isNativePlatform()) {
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: currentJson });
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, currentJson);
+      }
+      if (
+        firebaseUser?.uid &&
+        isCloudSyncComplete &&
+        currentJson !== lastSavedCloudJsonRef.current
+      ) {
+        lastSavedCloudJsonRef.current = currentJson;
+        saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
+          if (ok) {
+            hasUnsavedLocalChangesRef.current = false;
+          }
+        });
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      flushCurrentState();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushCurrentState();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    let isMounted = true;
+    let capAppStateListener: any = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", (state) => {
+        if (!state.isActive) {
+          flushCurrentState();
+        }
+      }).then((listener) => {
+        if (isMounted) {
+          capAppStateListener = listener;
+        } else {
+          listener.remove();
+        }
+      }).catch(() => {});
+    }
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (capAppStateListener) {
+        capAppStateListener.remove();
+      }
+    };
+  }, [firebaseUser, isCloudSyncComplete]);
 
   // Initial Cloud Data Fetch on Auth to ensure cloud state is single source of truth
   useEffect(() => {
@@ -1365,8 +1373,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return updated;
     });
 
-    setNeedsRollover(false, "completeRollover user submitted protocol");
-    setPendingMissedDays([]);
     const todayKey = getStandardDateKey(getLogicalDate());
     if (typeof sessionStorage !== "undefined") {
       sessionStorage.setItem(`rollover_completed_${todayKey}`, "true");
@@ -1576,8 +1582,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStreakDays(1); // First day
     }
     setLastStudyDate(today);
-    setNeedsRollover(false, "updateStreak set lastStudyDate to today");
-    setPendingMissedDays([]);
     hasUnsavedLocalChangesRef.current = true;
     lastLocalMutationTimeRef.current = Date.now();
     setHasSeenReminder(false);
@@ -1653,18 +1657,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const roundedFinal = Math.round(finalAmount);
 
-    let calculatedNewXp = 0;
-    let calculatedNewLevel = 1;
+    const currentXp = latestStateRef.current.xp ?? xp;
+    const calculatedNewXp = currentXp + roundedFinal;
+    const calculatedNewLevel = Math.min(
+      100,
+      Math.floor(Math.pow(calculatedNewXp / totalXpGoal, 0.5) * 99) + 1,
+    );
 
-    setXp((prevXp) => {
-      calculatedNewXp = prevXp + roundedFinal;
-      calculatedNewLevel = Math.min(
-        100,
-        Math.floor(Math.pow(calculatedNewXp / totalXpGoal, 0.5) * 99) + 1,
-      );
+    setXp(calculatedNewXp);
+    if (calculatedNewLevel !== level) {
       setLevel(calculatedNewLevel);
-      return calculatedNewXp;
-    });
+    }
 
     setXpGainedToday((prev) => {
       const newXpGained = prev + roundedFinal;

@@ -1,11 +1,29 @@
 import { Capacitor } from '@capacitor/core';
 import { generateDeterministicCoachReport, generateDeterministicDynamicInsight } from './coach/engine';
+import { auth } from './firebase';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL 
   || (Capacitor.isNativePlatform() 
       ? ((import.meta as any).env?.VITE_API_URL || 'https://ais-pre-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app') 
       : '');
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  try {
+    const user = auth?.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+  } catch (e) {
+    // Guest or offline mode
+  }
+  return headers;
+}
 
 export async function getAICoachFeedback(metrics: {
   hours: number;
@@ -26,11 +44,10 @@ export async function getAICoachFeedback(metrics: {
   loggedTasksToday?: any[];
 }) {
   try {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/ai-coach`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(metrics),
     });
 
@@ -62,11 +79,10 @@ export async function getDynamicInsight(metrics: {
 }) {
   const staticFallback = getStaticDynamicInsight(metrics);
   try {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/dynamic-insight`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(metrics),
     });
 

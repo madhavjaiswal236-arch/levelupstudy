@@ -32,18 +32,32 @@ export const useCapacitorSetup = () => {
 
       requestPushPermissions();
 
+      let isMounted = true;
       let pushReceivedHandle: any = null;
       let pushActionHandle: any = null;
 
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      PushNotifications.addListener('pushNotificationReceived', () => {
         vibrate(HAPTIC_PATTERNS.SUCCESS);
-      }).then(handle => { pushReceivedHandle = handle; });
+      }).then(handle => { 
+        if (isMounted) {
+          pushReceivedHandle = handle;
+        } else {
+          handle.remove();
+        }
+      }).catch(() => {});
 
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+      PushNotifications.addListener('pushNotificationActionPerformed', () => {
         // Handle action, e.g. deep linking
-      }).then(handle => { pushActionHandle = handle; });
+      }).then(handle => { 
+        if (isMounted) {
+          pushActionHandle = handle;
+        } else {
+          handle.remove();
+        }
+      }).catch(() => {});
 
       return () => {
+        isMounted = false;
         pushReceivedHandle?.remove();
         pushActionHandle?.remove();
       };

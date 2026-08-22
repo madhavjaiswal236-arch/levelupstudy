@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { StudyCalendar } from "@/components/StudyCalendar";
 
 import { createPortal } from "react-dom";

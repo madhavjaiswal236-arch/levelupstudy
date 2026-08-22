@@ -52,16 +52,30 @@ export function isInIframe(): boolean {
   }
 }
 
-// Web Audio API Synthesizer for high-frequency crisp notification chimes
+// Web Audio API Synthesizer with singleton AudioContext
+let sharedAudioCtx: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  try {
+    if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+      sharedAudioCtx = new AudioContextClass();
+    }
+    if (sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+    return sharedAudioCtx;
+  } catch (e) {
+    return null;
+  }
+}
+
 export function playNotificationChime(type: InAppToast['type'] = 'general') {
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-
-    if (ctx.state === 'suspended') {
-      ctx.resume();
-    }
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();

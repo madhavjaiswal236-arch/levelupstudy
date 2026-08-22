@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
             firebase: ['firebase/app', 'firebase/firestore', 'firebase/auth'],
             charts: ['recharts'],
             icons: ['lucide-react'],
+            three: ['three'],
           }
         }
       }

@@ -19,22 +19,31 @@ app.use((req, res, next) => {
     : [];
   const defaultAllowedOrigins = [
     'http://localhost:3000', 
+    'http://localhost:5173',
     'capacitor://localhost', 
     'http://localhost',
     'https://localhost'
   ];
   const allowedOrigins = [...defaultAllowedOrigins, ...configuredOrigins];
 
+  const isAllowedOrigin = (originUrl: string) => {
+    if (allowedOrigins.includes(originUrl)) return true;
+    try {
+      const parsed = new URL(originUrl);
+      const hostname = parsed.hostname;
+      if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+      if (hostname.endsWith('.vercel.app') || hostname.endsWith('.run.app') || hostname.endsWith('.google.com')) return true;
+    } catch (e) {
+      return false;
+    }
+    return process.env.NODE_ENV !== 'production';
+  };
+
   if (origin) {
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production' || origin.endsWith('.vercel.app') || origin.endsWith('.run.app')) {
+    if (isAllowedOrigin(origin)) {
       res.header('Access-Control-Allow-Origin', origin);
     } else {
       return res.status(403).json({ error: 'CORS policy: Origin forbidden' });
-    }
-  } else {
-    // Non-browser or same-origin requests
-    if (process.env.NODE_ENV === 'production' && req.headers['x-requested-with'] === 'XMLHttpRequest') {
-      return res.status(403).json({ error: 'CORS policy: Missing Origin header' });
     }
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
