@@ -853,10 +853,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
       }
-    }, 200);
+    }, 100);
 
-    // Auto-save debounce set to 1.5s for immediate responsiveness without excessive writes
-    const cloudDelay = 1500;
+    // Fast cloud auto-save debounce for lightning speed cross-device sync
+    const cloudDelay = 300;
 
     const cloudTimeoutId = setTimeout(async () => {
       if (

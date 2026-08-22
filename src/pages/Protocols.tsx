@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { CheckSquare, Activity, Target, Plus, Trash2, Shield, Moon, Smartphone } from 'lucide-react';
+import { CheckSquare, Activity, Target, Plus, Trash2, Shield, Moon, Smartphone, Clock, Sparkles } from 'lucide-react';
 import { useAppContext, MonthlyGoal, Habit } from '../context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -12,6 +12,10 @@ const Protocols = React.memo(function Protocols() {
  monthlyGoals, setMonthlyGoals, 
  habits, setHabits, 
  lifeMetrics, setLifeMetrics,
+ class11EndDate,
+ totalXpGoal,
+ xp,
+ xpGainedToday,
  isLoaded
  } = useAppContext();
 
@@ -25,6 +29,36 @@ const Protocols = React.memo(function Protocols() {
 
  const [newGoalText, setNewGoalText] = useState('');
  const [newHabitName, setNewHabitName] = useState('');
+
+ // Dynamic calculation for target study hours based on remaining days and syllabus/XP
+ const daysLeft = useMemo(() => {
+   if (class11EndDate) {
+     const diff = Math.ceil((new Date(class11EndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+     return Math.max(1, diff);
+   }
+   const defaultTarget = new Date('2026-05-01').getTime();
+   const diff = Math.ceil((defaultTarget - Date.now()) / (1000 * 60 * 60 * 24));
+   return Math.max(1, diff);
+ }, [class11EndDate]);
+
+ // Target daily hours calibrated to automatically suggest/enforce at least 8 hours
+ const autoTargetDailyHours = useMemo(() => {
+   const remainingXp = Math.max(0, (totalXpGoal || 800000) - (xp - xpGainedToday));
+   const calculatedHours = (remainingXp / daysLeft) / 300;
+   return Math.max(8, Math.round(calculatedHours));
+ }, [totalXpGoal, xp, xpGainedToday, daysLeft]);
+
+ const handleApplyAutoGoal = () => {
+   const autoGoalText = `Complete ${autoTargetDailyHours} Hours of Focused JEE Study Daily (${daysLeft} Days Remaining)`;
+   if (!monthlyGoals.some(g => g.text.includes(`${autoTargetDailyHours} Hours`))) {
+     const newGoal: MonthlyGoal = {
+       id: Date.now().toString(),
+       text: autoGoalText,
+       completed: false
+     };
+     setMonthlyGoals([newGoal, ...monthlyGoals]);
+   }
+ };
 
  // --- Monthly Goals Handlers ---
  const handleAddGoal = (e: React.FormEvent) => {
@@ -105,14 +139,46 @@ const Protocols = React.memo(function Protocols() {
  <Card className="border-cyan-500/30 dark:bg-black bg-slate-50 relative overflow-hidden group">
  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/5 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-all duration-1000 -translate-x-full group-hover:translate-x-full ease-in-out pointer-events-none z-20" />
  <CardHeader className="border-b dark:border-white/5 border-black/5 pb-4 relative z-10 group/header">
- <CardTitle className="text-xl font-bold flex items-center gap-2 dark:text-cyan-400 text-cyan-700 uppercase tracking-widest">
- <motion.div whileHover={{ scale: 1.2, rotate: 15 }} className="relative">
- <Target className="w-5 h-5 group-hover/header:drop-shadow-md transition-all" />
- </motion.div>
- Monthly Directives
- </CardTitle>
+ <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   <CardTitle className="text-xl font-bold flex items-center gap-2 dark:text-cyan-400 text-cyan-700 uppercase tracking-widest">
+     <motion.div whileHover={{ scale: 1.2, rotate: 15 }} className="relative">
+       <Target className="w-5 h-5 group-hover/header:drop-shadow-md transition-all" />
+     </motion.div>
+     Monthly Directives
+   </CardTitle>
+   <div className="flex items-center gap-2">
+     <span className="text-xs font-mono dark:text-cyan-300 text-cyan-700 font-bold bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+       <Clock className="w-3.5 h-3.5" />
+       Optimal Target: <span className="text-emerald-400 font-black">{autoTargetDailyHours} hrs/day</span> ({daysLeft}d left)
+     </span>
+   </div>
+ </div>
  </CardHeader>
  <CardContent className="p-6 relative z-10">
+ <div className="mb-6 p-4 rounded-xl border border-cyan-500/30 dark:bg-cyan-950/20 bg-cyan-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   <div className="flex items-center gap-3">
+     <div className="p-2.5 bg-cyan-500/20 rounded-lg text-cyan-400 shrink-0">
+       <Sparkles className="w-5 h-5" />
+     </div>
+     <div>
+       <p className="text-xs font-bold font-mono uppercase tracking-wider dark:text-cyan-300 text-cyan-800">
+         Calibrated Study Protocol
+       </p>
+       <p className="text-xs dark:text-slate-300 text-slate-700">
+         Based on {daysLeft} days remaining, your target is automatically set to <strong className="text-cyan-400">{autoTargetDailyHours} hours</strong> of daily focused study.
+       </p>
+     </div>
+   </div>
+   <Button
+     type="button"
+     size="sm"
+     onClick={handleApplyAutoGoal}
+     className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold uppercase tracking-wider shrink-0"
+   >
+     Adopt Auto-Goal
+   </Button>
+ </div>
+
  <form onSubmit={handleAddGoal} className="flex gap-3 mb-6">
  <input
  type="text"

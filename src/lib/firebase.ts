@@ -124,11 +124,11 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
         break;
       }
 
-      // Enforce minimum 1200ms spacing between consecutive network writes to prevent rate limiting & queue overflow
+      // Enforce minimum 400ms spacing between consecutive network writes to prevent rate limiting while delivering instant sync
       const lastWrite = lastWriteTimestampMap.get(userId) || 0;
       const timeSinceLastWrite = Date.now() - lastWrite;
-      if (timeSinceLastWrite < 1200) {
-        await new Promise((r) => setTimeout(r, 1200 - timeSinceLastWrite));
+      if (timeSinceLastWrite < 400) {
+        await new Promise((r) => setTimeout(r, 400 - timeSinceLastWrite));
       }
 
       const targetData = pendingSaveDataMap.get(userId);
@@ -193,7 +193,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
       userSaveTimers.delete(userId);
       const result = await processSaveQueue(userId);
       resolve(result);
-    }, 1500);
+    }, 300);
     userSaveTimers.set(userId, timer);
   });
 };
