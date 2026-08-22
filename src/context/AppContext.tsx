@@ -1124,84 +1124,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [firebaseUser]);
 
-  // Real-Time Cloud Listener with Non-Reverting Smart Sync
-  useEffect(() => {
-    if (!firebaseUser?.uid || !isCloudSyncComplete) return;
+  // Real-Time Cloud Listener removed to prevent feedback write loops and stream exhaustion.
+  // Data is loaded on initial app load / refresh via syncCloudOnLogin.
+  // Cross-tab sync remains active via localStorage events.
 
-    const unsubscribeCloud = subscribeToCloudUserData(
-      firebaseUser.uid,
-      (cloudData, metadata) => {
-        if (!cloudData) return;
-
-        // Skip local optimistic write snapshots
-        if (metadata?.hasPendingWrites) return;
-
-        const currentLocal = latestStateRef.current;
-        const { mergedState, needsCloudUpload } = reconcileState(currentLocal, cloudData);
-
-        const cloudJson = JSON.stringify(cloudData);
-        if (cloudJson === lastSavedCloudJsonRef.current && !needsCloudUpload) return;
-
-        lastSavedCloudJsonRef.current = JSON.stringify(mergedState);
-        isRemoteSyncingRef.current = true;
-
-        if (mergedState.xp !== undefined) setXp(mergedState.xp);
-        if (mergedState.xpGainedToday !== undefined) setXpGainedToday(mergedState.xpGainedToday);
-        if (mergedState.spentXpToday !== undefined) setSpentXpToday(mergedState.spentXpToday);
-        if (mergedState.totalSpentXp !== undefined) setTotalSpentXp(mergedState.totalSpentXp);
-        if (mergedState.hoursStudiedToday !== undefined) setHoursStudiedToday(mergedState.hoursStudiedToday);
-        if (mergedState.level !== undefined) setLevel(mergedState.level);
-        if (mergedState.questionsSolved !== undefined) setQuestionsSolved(mergedState.questionsSolved);
-        if (mergedState.streakDays !== undefined) setStreakDays(mergedState.streakDays);
-        if (mergedState.dailyTarget !== undefined) setDailyTarget(mergedState.dailyTarget);
-        if (mergedState.accuracy !== undefined) setAccuracy(mergedState.accuracy);
-        if (mergedState.speedScore !== undefined) setSpeedScore(mergedState.speedScore);
-        if (mergedState.lastStudyDate !== undefined) setLastStudyDate(mergedState.lastStudyDate);
-        if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
-        if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
-        if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
-        if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
-        if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
-        if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
-        if (mergedState.todos !== undefined) setTodos(mergedState.todos);
-        if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
-        if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
-        if (mergedState.history !== undefined) setHistory(mergedState.history);
-        if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
-        if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
-        if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);
-        if (mergedState.habits !== undefined) setHabits(mergedState.habits);
-        if (mergedState.lifeMetrics !== undefined) setLifeMetrics(mergedState.lifeMetrics);
-        if (mergedState.monthlyGoals !== undefined) setMonthlyGoals(mergedState.monthlyGoals);
-        if (mergedState.lastBossDayDate !== undefined) setLastBossDayDate(mergedState.lastBossDayDate);
-        if (mergedState.bossDayTargetXp !== undefined) setBossDayTargetXp(mergedState.bossDayTargetXp);
-        if (mergedState.bossDayCompleted !== undefined) setBossDayCompleted(mergedState.bossDayCompleted);
-        if (mergedState.equippedTitle !== undefined) setEquippedTitle(mergedState.equippedTitle);
-        if (mergedState.equippedAura !== undefined) setEquippedAura(mergedState.equippedAura);
-        if (mergedState.unlockedItems !== undefined) setUnlockedItems(mergedState.unlockedItems);
-        if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
-        if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
-        if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
-
-        if (mergedState.lastSyncTimestamp) {
-          setLastSyncTimestamp(mergedState.lastSyncTimestamp);
-          lastSyncTimestampRef.current = mergedState.lastSyncTimestamp;
-        }
-
-        if (needsCloudUpload && firebaseUser?.uid) {
-          saveUserDataToCloud(firebaseUser.uid, mergedState, false);
-        }
-
-        setTimeout(() => {
-          isRemoteSyncingRef.current = false;
-        }, 300);
-      },
-    );
-
-    return () => {
-      unsubscribeCloud();
-    };
-  }, [firebaseUser, isCloudSyncComplete]);
 
   // Handle Cross-Tab Synchronization
   useEffect(() => {
