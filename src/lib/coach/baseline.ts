@@ -6,11 +6,11 @@ export function computeBaseline(history: PlayHistoryEntry[]): StudentBaseline {
 
   if (valid.length === 0) {
     return {
-      avgHours: 5.0,
+      avgHours: 3.5,
       avgSleep: 7.0,
-      avgScreen: 3.5,
-      avgQuestions: 30,
-      avgCompletionRate: 0.75,
+      avgScreen: 3.0,
+      avgQuestions: 20,
+      avgCompletionRate: 0.8,
       dataPoints: 0,
       confidence: "NONE",
     };

@@ -1,9 +1,10 @@
 import { Capacitor } from '@capacitor/core';
 import { generateDeterministicCoachReport, generateDeterministicDynamicInsight } from './coach/engine';
 
-const API_BASE_URL = Capacitor.isNativePlatform() 
-  ? 'https://ais-pre-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app' 
-  : '';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL 
+  || (Capacitor.isNativePlatform() 
+      ? ((import.meta as any).env?.VITE_API_URL || 'https://ais-pre-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app') 
+      : '');
 
 
 export async function getAICoachFeedback(metrics: {

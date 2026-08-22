@@ -605,29 +605,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
             // Calculate historical average XP (removed)
 
-            // If they didn't do anything or underperformed significantly on the last active day
-            const lastSessionXp = parsed.xpGainedToday || 0;
-            let dailyRequiredForCalc = parsed.dailyTarget || 100;
-            if (parsed.class11EndDate) {
-              const class11EndTimestamp = new Date(
-                parsed.class11EndDate,
-              ).getTime();
-              const daysUntilExam = Math.max(
-                1,
-                Math.ceil(
-                  (class11EndTimestamp - Date.now()) / (1000 * 3600 * 24),
-                ),
-              );
-              const totalXpRequired = Math.max(
-                0,
-                (parsed.totalXpGoal || 800000) - (parsed.xp || 0),
-              );
-              dailyRequiredForCalc = Math.max(
-                100,
-                Math.ceil(totalXpRequired / daysUntilExam),
-              );
-            }
-
             if (!isNaN(lastDate.getTime())) {
               const lastSessionXp = parsed.xpGainedToday || 0;
               let dailyRequiredForCalc = parsed.dailyTarget || 100;
@@ -1200,21 +1177,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           isRemoteSyncingRef.current = true;
           const parsed = JSON.parse(e.newValue);
-          setXp(parsed.xp || 0);
-          setTodos(parsed.todos || []);
-          setPendingTasks(parsed.pendingTasks || []);
-          setHistory(parsed.history || []);
-          setPracticeSessions(parsed.practiceSessions || []);
-          setQuestionsSolved(parsed.questionsSolved || 0);
-          // Update other fast-changing visual stats if needed
-          setXpGainedToday(parsed.xpGainedToday || 0);
-          setSpentXpToday(parsed.spentXpToday || 0);
-          setTotalSpentXp(parsed.totalSpentXp || 0);
-          setHoursStudiedToday(parsed.hoursStudiedToday || 0);
-          setEquippedTitle(parsed.equippedTitle || "");
-          setEquippedAura(parsed.equippedAura || "");
-          setUnlockedItems(parsed.unlockedItems || []);
-          setOngoingChapters(parsed.ongoingChapters || {});
+          if (parsed.xp !== undefined) setXp(parsed.xp);
+          if (parsed.todos !== undefined) setTodos(parsed.todos);
+          if (parsed.loggedTasksToday !== undefined) setLoggedTasksToday(parsed.loggedTasksToday);
+          if (parsed.pendingTasks !== undefined) setPendingTasks(parsed.pendingTasks);
+          if (parsed.history !== undefined) setHistory(parsed.history);
+          if (parsed.practiceSessions !== undefined) setPracticeSessions(parsed.practiceSessions);
+          if (parsed.questionsSolved !== undefined) setQuestionsSolved(parsed.questionsSolved);
+          if (parsed.xpGainedToday !== undefined) setXpGainedToday(parsed.xpGainedToday);
+          if (parsed.spentXpToday !== undefined) setSpentXpToday(parsed.spentXpToday);
+          if (parsed.totalSpentXp !== undefined) setTotalSpentXp(parsed.totalSpentXp);
+          if (parsed.hoursStudiedToday !== undefined) setHoursStudiedToday(parsed.hoursStudiedToday);
+          if (parsed.level !== undefined) setLevel(parsed.level);
+          if (parsed.streakDays !== undefined) setStreakDays(parsed.streakDays);
+          if (parsed.lastStudyDate !== undefined) setLastStudyDate(parsed.lastStudyDate);
+          if (parsed.focusBadges !== undefined) setFocusBadges(parsed.focusBadges);
+          if (parsed.syllabus !== undefined) setSyllabus(parsed.syllabus);
+          if (parsed.habits !== undefined) setHabits(parsed.habits);
+          if (parsed.lifeMetrics !== undefined) setLifeMetrics(parsed.lifeMetrics);
+          if (parsed.monthlyGoals !== undefined) setMonthlyGoals(parsed.monthlyGoals);
+          if (parsed.dailyTarget !== undefined) setDailyTarget(parsed.dailyTarget);
+          if (parsed.accuracy !== undefined) setAccuracy(parsed.accuracy);
+          if (parsed.speedScore !== undefined) setSpeedScore(parsed.speedScore);
+          if (parsed.equippedTitle !== undefined) setEquippedTitle(parsed.equippedTitle);
+          if (parsed.equippedAura !== undefined) setEquippedAura(parsed.equippedAura);
+          if (parsed.unlockedItems !== undefined) setUnlockedItems(parsed.unlockedItems);
+          if (parsed.ongoingChapters !== undefined) setOngoingChapters(parsed.ongoingChapters);
+          if (parsed.activeBoost !== undefined) setActiveBoost(parsed.activeBoost);
           setTimeout(() => {
             isRemoteSyncingRef.current = false;
           }, 300);

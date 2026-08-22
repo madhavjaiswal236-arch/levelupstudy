@@ -57,11 +57,11 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
   const plannedTaskCount = data.plannedTasks.length;
   const completedTaskIds = new Set(data.completedTasks.map((t) => t.id));
   const completedTaskCount = data.completedTasks.length;
-  const taskCompletionRate = plannedTaskCount > 0 ? completedTaskCount / plannedTaskCount : 1;
+  const taskCompletionRate = plannedTaskCount > 0 ? Math.min(1, Math.max(0, completedTaskCount / plannedTaskCount)) : 1;
 
   const highPriorityTasks = data.plannedTasks.filter((t) => t.priority === "High");
   const highPriorityCompleted = highPriorityTasks.filter((t) => completedTaskIds.has(t.id)).length;
-  const highPriorityCompletionRate = highPriorityTasks.length > 0 ? highPriorityCompleted / highPriorityTasks.length : taskCompletionRate;
+  const highPriorityCompletionRate = highPriorityTasks.length > 0 ? Math.min(1, Math.max(0, highPriorityCompleted / highPriorityTasks.length)) : taskCompletionRate;
 
   const uncompletedTasks = data.plannedTasks.filter((t) => !completedTaskIds.has(t.id));
   const uncompletedTaskNames = uncompletedTasks.map((t) => t.text.trim()).filter(Boolean);

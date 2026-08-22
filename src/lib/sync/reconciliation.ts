@@ -248,9 +248,12 @@ export function reconcileState(
 
   const mergedTs = Math.max(localTs, cloudTs, Date.now());
 
+  const baseState = localIsNewer
+    ? { ...cloudState, ...localState }
+    : { ...localState, ...cloudState };
+
   const mergedState = {
-    ...cloudState,
-    ...localState,
+    ...baseState,
     xp,
     level,
     questionsSolved,

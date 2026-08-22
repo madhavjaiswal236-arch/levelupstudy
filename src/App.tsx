@@ -209,11 +209,11 @@ function AppContent() {
 
     // Run Forensic Data-Safety Simulations
     const syncTest = runSyncSimulations();
-    console.log("%c[Data Safety Guard] 11 Synchronization Simulations Execution:", "color: #10B981; font-weight: bold; font-size: 13px;");
-    console.log(`[Data Safety Guard] Status: ${syncTest.passed ? "ALL 11 SIMULATIONS PASSED" : "FAILED"}`);
-    syncTest.results.forEach((r, idx) => {
-      console.log(` %c${idx + 1}. [${r.passed ? "PASS" : "FAIL"}] ${r.name}`, r.passed ? "color: #10B981" : "color: #EF4444", `- ${r.detail}`);
-    });
+    if (!syncTest.passed) {
+      console.warn("[Data Safety Guard] Sync simulations failed:", syncTest.results);
+    } else {
+      console.log("[Data Safety Guard] 11 Synchronization Simulations Passed.");
+    }
 
     return () => clearTimeout(timer);
   }, []);
@@ -638,9 +638,9 @@ function AppContent() {
             plannedTasks: planned || [],
             practiceSessions: (entry as any).practiceSessions || practiceSessions || [],
             xpEarned: entry.xpEarned || 0,
-            targetXp: stateRef.current?.dailyTarget || 1000,
-            level: stateRef.current?.level || 1,
-            streakDays: stateRef.current?.streakDays || 0,
+            targetXp: dailyTarget || 1000,
+            level: level || 1,
+            streakDays: streakDays || 0,
             history: updatedHistory.slice(Math.max(0, i - 7), i),
           });
 
