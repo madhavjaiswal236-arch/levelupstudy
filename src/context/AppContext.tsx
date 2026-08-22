@@ -855,8 +855,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 100);
 
-    // Fast cloud auto-save debounce for lightning speed cross-device sync
-    const cloudDelay = 300;
+    // Batch state updates into a 1000ms debounce to prevent exhausting the Firestore write stream
+    const cloudDelay = 1000;
 
     const cloudTimeoutId = setTimeout(async () => {
       if (

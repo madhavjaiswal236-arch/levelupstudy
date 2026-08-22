@@ -110,6 +110,7 @@ const userSaveTimers = new Map<string, any>();
 const pendingSaveDataMap = new Map<string, any>();
 const activeSaveWorkersMap = new Map<string, Promise<boolean>>();
 const lastWriteTimestampMap = new Map<string, number>();
+const consecutiveFailuresMap = new Map<string, number>();
 
 const processSaveQueue = async (userId: string): Promise<boolean> => {
   if (activeSaveWorkersMap.has(userId)) {
@@ -124,13 +125,17 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
         break;
       }
 
-      // Enforce minimum 400ms spacing between consecutive network writes to prevent rate limiting while delivering instant sync
+      const failures = consecutiveFailuresMap.get(userId) || 0;
+      // Exponential backoff base: 1.5s, 3s, 6s up to 15s if stream exhausted/backed off
+      const baseDelay = failures > 0 ? Math.min(15000, 1500 * Math.pow(2, failures - 1)) : 1000;
+
       const lastWrite = lastWriteTimestampMap.get(userId) || 0;
       const timeSinceLastWrite = Date.now() - lastWrite;
-      if (timeSinceLastWrite < 400) {
-        await new Promise((r) => setTimeout(r, 400 - timeSinceLastWrite));
+      if (timeSinceLastWrite < baseDelay) {
+        await new Promise((r) => setTimeout(r, baseDelay - timeSinceLastWrite));
       }
 
+      // Grab the latest aggregated state snapshot and clear queue
       const targetData = pendingSaveDataMap.get(userId);
       pendingSaveDataMap.delete(userId);
       if (!targetData) break;
@@ -143,9 +148,19 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
           ...sanitizedData,
           updatedAt: serverTimestamp()
         }, { merge: true });
+
         lastWriteTimestampMap.set(userId, Date.now());
+        consecutiveFailuresMap.set(userId, 0); // reset backoff on success
       } catch (err: any) {
         success = false;
+        const failureCount = (consecutiveFailuresMap.get(userId) || 0) + 1;
+        consecutiveFailuresMap.set(userId, failureCount);
+
+        // Put the data back in the pending map so it gets saved on next attempt
+        if (!pendingSaveDataMap.has(userId)) {
+          pendingSaveDataMap.set(userId, targetData);
+        }
+
         const isOfflineOrThrottled =
           err?.code === 'permission-denied' ||
           err?.code === 'resource-exhausted' ||
@@ -157,7 +172,7 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
           err?.message?.includes('Could not reach');
 
         if (isOfflineOrThrottled) {
-          console.warn('Firestore write queued or waiting for network/auth connection:', err?.message || err);
+          console.warn(`[Firestore Queue] Throttling active (attempt ${failureCount}). Backing off:`, err?.message || err);
         } else {
           handleFirestoreError(err, OperationType.WRITE, path);
         }
@@ -174,7 +189,9 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
 
 export const saveUserDataToCloud = async (userId: string, data: any, immediate: boolean = false): Promise<boolean> => {
   if (!auth.currentUser || auth.currentUser.uid !== userId) return false;
-  pendingSaveDataMap.set(userId, data);
+  // Always aggregate incoming state so intermediate rapid bursts (XP gains, task toggles) collapse into 1 payload
+  const existingPending = pendingSaveDataMap.get(userId) || {};
+  pendingSaveDataMap.set(userId, { ...existingPending, ...data });
 
   if (immediate) {
     if (userSaveTimers.has(userId)) {
@@ -193,7 +210,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
       userSaveTimers.delete(userId);
       const result = await processSaveQueue(userId);
       resolve(result);
-    }, 300);
+    }, 1200);
     userSaveTimers.set(userId, timer);
   });
 };
