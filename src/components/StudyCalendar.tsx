@@ -464,7 +464,7 @@ export function StudyCalendar({
           t.endTime,
       );
       if (eventsToCreate.length > 0) {
-        const createdEventIds: { id: number; calendarEventId: string }[] = [];
+        const createdEventIds: { id: string | number; calendarEventId: string }[] = [];
         for (const t of eventsToCreate) {
           try {
             const durationMinutes = Math.round(

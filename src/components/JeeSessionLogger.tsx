@@ -44,7 +44,7 @@ interface JeeSessionLoggerProps {
     subject: string;
     chapter: string;
     type: string;
-    taskId?: number;
+    taskId?: number | string;
   } | null;
   clearPendingSessionLog?: () => void;
 }
@@ -72,7 +72,7 @@ export default function JeeSessionLogger({
   const { hapticSuccess } = useHaptic();
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const [pendingTaskId, setPendingTaskId] = useState<number | null>(null);
+  const [pendingTaskId, setPendingTaskId] = useState<number | string | null>(null);
   const [subject, setSubject] = useState<Subject | null>(null);
   const [chapter, setChapter] = useState<string | null>(null);
   const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);

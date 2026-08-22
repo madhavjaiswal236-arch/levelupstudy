@@ -890,7 +890,7 @@ export default function Syllabus() {
                               e.stopPropagation();
                               setBacklogPriorities((prev) => ({
                                 ...prev,
-                                [task.id]: isMustDo ? "Review" : "Must-Do",
+                                [String(task.id)]: isMustDo ? ("Review" as const) : ("Must-Do" as const),
                               }));
                             }}
                             className={`shrink-0 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${

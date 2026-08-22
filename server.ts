@@ -15,7 +15,7 @@ app.use(express.json());
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const configuredOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
     : [];
   const defaultAllowedOrigins = [
     'http://localhost:3000', 
@@ -24,15 +24,14 @@ app.use((req, res, next) => {
     'http://localhost',
     'https://localhost'
   ];
-  const allowedOrigins = [...defaultAllowedOrigins, ...configuredOrigins];
+  const allowedOrigins = new Set([...defaultAllowedOrigins, ...configuredOrigins]);
 
   const isAllowedOrigin = (originUrl: string) => {
-    if (allowedOrigins.includes(originUrl)) return true;
+    if (allowedOrigins.has(originUrl)) return true;
     try {
       const parsed = new URL(originUrl);
       const hostname = parsed.hostname;
       if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
-      if (hostname.endsWith('.vercel.app') || hostname.endsWith('.run.app') || hostname.endsWith('.google.com')) return true;
     } catch (e) {
       return false;
     }
@@ -155,7 +154,7 @@ Closing: [Goggins-style push. e.g. "The IIT paper doesn't care how you felt yest
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("AI_TIMEOUT")), 12000)
       );
-      const apiPromise = ai.models.generateContent({
+      const apiPromise = ai!.models.generateContent({
         model: modelName,
         contents: prompt,
       });
@@ -226,7 +225,7 @@ Make it brutal and direct. If their questions are low but hours are high, scold 
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("AI_TIMEOUT")), 12000)
       );
-      const apiPromise = ai.models.generateContent({
+      const apiPromise = ai!.models.generateContent({
         model: modelName,
         contents: prompt,
       });

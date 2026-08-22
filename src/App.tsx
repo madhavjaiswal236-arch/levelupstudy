@@ -856,7 +856,7 @@ function AppContent() {
   }, [isLoaded]);
 
   // Upcoming Task Notifications logic
-  const notifiedTasksRef = React.useRef<Set<number>>(new Set());
+  const notifiedTasksRef = React.useRef<Set<string | number>>(new Set());
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -1952,11 +1952,16 @@ function AppContent() {
           </motion.button>
         </div>
 
-        {/* Mobile Menu Button (Simplified for now) */}
-        <div className="md:hidden flex items-center w-full justify-start overflow-x-auto no-scrollbar gap-1 px-1">
+        {/* Mobile Navigation Bar */}
+        <div
+          role="tablist"
+          aria-label="Mobile Navigation"
+          className="md:hidden flex items-center w-full justify-start overflow-x-auto no-scrollbar gap-1 px-1"
+        >
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={toggleTheme}
+            aria-label="Toggle theme"
             className="flex flex-col items-center justify-center gap-1 p-1.5 rounded-lg flex-shrink-0 transition-all duration-300 dark:text-slate-400 text-slate-600 hover:dark:text-slate-200 text-slate-900 border border-transparent hover:bg-cyan-950/30"
           >
             <Moon size={18} className="hidden dark:block" />
@@ -1976,6 +1981,11 @@ function AppContent() {
             return (
               <motion.button
                 key={tab.id}
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                aria-label={tab.label}
+                id={`mobile-tab-btn-${tab.id}`}
                 onClick={() => {
                   if (isLocked) {
                     showToast(

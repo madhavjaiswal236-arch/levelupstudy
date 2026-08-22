@@ -125,7 +125,7 @@ export interface MonthlyGoal {
 }
 
 export interface Todo {
-  id: number;
+  id: number | string;
   text: string;
   completed: boolean;
   xpReward: number;
@@ -144,6 +144,10 @@ export interface Todo {
   endTime?: string;
   durationMinutes?: number;
 }
+
+export const generateUniqueTaskId = (prefix = "task"): string => {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+};
 
 export interface PracticeSession {
   id: string;
@@ -229,7 +233,7 @@ interface AppState {
   notifyCalendarMutation: () => void;
   todos: Todo[];
   setTodos: React.Dispatch<React.SetStateAction<Todo[]>>;
-  updateTask: (id: number, updates: Partial<Todo>) => void;
+  updateTask: (id: number | string, updates: Partial<Todo>) => void;
   loggedTasksToday: Todo[];
   setLoggedTasksToday: React.Dispatch<React.SetStateAction<Todo[]>>;
   pendingTasks: Todo[];
@@ -304,20 +308,39 @@ interface AppState {
 
 const AppContext = createContext<AppState | undefined>(undefined);
 
+let cachedRolloverTime: string | null = null;
+let isRolloverCacheInitialized = false;
+
+export const setCachedRolloverTime = (time: string | null) => {
+  cachedRolloverTime = time;
+  isRolloverCacheInitialized = true;
+};
+
 export const getLogicalDate = (customRolloverTime?: string) => {
   const d = new Date();
   let offset = 3;
   let timeStr = customRolloverTime;
   if (!timeStr) {
-    try {
-      const saved = localStorage.getItem("app_settings_extended");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.rolloverTime) {
-          timeStr = parsed.rolloverTime;
+    if (isRolloverCacheInitialized) {
+      timeStr = cachedRolloverTime || undefined;
+    } else {
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          const saved = localStorage.getItem("app_settings_extended");
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && typeof parsed.rolloverTime === "string") {
+              timeStr = parsed.rolloverTime;
+              cachedRolloverTime = timeStr;
+            }
+          }
         }
+      } catch (e) {
+        console.warn("[AppContext] Failed to read cached rollover time from storage:", e);
+      } finally {
+        isRolloverCacheInitialized = true;
       }
-    } catch (e) {}
+    }
   }
   if (timeStr) {
     const [hours] = timeStr.split(":");
@@ -950,7 +973,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } else {
           listener.remove();
         }
-      }).catch(() => {});
+      }).catch((err) => {
+        console.warn("Failed to attach Capacitor appStateChange listener:", err);
+      });
     }
 
     return () => {
@@ -1303,11 +1328,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  const updateTask = (id: number, updates: Partial<Todo>) => {
+  const saveStateToCloudNow = useCallback(
+    async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
+      if (!isLoaded || !isCloudSyncComplete) return false;
+      const now = Date.now();
+      lastSyncTimestampRef.current = now;
+      const stateToSave = {
+        ...latestStateRef.current,
+        lastSyncTimestamp: now,
+        ...overrides,
+      };
+      latestStateRef.current = stateToSave;
+      const jsonString = JSON.stringify(stateToSave);
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      }
+
+      if (firebaseUser?.uid) {
+        lastSavedCloudJsonRef.current = jsonString;
+        const ok = await saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
+        if (ok) {
+          hasUnsavedLocalChangesRef.current = false;
+        }
+        return ok;
+      }
+      return true;
+    },
+    [isLoaded, isCloudSyncComplete, firebaseUser],
+  );
+
+  const updateTask = useCallback((id: number | string, updates: Partial<Todo>) => {
     let updatedTodosList: Todo[] = [];
     setTodos((prev) => {
       updatedTodosList = prev.map((t) =>
-        t.id === id ? { ...t, ...updates } : t,
+        String(t.id) === String(id) ? { ...t, ...updates } : t,
       );
       return updatedTodosList;
     });
@@ -1324,87 +1380,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         saveStateToCloudNow({ todos: updatedTodosList });
       });
     }
-  };
-
-  const completeRollover = (sleepInput: number, screenTimeInput: number) => {
-    updateStreak(sleepInput, screenTimeInput);
-
-    const yesterdayObj = getLogicalDate();
-    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-    const yesterdayStr = yesterdayObj.toDateString();
-
-    setLifeMetrics((prev) => {
-      const dayNum = yesterdayObj.getDate();
-      const exists = prev.some((m) => m.day === dayNum);
-      if (exists) {
-        return prev.map((m) =>
-          m.day === dayNum
-            ? { ...m, sleep: sleepInput, screenTime: screenTimeInput }
-            : m,
-        );
-      }
-      return [...prev, { day: dayNum, sleep: sleepInput, screenTime: screenTimeInput }];
-    });
-
-    setHistory((prevHistory) => {
-      let updated = [...prevHistory];
-      const idx = updated.findIndex(
-        (h) => new Date(h.date).toDateString() === yesterdayStr,
-      );
-      if (idx >= 0) {
-        updated[idx] = {
-          ...updated[idx],
-          sleepTime: sleepInput,
-          screenTime: screenTimeInput,
-          aiFeedback: undefined,
-        };
-      } else {
-        const completedTasks = todos.filter((t) => t.completed);
-        updated.push({
-          date: yesterdayObj.toISOString(),
-          hoursStudied: Number(hoursStudiedToday.toFixed(1)),
-          xpEarned: xpGainedToday,
-          completedTasks: [...completedTasks, ...loggedTasksToday],
-          plannedTasks: [...todos, ...loggedTasksToday],
-          sleepTime: sleepInput,
-          screenTime: screenTimeInput,
-        });
-      }
-      return updated;
-    });
-
-    const todayKey = getStandardDateKey(getLogicalDate());
-    if (typeof sessionStorage !== "undefined") {
-      sessionStorage.setItem(`rollover_completed_${todayKey}`, "true");
-    }
-    const now = Date.now();
-    setLastSyncTimestamp(now);
-    hasUnsavedLocalChangesRef.current = true;
-    lastLocalMutationTimeRef.current = now;
-    pendingRolloverSaveRef.current = true;
-  };
+  }, [saveStateToCloudNow]);
 
   // Check and update streak on load or when logging session
-  const updateStreak = (overrideSleep?: number, overrideScreen?: number) => {
+  const updateStreak = useCallback((overrideSleep?: number, overrideScreen?: number) => {
     const todayObj = getLogicalDate();
     const today = getStandardDateKey(todayObj);
     if (isSameLogicalDay(lastStudyDateRef.current, todayObj) && overrideSleep === undefined && overrideScreen === undefined) return; // Already studied today
 
+    const state = latestStateRef.current;
     if (lastStudyDateRef.current) {
       const lastDate = new Date(lastStudyDateRef.current);
       const yesterday = getLogicalDate();
       yesterday.setDate(yesterday.getDate() - 1);
 
-      let newStreak = streakDays;
+      let newStreak = state.streakDays || 0;
       if (lastDate.toDateString() === yesterday.toDateString()) {
-        let currentTarget = dailyTarget;
-        if (class11EndDate) {
-          const class11EndTimestamp = new Date(class11EndDate).getTime();
+        let currentTarget = state.dailyTarget || 100;
+        if (state.class11EndDate) {
+          const class11EndTimestamp = new Date(state.class11EndDate).getTime();
           const daysUntilExam = Math.max(
             1,
             Math.ceil((class11EndTimestamp - Date.now()) / (1000 * 3600 * 24)),
           );
-          const totalXpRequired = Math.max(0, totalXpGoal - xp);
+          const totalXpRequired = Math.max(0, (state.totalXpGoal || 800000) - (state.xp || 0));
           currentTarget = Math.max(
             100,
             Math.ceil(totalXpRequired / daysUntilExam),
@@ -1412,19 +1411,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         const minimumRequiredXp = Math.floor(currentTarget * 0.4);
+        const curTodos: Todo[] = state.todos || [];
+        const curLoggedTasks: Todo[] = state.loggedTasksToday || [];
+        const curXpGainedToday: number = state.xpGainedToday || 0;
+
         const meetsThreshold =
-          xpGainedToday >= minimumRequiredXp ||
-          todos.filter((t) => t.completed).length >= 2 ||
-          (loggedTasksToday.length >= 1 &&
-            xpGainedToday >= minimumRequiredXp / 2);
+          curXpGainedToday >= minimumRequiredXp ||
+          curTodos.filter((t) => t.completed).length >= 2 ||
+          (curLoggedTasks.length >= 1 &&
+            curXpGainedToday >= minimumRequiredXp / 2);
 
         if (!meetsThreshold) {
-          if (streakDays > 1) {
+          if (newStreak > 1) {
             setConsistencyBroken(true);
           }
           newStreak = 1;
         } else {
-          newStreak = streakDays + 1;
+          newStreak = newStreak + 1;
           // Strategic persistence: If 5-7 days consistent and met goals
           if (newStreak >= 5) {
             // Increase daily target linearly to prevent infinite scaling inflation
@@ -1436,22 +1439,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Also, if the streak broke, drop the dailyTarget slightly to keep it fair for returning users
         setDailyTarget((prev) => Math.max(100, Math.floor(prev * 0.8)));
 
-        if (streakDays > 1) {
+        if (newStreak > 1) {
           setConsistencyBroken(true);
         }
         setStreakDays(1); // Streak broken
       }
 
       // -- NEW DAILY ROLLOVER LOGIC --
-      const completedTasks = todos.filter((t) => t.completed);
-      const uncompletedTasks = todos.filter((t) => !t.completed);
-      const curXpGainedToday = xpGainedToday;
+      const completedTasks = (state.todos || []).filter((t: Todo) => t.completed);
+      const uncompletedTasks = (state.todos || []).filter((t: Todo) => !t.completed);
+      const curXpGainedToday = state.xpGainedToday || 0;
 
       // Update life metrics if overrides provided
       if (overrideSleep !== undefined || overrideScreen !== undefined) {
         setLifeMetrics((prev) => {
-          // we use getDate() which is 1-31.
-          const dayNum = new Date(lastStudyDate).getDate();
+          const dayNum = new Date(lastStudyDateRef.current || "").getDate();
           return prev.map((m) =>
             m.day === dayNum
               ? {
@@ -1476,7 +1478,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ) {
           const isLastDateYesterday =
             lastDate.toDateString() === yesterday.toDateString();
-          let lifeM = lifeMetrics.find((m) => m.day === lastDate.getDate());
+          let lifeM = (state.lifeMetrics || []).find((m: LifeMetric) => m.day === lastDate.getDate());
           if (!lifeM)
             lifeM = { day: lastDate.getDate(), sleep: 0, screenTime: 0 };
 
@@ -1491,10 +1493,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
           updatedHistory.push({
             date: lastDate.toISOString(),
-            hoursStudied: Number(hoursStudiedToday.toFixed(1)),
+            hoursStudied: Number((state.hoursStudiedToday || 0).toFixed(1)),
             xpEarned: curXpGainedToday,
-            completedTasks: [...completedTasks, ...loggedTasksToday],
-            plannedTasks: [...todos, ...loggedTasksToday],
+            completedTasks: [...completedTasks, ...(state.loggedTasksToday || [])],
+            plannedTasks: [...(state.todos || []), ...(state.loggedTasksToday || [])],
             sleepTime: sleepUsed,
             screenTime: screenUsed,
           });
@@ -1552,7 +1554,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Move uncompleted to pending
       const lastDateStr = lastDate ? lastDate.toDateString() : "";
-      const backlogCandidates = uncompletedTasks.filter((t) => {
+      const backlogCandidates = uncompletedTasks.filter((t: Todo) => {
         if (!t.startTime) return true; // Unscheduled tasks go to backlog
         const taskDayStr = new Date(t.startTime).toDateString();
         return taskDayStr === lastDateStr; // Only tasks scheduled for the rolled-over day go to backlog
@@ -1560,9 +1562,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (backlogCandidates.length > 0) {
         setPendingTasks((prev) => {
-          const existingIds = new Set(prev.map((p) => p.id));
+          const existingIds = new Set(prev.map((p) => String(p.id)));
           const newPendings = backlogCandidates.filter(
-            (u) => !existingIds.has(u.id),
+            (u) => !existingIds.has(String(u.id)),
           );
           return [...prev, ...newPendings];
         });
@@ -1591,20 +1593,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setQuestionsSolved(0); // Reset daily questions tracker
 
     // Evaluate Boss Day logic
-    if (lastBossDayDate !== today) {
+    if (state.lastBossDayDate !== today) {
       const now = new Date(today).getTime();
-      const last7DaysEntries = history.filter((h) => {
+      const last7DaysEntries = (state.history || []).filter((h: PlayHistoryEntry) => {
         const daysDiff =
           (now - new Date(h.date).getTime()) / (1000 * 3600 * 24);
         return daysDiff <= 7 && daysDiff > 0;
       });
 
       const productiveDays = last7DaysEntries.filter(
-        (h) => h.hoursStudied >= 1.5 || h.xpEarned > 300,
+        (h: PlayHistoryEntry) => h.hoursStudied >= 1.5 || h.xpEarned > 300,
       ).length;
-      const weeklyXp = last7DaysEntries.reduce((acc, h) => acc + h.xpEarned, 0);
+      const weeklyXp = last7DaysEntries.reduce((acc: number, h: PlayHistoryEntry) => acc + h.xpEarned, 0);
       const zeroProgressDays = last7DaysEntries.filter(
-        (h) => h.xpEarned === 0,
+        (h: PlayHistoryEntry) => h.xpEarned === 0,
       ).length;
       const missingDays = 7 - last7DaysEntries.length;
       const hasNoZeroProgressDays = zeroProgressDays + missingDays === 0;
@@ -1615,57 +1617,117 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (hasNoZeroProgressDays && last7DaysEntries.length === 7);
 
       // Trigger on 7-day milestones, but ONLY if consistent
-      if (isConsistent && streakDays > 0 && streakDays % 7 === 0) {
+      if (isConsistent && (state.streakDays || 0) > 0 && (state.streakDays || 0) % 7 === 0) {
         setLastBossDayDate(today);
         setBossDayCompleted(false);
         const avgXpLast7 =
           last7DaysEntries.length > 0
             ? weeklyXp / last7DaysEntries.length
             : 1000;
-        // Strategy: The boss day must be significantly harder than the standard daily target to be epic
-        // Use the current standard dailyTarget, boost it by 500, or use avg + 800, whichever is highest
         const newTargetXp = Math.max(
           1500,
-          dailyTarget + 500,
+          (state.dailyTarget || 100) + 500,
           Math.floor(avgXpLast7 + 800),
         );
         setBossDayTargetXp(newTargetXp);
       }
     }
-  };
+  }, []);
 
-  const getStreakMultiplier = () => {
-    if (streakDays >= 14) return 1.5;
-    if (streakDays >= 7) return 1.2;
-    if (streakDays >= 3) return 1.1;
+  const completeRollover = useCallback((sleepInput: number, screenTimeInput: number) => {
+    updateStreak(sleepInput, screenTimeInput);
+
+    const yesterdayObj = getLogicalDate();
+    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+    const yesterdayStr = yesterdayObj.toDateString();
+
+    setLifeMetrics((prev) => {
+      const dayNum = yesterdayObj.getDate();
+      const exists = prev.some((m) => m.day === dayNum);
+      if (exists) {
+        return prev.map((m) =>
+          m.day === dayNum
+            ? { ...m, sleep: sleepInput, screenTime: screenTimeInput }
+            : m,
+        );
+      }
+      return [...prev, { day: dayNum, sleep: sleepInput, screenTime: screenTimeInput }];
+    });
+
+    setHistory((prevHistory) => {
+      let updated = [...prevHistory];
+      const idx = updated.findIndex(
+        (h) => new Date(h.date).toDateString() === yesterdayStr,
+      );
+      if (idx >= 0) {
+        updated[idx] = {
+          ...updated[idx],
+          sleepTime: sleepInput,
+          screenTime: screenTimeInput,
+          aiFeedback: undefined,
+        };
+      } else {
+        const state = latestStateRef.current;
+        const completedTasks = (state.todos || []).filter((t: Todo) => t.completed);
+        updated.push({
+          date: yesterdayObj.toISOString(),
+          hoursStudied: Number((state.hoursStudiedToday || 0).toFixed(1)),
+          xpEarned: state.xpGainedToday || 0,
+          completedTasks: [...completedTasks, ...(state.loggedTasksToday || [])],
+          plannedTasks: [...(state.todos || []), ...(state.loggedTasksToday || [])],
+          sleepTime: sleepInput,
+          screenTime: screenTimeInput,
+        });
+      }
+      return updated;
+    });
+
+    const todayKey = getStandardDateKey(getLogicalDate());
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem(`rollover_completed_${todayKey}`, "true");
+    }
+    const now = Date.now();
+    setLastSyncTimestamp(now);
+    hasUnsavedLocalChangesRef.current = true;
+    lastLocalMutationTimeRef.current = now;
+    pendingRolloverSaveRef.current = true;
+  }, [updateStreak]);
+
+  const getStreakMultiplier = useCallback(() => {
+    const curStreak = latestStateRef.current.streakDays ?? streakDays;
+    if (curStreak >= 14) return 1.5;
+    if (curStreak >= 7) return 1.2;
+    if (curStreak >= 3) return 1.1;
     return 1.0;
-  };
+  }, [streakDays]);
 
-  const addXp = (amount: number): number => {
+  const addXp = useCallback((amount: number): number => {
     hasUnsavedLocalChangesRef.current = true;
     lastLocalMutationTimeRef.current = Date.now();
     lastCalendarMutationTimeRef.current = 0;
     updateStreak();
     let finalAmount = amount * getStreakMultiplier();
 
+    const state = latestStateRef.current;
     // Apply active boost if valid
-    if (activeBoost && activeBoost.expiresAt > Date.now()) {
-      finalAmount *= activeBoost.multiplier;
-    } else if (activeBoost && activeBoost.expiresAt <= Date.now()) {
+    if (state.activeBoost && state.activeBoost.expiresAt > Date.now()) {
+      finalAmount *= state.activeBoost.multiplier;
+    } else if (state.activeBoost && state.activeBoost.expiresAt <= Date.now()) {
       setActiveBoost(null); // Clear expired boost
     }
 
     const roundedFinal = Math.round(finalAmount);
 
-    const currentXp = latestStateRef.current.xp ?? xp;
+    const currentXp = state.xp ?? xp;
+    const goal = state.totalXpGoal || totalXpGoal;
     const calculatedNewXp = currentXp + roundedFinal;
     const calculatedNewLevel = Math.min(
       100,
-      Math.floor(Math.pow(calculatedNewXp / totalXpGoal, 0.5) * 99) + 1,
+      Math.floor(Math.pow(calculatedNewXp / goal, 0.5) * 99) + 1,
     );
 
     setXp(calculatedNewXp);
-    if (calculatedNewLevel !== level) {
+    if (calculatedNewLevel !== (state.level ?? level)) {
       setLevel(calculatedNewLevel);
     }
 
@@ -1673,12 +1735,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const newXpGained = prev + roundedFinal;
       // Check boss day completion
       if (
-        lastBossDayDate === getLogicalDate().toDateString() &&
-        bossDayTargetXp &&
-        !bossDayCompleted &&
-        newXpGained >= bossDayTargetXp
+        state.lastBossDayDate === getLogicalDate().toDateString() &&
+        state.bossDayTargetXp &&
+        !state.bossDayCompleted &&
+        newXpGained >= state.bossDayTargetXp
       ) {
-        setPendingBossDayBonus(true); // slight delay to avoid state overlap issues
+        setPendingBossDayBonus(true);
       }
       return newXpGained;
     });
@@ -1688,9 +1750,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     return roundedFinal;
-  };
+  }, [updateStreak, getStreakMultiplier, totalXpGoal, xp, level, saveStateToCloudNow]);
 
-  const logSession = (
+  const updateChapterStats = useCallback((
+    subject: string,
+    chapterName: string,
+    updates: Partial<Chapter>,
+  ) => {
+    setSyllabus((prev) => {
+      const subjectData = prev[subject as keyof SyllabusData];
+      if (!subjectData) return prev;
+
+      const newSubjectData = subjectData.map((chap) => {
+        if (chap.name === chapterName) {
+          return { ...chap, ...updates };
+        }
+        return chap;
+      });
+
+      return { ...prev, [subject]: newSubjectData };
+    });
+  }, []);
+
+  const logSession = useCallback((
     subject: string,
     chapters: string[],
     attempted: number,
@@ -1728,7 +1810,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const sessionDate = new Date().toISOString();
     // Update practice sessions
     const newSessions = chapters.map((chap, i) => ({
-      id: Date.now().toString() + i,
+      id: `${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
       date: sessionDate,
       subject,
       chapter: chap,
@@ -1743,7 +1825,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Update chapter specific accuracy
     if (subject && chapters.length > 0) {
       chapters.forEach((chapter) => {
-        const existingSubj = syllabus[subject as keyof SyllabusData];
+        const state = latestStateRef.current;
+        const curSyllabus = state.syllabus || syllabus;
+        const existingSubj = curSyllabus[subject as keyof SyllabusData];
         if (existingSubj) {
           const existingChap = existingSubj.find((c) => c.name === chapter);
           if (existingChap) {
@@ -1761,9 +1845,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Add XP: 10 per question, 5 per correct
     addXp(attempted * 10 + correct * 5);
     setHoursStudiedToday((prev) => Math.min(24, prev + timeSpent / 60));
-  };
+  }, [updateStreak, syllabus, updateChapterStats, addXp]);
 
-  const logFocusSession = (durationMins: number, isDeepFocus: boolean) => {
+  const logFocusSession = useCallback((durationMins: number, isDeepFocus: boolean) => {
     updateStreak();
     setHoursStudiedToday((prev) => Math.min(24, prev + durationMins / 60));
 
@@ -1775,8 +1859,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Deep Work Bonus: > 90 mins
     if (isDeepFocus && durationMins >= 90) {
       setFocusBadges((prev) => prev + 1);
-      // Removed the 500 flat bonus per new constraints, but keeping the boost
-      // Grant a 2x XP boost for the next 2 hours
       setActiveBoost({
         multiplier: 2.0,
         expiresAt: Date.now() + 2 * 60 * 60 * 1000,
@@ -1784,29 +1866,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     addXp(Math.round(sessionXp));
-  };
+  }, [updateStreak, addXp]);
 
-  const updateChapterStats = (
-    subject: string,
-    chapterName: string,
-    updates: Partial<Chapter>,
-  ) => {
-    setSyllabus((prev) => {
-      const subjectData = prev[subject as keyof SyllabusData];
-      if (!subjectData) return prev;
-
-      const newSubjectData = subjectData.map((chap) => {
-        if (chap.name === chapterName) {
-          return { ...chap, ...updates };
-        }
-        return chap;
-      });
-
-      return { ...prev, [subject]: newSubjectData };
-    });
-  };
-
-  const resetApp = async () => {
+  const resetApp = useCallback(async () => {
     try {
       await logout();
     } catch (e) {
@@ -1822,9 +1884,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     sessionStorage.clear();
     window.location.reload();
-  };
+  }, []);
 
-  const submitMissedDayReasons = (
+  const submitMissedDayReasons = useCallback((
     reasons: { date: string; reason: string }[],
   ) => {
     setHistory((prev) => {
@@ -1841,26 +1903,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return [...prev, ...newEntries];
     });
     setPendingMissedDays([]);
-  };
+  }, []);
 
-  const getCurrentChapterForSubject = (subj: string) => {
+  const getCurrentChapterForSubject = useCallback((subj: string) => {
     if (!subj || !["Physics", "Chemistry", "Mathematics"].includes(subj))
       return null;
 
-    if (ongoingChapters[subj]) {
-      return ongoingChapters[subj];
+    const state = latestStateRef.current;
+    const ongoing = state.ongoingChapters || ongoingChapters;
+    if (ongoing[subj]) {
+      return ongoing[subj];
     }
 
-    const matchingTodos = todos
+    const curTodos: Todo[] = state.todos || todos;
+    const matchingTodos = curTodos
       .filter((t) => t.subject === subj && t.chapter)
-      .sort((a, b) => b.id - a.id);
+      .sort((a, b) => String(b.id).localeCompare(String(a.id)));
 
     if (matchingTodos.length > 0) {
-      return matchingTodos[0].chapter;
+      return matchingTodos[0].chapter || null;
     }
 
-    if (history && history.length > 0) {
-      const sortedHistory = [...history].sort(
+    const curHistory: PlayHistoryEntry[] = state.history || history;
+    if (curHistory && curHistory.length > 0) {
+      const sortedHistory = [...curHistory].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
       );
       for (const entry of sortedHistory) {
@@ -1875,43 +1941,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const chapters = syllabus[subj as keyof typeof syllabus] || [];
+    const curSyllabus = state.syllabus || syllabus;
+    const chapters = curSyllabus[subj as keyof typeof curSyllabus] || [];
     if (chapters.length > 0) {
       return chapters[0].name;
     }
     return null;
-  };
-
-  const saveStateToCloudNow = useCallback(
-    async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
-      if (!isLoaded || !isCloudSyncComplete) return false;
-      const now = Date.now();
-      lastSyncTimestampRef.current = now;
-      const stateToSave = {
-        ...latestStateRef.current,
-        lastSyncTimestamp: now,
-        ...overrides,
-      };
-      latestStateRef.current = stateToSave;
-      const jsonString = JSON.stringify(stateToSave);
-      if (Capacitor.isNativePlatform()) {
-        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
-      }
-
-      if (firebaseUser?.uid) {
-        lastSavedCloudJsonRef.current = jsonString;
-        const ok = await saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
-        if (ok) {
-          hasUnsavedLocalChangesRef.current = false;
-        }
-        return ok;
-      }
-      return true;
-    },
-    [isLoaded, isCloudSyncComplete, firebaseUser],
-  );
+  }, [ongoingChapters, todos, history, syllabus]);
 
   const notifyCalendarPreviewClosed = useCallback(() => {
     isCalendarPreviewOpenRef.current = false;
@@ -1924,13 +1960,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const scheduleBacklogTask = useCallback(
     async (task: Todo): Promise<void> => {
-      const updatedPending = pendingTasks.filter((pt) => pt.id !== task.id);
+      const updatedPending = pendingTasks.filter((pt) => String(pt.id) !== String(task.id));
       const taskToMove: Todo = {
         ...task,
         completed: false,
         startTime: task.startTime || new Date().toISOString(),
       };
-      const updatedTodos = [...todos.filter((t) => t.id !== task.id), taskToMove];
+      const updatedTodos = [...todos.filter((t) => String(t.id) !== String(task.id)), taskToMove];
 
       setPendingTasks(updatedPending);
       setTodos(updatedTodos);

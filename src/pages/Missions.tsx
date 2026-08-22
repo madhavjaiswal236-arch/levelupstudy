@@ -20,7 +20,7 @@ export default function Missions() {
  }
  }, [isLoaded, hasCompleted, activeStep, setActiveStep]);
 
- const toggleQuest = (id: number) => {
+ const toggleQuest = (id: number | string) => {
    const task = todos.find(t => t.id === id);
    if (task) {
      if (task.calendarEventId) markCalendarEventCompleted(task.calendarEventId, !task.completed, task.text).catch(console.error);

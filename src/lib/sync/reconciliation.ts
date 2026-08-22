@@ -16,18 +16,22 @@ export function mergeTaskArrays(
   cloudTasks: Todo[] = [],
   localIsNewer: boolean = false
 ): Todo[] {
-  const localMap = new Map<number, Todo>();
+  const localMap = new Map<string, Todo>();
   (localTasks || []).forEach((t) => {
-    if (t && typeof t.id === "number") localMap.set(t.id, t);
+    if (t && (typeof t.id === "string" || typeof t.id === "number")) {
+      localMap.set(String(t.id), t);
+    }
   });
 
-  const cloudMap = new Map<number, Todo>();
+  const cloudMap = new Map<string, Todo>();
   (cloudTasks || []).forEach((t) => {
-    if (t && typeof t.id === "number") cloudMap.set(t.id, t);
+    if (t && (typeof t.id === "string" || typeof t.id === "number")) {
+      cloudMap.set(String(t.id), t);
+    }
   });
 
-  const mergedMap = new Map<number, Todo>();
-  const allIds = new Set<number>([
+  const mergedMap = new Map<string, Todo>();
+  const allIds = new Set<string>([
     ...Array.from(localMap.keys()),
     ...Array.from(cloudMap.keys()),
   ]);

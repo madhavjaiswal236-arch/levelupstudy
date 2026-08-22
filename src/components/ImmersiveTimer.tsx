@@ -5,12 +5,12 @@ import { CheckCircle2, AlertTriangle, Play, Pause, Square, XSquare, ShieldAlert,
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 
 interface ImmersiveTimerProps {
- initialSeconds: number;
- taskId: number | null;
- taskName?: string;
- isStrictMode: boolean;
- onComplete: (elapsedSeconds: number, completedTaskId: number | null, breaches: number) => void;
- onExitEarly: (elapsedSeconds: number, breaches: number) => void;
+  initialSeconds: number;
+  taskId: number | string | null;
+  taskName?: string;
+  isStrictMode: boolean;
+  onComplete: (elapsedSeconds: number, completedTaskId: number | string | null, breaches: number) => void;
+  onExitEarly: (elapsedSeconds: number, breaches: number) => void;
 }
 
 export function ImmersiveTimer({

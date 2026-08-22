@@ -15,12 +15,15 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow create, update: if request.auth != null && request.auth.uid == userId
+        && request.resource.size() < 800000
         && isValidUserData(request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == userId;
 
-      // Allow access to user subcollections (e.g. sessions, tasks, metrics)
+      // Allow access to user subcollections (e.g. sessions, tasks, metrics) with size guard
       match /{allSubcollections=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && request.resource.size() < 800000;
       }
     }
 

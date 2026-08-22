@@ -56,11 +56,17 @@ export function NotificationToastContainer() {
   };
 
   return (
-    <div className="fixed top-4 right-4 left-4 sm:left-auto sm:w-96 z-[9999] pointer-events-none space-y-3">
+    <div
+      role="region"
+      aria-label="Notifications"
+      aria-live="polite"
+      className="fixed top-4 right-4 left-4 sm:left-auto sm:w-96 z-[9999] pointer-events-none space-y-3"
+    >
       <AnimatePresence>
         {toasts.map(toast => (
           <motion.div
             key={toast.id}
+            role="status"
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, x: 50, scale: 0.9 }}
@@ -82,6 +88,7 @@ export function NotificationToastContainer() {
 
             <button
               onClick={() => removeToast(toast.id)}
+              aria-label="Dismiss notification"
               className="absolute top-3 right-3 p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               <X className="w-4 h-4" />

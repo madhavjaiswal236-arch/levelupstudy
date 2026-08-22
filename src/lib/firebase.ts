@@ -270,23 +270,21 @@ export const subscribeToCloudUserData = (userId: string, callback: (data: any, m
   });
 };
 
-let isSigningIn = false;
-let cachedAccessToken: string | null = sessionStorage.getItem('google_access_token');
+let cachedAccessToken: string | null = null;
+let cachedTokenExpiresAt: number = 0;
 let pendingSignInPromise: Promise<{ user: User; accessToken: string } | null> | null = null;
 
 export const initAuth = (
- onAuthChange?: (user: User | null, token: string | null) => void
+  onAuthChange?: (user: User | null, token: string | null) => void
 ) => {
- if (!Capacitor.isNativePlatform() && sessionStorage.getItem('auth_redirect_in_progress') === 'true') {
+  if (!Capacitor.isNativePlatform() && sessionStorage.getItem('auth_redirect_in_progress') === 'true') {
     getRedirectResult(auth).then((result) => {
       sessionStorage.removeItem('auth_redirect_in_progress');
       if (result) {
         const credential = GoogleAuthProvider.credentialFromResult(result);
         if (credential?.accessToken) {
           cachedAccessToken = credential.accessToken;
-          sessionStorage.setItem('google_access_token', cachedAccessToken);
-          const expiresAt = new Date().getTime() + 3500 * 1000;
-          sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+          cachedTokenExpiresAt = Date.now() + 3500 * 1000;
           if (onAuthChange) onAuthChange(result.user, cachedAccessToken);
         }
       }
@@ -294,31 +292,27 @@ export const initAuth = (
       sessionStorage.removeItem('auth_redirect_in_progress');
       console.error(err);
     });
- }
+  }
 
- return onAuthStateChanged(auth, async (user: User | null) => {
-   if (user) {
-     if (!cachedAccessToken) {
-       cachedAccessToken = sessionStorage.getItem('google_access_token');
-     }
-     if (onAuthChange) onAuthChange(user, cachedAccessToken);
-   } else {
-     cachedAccessToken = null;
-     sessionStorage.removeItem('google_access_token');
-     sessionStorage.removeItem('google_access_token_expires_at');
-     if (onAuthChange) onAuthChange(null, null);
-   }
- });
+  return onAuthStateChanged(auth, async (user: User | null) => {
+    if (user) {
+      if (onAuthChange) onAuthChange(user, cachedAccessToken);
+    } else {
+      cachedAccessToken = null;
+      cachedTokenExpiresAt = 0;
+      if (onAuthChange) onAuthChange(null, null);
+    }
+  });
 };
 
 const getProvider = () => {
- const provider = new GoogleAuthProvider();
- provider.addScope('https://www.googleapis.com/auth/calendar');
- provider.addScope('https://www.googleapis.com/auth/tasks');
- provider.setCustomParameters({
-   prompt: 'consent'
- });
- return provider;
+  const provider = new GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/calendar');
+  provider.addScope('https://www.googleapis.com/auth/tasks');
+  provider.setCustomParameters({
+    prompt: 'consent'
+  });
+  return provider;
 };
 
 export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promise<{ user: User; accessToken: string } | null> => {
@@ -329,8 +323,6 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
 
   pendingSignInPromise = (async () => {
     try {
-      isSigningIn = true;
-
       if (Capacitor.isNativePlatform()) {
         const result = await FirebaseAuthentication.signInWithGoogle({
           scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
@@ -345,9 +337,7 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
         
         if (result.credential.accessToken) {
           cachedAccessToken = result.credential.accessToken;
-          sessionStorage.setItem('google_access_token', cachedAccessToken);
-          const expiresAt = new Date().getTime() + 3500 * 1000;
-          sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+          cachedTokenExpiresAt = Date.now() + 3500 * 1000;
         }
 
         return { user: fbResult.user, accessToken: cachedAccessToken || '' };
@@ -362,9 +352,7 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
         }
 
         cachedAccessToken = credential.accessToken;
-        sessionStorage.setItem('google_access_token', cachedAccessToken);
-        const expiresAt = new Date().getTime() + 3500 * 1000;
-        sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+        cachedTokenExpiresAt = Date.now() + 3500 * 1000;
 
         return { user: result.user, accessToken: cachedAccessToken };
       } catch (popupErr: any) {
@@ -383,8 +371,6 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
     } catch (error: any) {
       console.error('Sign in error details:', error);
       throw error;
-    } finally {
-      isSigningIn = false;
     }
   })();
 
@@ -397,17 +383,12 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
 
 export const getAccessTokenSync = (): string | null => {
   if (cachedAccessToken) {
-    const expiresAtStr = sessionStorage.getItem('google_access_token_expires_at');
-    const expiresAt = expiresAtStr ? parseInt(expiresAtStr) : 0;
-    if (expiresAt > 0 && Date.now() >= expiresAt - 5 * 60 * 1000) {
+    if (cachedTokenExpiresAt > 0 && Date.now() >= cachedTokenExpiresAt - 5 * 60 * 1000) {
       console.log("Access token expired (or expiring soon). Returning null.");
       cachedAccessToken = null;
-      sessionStorage.removeItem('google_access_token');
-      sessionStorage.removeItem('google_access_token_expires_at');
+      cachedTokenExpiresAt = 0;
       return null;
     }
-  } else {
-    cachedAccessToken = sessionStorage.getItem('google_access_token');
   }
   return cachedAccessToken;
 };
@@ -419,21 +400,18 @@ export const getAccessToken = async (): Promise<string | null> => {
 let refreshPromise: Promise<string | null> | null = null;
 
 export const refreshGoogleToken = async (): Promise<string | null> => {
- if (!auth.currentUser) return null;
- 
- if (refreshPromise) {
- console.log("Token refresh already in progress, waiting...");
- return refreshPromise;
- }
+  if (!auth.currentUser) return null;
+  
+  if (refreshPromise) {
+    console.log("Token refresh already in progress, waiting...");
+    return refreshPromise;
+  }
 
- refreshPromise = (async () => {
+  refreshPromise = (async () => {
     try {
-      const expiresAtStr = sessionStorage.getItem('google_access_token_expires_at');
-      const expiresAt = expiresAtStr ? parseInt(expiresAtStr) : 0;
-      if (Date.now() < expiresAt && cachedAccessToken) {
+      if (Date.now() < cachedTokenExpiresAt && cachedAccessToken) {
         return cachedAccessToken;
       }
-      console.warn('OAuth token expired. Re-authentication required.');
 
       if (Capacitor.isNativePlatform()) {
         const result = await FirebaseAuthentication.signInWithGoogle({
@@ -441,44 +419,36 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
         });
         if (result.credential?.accessToken) {
           cachedAccessToken = result.credential.accessToken;
-          sessionStorage.setItem('google_access_token', cachedAccessToken);
-          const expiresAt = new Date().getTime() + 3500 * 1000;
-          sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
+          cachedTokenExpiresAt = Date.now() + 3500 * 1000;
           return cachedAccessToken;
         }
         return null;
       }
 
-      const result = await signInWithPopup(auth, getProvider());
- const credential = GoogleAuthProvider.credentialFromResult(result);
- if (credential?.accessToken) {
- cachedAccessToken = credential.accessToken;
- sessionStorage.setItem('google_access_token', cachedAccessToken);
- const expiresAt = new Date().getTime() + 3500 * 1000;
- sessionStorage.setItem('google_access_token_expires_at', expiresAt.toString());
- return cachedAccessToken;
- }
- } catch (error) {
- console.error("Failed to refresh token:", error);
- }
- return null;
- })();
+      // In browser web mode, do not trigger background popups that will be blocked without user gesture.
+      // Returning null informs the caller that user gesture interactive re-auth is needed.
+      console.warn('OAuth token expired or missing in memory. Interactive authentication required.');
+      return null;
+    } catch (error) {
+      console.error("Failed to refresh token:", error);
+    }
+    return null;
+  })();
 
- try {
- return await refreshPromise;
- } finally {
- refreshPromise = null;
- }
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
 };
 
 export const logout = async () => {
- if (Capacitor.isNativePlatform()) {
-   try {
-     await FirebaseAuthentication.signOut();
-   } catch(e) {}
- }
- await auth.signOut();
- cachedAccessToken = null;
- sessionStorage.removeItem('google_access_token');
- sessionStorage.removeItem('google_access_token_expires_at');
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await FirebaseAuthentication.signOut();
+    } catch(e) {}
+  }
+  await auth.signOut();
+  cachedAccessToken = null;
+  cachedTokenExpiresAt = 0;
 };

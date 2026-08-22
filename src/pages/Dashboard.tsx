@@ -342,13 +342,16 @@ export default function Dashboard() {
   const allBacklogTasks = useMemo(() => {
     const rawBacklogs = [
       ...pendingTasks.filter((t) => t.subject !== "Personal"),
-      ...todos.filter(
-        (t) =>
-          !t.completed &&
-          t.subject !== "Personal" &&
-          new Date(t.id).toDateString() !== new Date().toDateString() &&
-          t.id < Date.now(),
-      ),
+      ...todos.filter((t) => {
+        if (t.completed || t.subject === "Personal") return false;
+        if (typeof t.id === "number") {
+          return new Date(t.id).toDateString() !== new Date().toDateString() && t.id < Date.now();
+        }
+        if (t.startTime) {
+          return new Date(t.startTime) < new Date();
+        }
+        return false;
+      }),
     ];
     const uniqueMap = new Map();
     rawBacklogs.forEach((t) => uniqueMap.set(t.id, t));
@@ -458,7 +461,7 @@ export default function Dashboard() {
 
     // 2. Find the most recently added task in todos that has a subject and chapter
     if (todos && todos.length > 0) {
-      const sortedTodos = [...todos].sort((a, b) => b.id - a.id);
+      const sortedTodos = [...todos].sort((a, b) => String(b.id).localeCompare(String(a.id)));
       const lastTodoWithChapter = sortedTodos.find(
         (t) => t.subject && t.chapter,
       );
@@ -527,7 +530,7 @@ export default function Dashboard() {
     "pomodoro" | "deepwork" | "custom"
   >("pomodoro");
   const [customMins, setCustomMins] = useState(25);
-  const [timerTaskId, setTimerTaskId] = useState<number | null>(null);
+  const [timerTaskId, setTimerTaskId] = useState<number | string | null>(null);
   const [isStrictMode, setIsStrictMode] = useState(false);
 
   const [isImmersiveTimerActive, setIsImmersiveTimerActive] = useState(false);
@@ -550,11 +553,11 @@ export default function Dashboard() {
     subject: string;
     chapter: string;
     type: string;
-    taskId?: number;
+    taskId?: number | string;
   } | null>(null);
 
   // Task Completion Modal State
-  const [completingTask, setCompletingTask] = useState<number | null>(null);
+  const [completingTask, setCompletingTask] = useState<number | string | null>(null);
   const [lectureNotes, setLectureNotes] = useState(false);
   const [lectureQuestions, setLectureQuestions] = useState(false);
   const [lectureHomework, setLectureHomework] = useState(false);
