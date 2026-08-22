@@ -211,7 +211,7 @@ const CalendarCheckbox = ({
   </div>
 );
 
-export default function Dashboard() {
+const Dashboard = React.memo(function Dashboard() {
   const [pulseStreak, setPulseStreak] = useState(false);
   const { hapticSuccess } = useHaptic();
   const {
@@ -3748,4 +3748,6 @@ export default function Dashboard() {
       </AnimatePresence>
     </div>
   );
-}
+});
+
+export default Dashboard;

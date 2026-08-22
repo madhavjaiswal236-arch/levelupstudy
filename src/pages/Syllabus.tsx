@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TiltWrapper } from "@/components/TiltWrapper";
@@ -23,7 +23,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-export default function Syllabus() {
+const Syllabus = React.memo(function Syllabus() {
   const {
     syllabus,
     isLoaded,
@@ -913,4 +913,6 @@ export default function Syllabus() {
       </AnimatePresence>
     </div>
   );
-}
+});
+
+export default Syllabus;

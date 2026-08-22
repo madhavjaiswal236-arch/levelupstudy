@@ -4,7 +4,7 @@ import { TiltWrapper } from '../components/TiltWrapper';
 import { useAppContext, PlayHistoryEntry, Todo } from '../context/AppContext';
 import { Calendar, Clock, Target, Zap, CheckCircle2, ChevronRight, Monitor, Activity, TrendingUp, Cpu, Award, ShieldAlert, Sparkles, Flame, Loader2, BrainCircuit } from 'lucide-react';
 import { TourStep, useTour } from '../components/TourGuide';
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 // Daily Rating System Helper
 const getDailyRating = (hoursStudied: number) => {
@@ -14,7 +14,7 @@ const getDailyRating = (hoursStudied: number) => {
  return { rank: 'F', label: 'Missed', color: 'dark:text-rose-400 text-rose-700 font-bold', bg: 'bg-rose-500/10', border: 'border-rose-500/30' };
 };
 
-export default function History() {
+const History = React.memo(function History() {
  const { history, xp, level, streakDays, isLoaded, hoursStudiedToday, loggedTasksToday, practiceSessions } = useAppContext();
  const { activeStep, setActiveStep, hasCompleted } = useTour();
  
@@ -848,4 +848,6 @@ export default function History() {
  </motion.div>
  </div>
  );
-}
+});
+
+export default History;

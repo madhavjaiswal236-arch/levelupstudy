@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { TiltWrapper } from '../components/TiltWrapper';
@@ -13,7 +13,7 @@ const initialLeaderboard = [
  { id: 6, name: 'Dev Joshi', score: 255, rank: 6, trend: 'down', isPeer: false },
 ];
 
-export default function Rivals() {
+const Rivals = React.memo(function Rivals() {
  const [leaderboard, setLeaderboard] = useState(initialLeaderboard);
  const [peerMode, setPeerMode] = useState(true);
 
@@ -185,4 +185,6 @@ export default function Rivals() {
  </motion.div>
  </div>
  );
-}
+});
+
+export default Rivals;

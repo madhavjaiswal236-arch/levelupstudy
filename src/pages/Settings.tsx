@@ -39,7 +39,7 @@ import {
   isInIframe,
 } from "../lib/notifications";
 
-export default function Settings() {
+const Settings = React.memo(function Settings() {
   const {
     notificationSettings,
     setNotificationSettings,
@@ -670,4 +670,6 @@ export default function Settings() {
       </div>
     </div>
   );
-}
+});
+
+export default Settings;

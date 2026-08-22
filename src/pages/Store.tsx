@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -199,7 +199,7 @@ export const ARCADE_PASSES = [
   { id: 'arcade_30', title: 'Gold Arcade Pass', duration: 30, cost: 900, desc: 'Unlocks 30 minutes of ultimate play. Earned after watching 3 full lectures (approx. 3 hours) of deep focus.', tag: '30 Min' },
 ];
 
-export default function Store() {
+const Store = React.memo(function Store() {
  const { isLoaded, xp, xpGainedToday, spentXpToday, setSpentXpToday, totalSpentXp, setTotalSpentXp, unlockedItems = [], setUnlockedItems, equippedTitle, setEquippedTitle, equippedAura, setEquippedAura } = useAppContext();
  const { activeStep, setActiveStep, hasCompleted } = useTour();
  
@@ -1048,4 +1048,6 @@ export default function Store() {
  )}
  </div>
  );
-}
+});
+
+export default Store;

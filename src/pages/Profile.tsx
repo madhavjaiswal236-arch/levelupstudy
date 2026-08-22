@@ -14,7 +14,7 @@ import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask } from 
 import { Todo } from '@/context/AppContext';
 import { format } from 'date-fns';
 
-export default function Profile() {
+const Profile = React.memo(function Profile() {
  const { 
  playerName, setPlayerName, xp, level, streakDays, syllabus, todos, setTodos, 
  pendingTasks, setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
@@ -880,4 +880,6 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  </AnimatePresence>
  </div>
  );
-}
+});
+
+export default Profile;

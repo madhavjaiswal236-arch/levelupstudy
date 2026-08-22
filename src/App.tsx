@@ -2075,15 +2075,17 @@ function AppContent() {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
           className="inline-flex items-center justify-center gap-2 md:gap-4 mb-2 md:mb-4"
         >
           <motion.div
             animate={{ y: [0, -10, 0] }}
             transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            whileHover={{ scale: 1.15, rotate: 10 }}
+            whileHover={{ scale: 1.2, rotate: 12 }}
+            whileTap={{ scale: 0.9 }}
             className="group cursor-pointer relative hidden sm:block"
           >
-            <Trophy className="w-8 h-8 md:w-12 md:h-12 text-yellow-500 dark:text-yellow-400 icon-glow-yellow transition-all duration-300" />
+            <Trophy className="w-8 h-8 md:w-12 md:h-12 text-yellow-500 dark:text-yellow-400 icon-glow-yellow transition-all duration-300 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
           </motion.div>
 
           <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 dark:from-[#9effff] dark:via-[#4ba8ff] dark:to-[#d8b4fe] drop-shadow-[0_0_35px_rgba(59,130,246,0.35)]">
@@ -2098,16 +2100,17 @@ function AppContent() {
               ease: "easeInOut",
               delay: 0.5,
             }}
-            whileHover={{ scale: 1.15, rotate: 10 }}
+            whileHover={{ scale: 1.2, rotate: -12 }}
+            whileTap={{ scale: 0.9 }}
             className="group cursor-pointer relative hidden sm:block"
           >
-            <Zap className="w-8 h-8 md:w-12 md:h-12 text-cyan-500 dark:text-cyan-400 icon-glow-cyan transition-all duration-300" />
+            <Zap className="w-8 h-8 md:w-12 md:h-12 text-cyan-500 dark:text-cyan-400 icon-glow-cyan transition-all duration-300 drop-shadow-[0_0_15px_rgba(6,182,212,0.5)]" />
           </motion.div>
         </motion.div>
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.2, duration: 0.4 }}
           className="text-sm md:text-lg dark:text-cyan-200 text-cyan-700/80 font-medium flex items-center justify-center gap-1 md:gap-2 leading-tight"
         >
           <span className="text-base md:text-xl hidden sm:inline">🎮</span>
@@ -2119,7 +2122,7 @@ function AppContent() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.4, duration: 0.4 }}
           className="mt-2 md:mt-4 inline-block dark:bg-black bg-white border dark:border-white/10 border-black/10 px-4 py-1 md:px-6 md:py-2 rounded-full mx-auto max-w-full overflow-hidden"
         >
           <p className="text-[10px] md:text-sm font-mono dark:text-amber-300/90 dark:text-amber-400 text-amber-700 font-bold italic truncate">
@@ -2138,8 +2141,8 @@ function AppContent() {
             initial={{ width: "0%", opacity: 1 }}
             animate={{ width: "100%", opacity: 0 }}
             transition={{
-              width: { duration: 0.6, ease: "easeInOut" },
-              opacity: { duration: 0.2, delay: 0.5 },
+              width: { duration: 0.4, ease: "easeInOut" },
+              opacity: { duration: 0.2, delay: 0.3 },
             }}
             className="h-full bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 shadow-md"
           />
@@ -2157,15 +2160,16 @@ function AppContent() {
             <motion.div
               key={activeTab}
               custom={direction}
-              initial={{ opacity: 0, x: direction * 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: direction * -50 }}
+              initial={{ opacity: 0, x: direction * 40, scale: 0.98 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: direction * -40, scale: 0.98 }}
               transition={{
-                duration: 0.2,
+                duration: 0.22,
                 type: "spring",
-                stiffness: 400,
-                damping: 40,
+                stiffness: 350,
+                damping: 30,
               }}
+              style={{ willChange: "opacity, transform" }}
               className="max-w-7xl mx-auto w-full relative"
             >
               <ErrorBoundary>

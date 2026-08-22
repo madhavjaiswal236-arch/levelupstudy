@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { TourStep, useTour } from '@/components/TourGuide';
 
-export default function Protocols() {
+const Protocols = React.memo(function Protocols() {
  const { 
  monthlyGoals, setMonthlyGoals, 
  habits, setHabits, 
@@ -339,4 +339,6 @@ export default function Protocols() {
  </Card>
  </div>
  );
-}
+});
+
+export default Protocols;

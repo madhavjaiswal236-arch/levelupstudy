@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -6,11 +7,10 @@ import { Activity, BrainCircuit, Target, AlertTriangle } from 'lucide-react';
 import { NeonCheckbox } from '../components/ui/neon-checkbox';
 import { useAppContext } from '../context/AppContext';
 import { TourStep, useTour } from '../components/TourGuide';
-import { useEffect } from 'react';
 
 import { markCalendarEventCompleted, updateGoogleTaskStatus } from '../lib/calendar';
 
-export default function Missions() {
+const Missions = React.memo(function Missions() {
  const { todos, setTodos, pendingTasks, isLoaded } = useAppContext();
  const { activeStep, setActiveStep, hasCompleted } = useTour();
 
@@ -193,4 +193,6 @@ export default function Missions() {
  </motion.div>
  </div>
  );
-}
+});
+
+export default Missions;

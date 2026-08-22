@@ -14,7 +14,7 @@ interface SortableTodoItemProps {
   key?: any;
 }
 
-export function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoItemProps) {
+export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoItemProps) {
   const {
     attributes,
     listeners,
@@ -227,4 +227,4 @@ export function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoI
       </button>
     </motion.div>
   );
-}
+});

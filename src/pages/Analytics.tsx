@@ -18,7 +18,7 @@ const MISTAKE_TYPES = [
 
 const COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#a855f7', '#10b981'];
 
-export default function Analytics() {
+const Analytics = React.memo(function Analytics() {
  const { isLoaded, hasSeenRules, accuracy: globalAccuracy, speedScore: globalSpeedScore, logSession, history, practiceSessions, syllabus, todos, habits } = useAppContext();
  
  const { activeStep, setActiveStep, hasCompleted } = useTour();
@@ -913,4 +913,6 @@ export default function Analytics() {
  </AnimatePresence>
  </div>
  );
-}
+});
+
+export default Analytics;
