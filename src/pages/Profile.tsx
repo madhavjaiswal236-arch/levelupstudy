@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppContext';
-import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, GripVertical, Lock as LockIcon, CheckCircle2, AlertTriangle, Settings, LogOut, RefreshCw, Clock } from 'lucide-react';
+import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, GripVertical, Lock as LockIcon, CheckCircle2, AlertTriangle, Settings, LogOut, RefreshCw, Clock, ChevronUp, ChevronDown, CalendarDays } from 'lucide-react';
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getRankInfo } from '@/lib/utils';
@@ -244,20 +244,47 @@ const Profile = React.memo(function Profile() {
  setTimeout(() => setToastMessage(""), 3000);
  };
 
+ const resequencePreviewTimes = (tasks: (Todo & { previewStart?: Date, previewEnd?: Date })[]) => {
+   const firstScheduled = tasks.find(t => t.previewStart);
+   let currentStart = firstScheduled?.previewStart ? new Date(firstScheduled.previewStart) : new Date();
+   return tasks.map(task => {
+     const durationMilli = (task.previewStart && task.previewEnd) 
+       ? Math.max(15 * 60000, task.previewEnd.getTime() - task.previewStart.getTime())
+       : 45 * 60000;
+     
+     const newStart = new Date(currentStart);
+     const newEnd = new Date(newStart.getTime() + durationMilli);
+     currentStart = new Date(newEnd.getTime() + 10 * 60000);
+
+     return {
+       ...task,
+       previewStart: newStart,
+       previewEnd: newEnd,
+     };
+   });
+ };
+
+ const moveTask = (fromIndex: number, toIndex: number) => {
+   if (fromIndex < 0 || fromIndex >= syncedTasks.length || toIndex < 0 || toIndex >= syncedTasks.length) return;
+   vibrate(HAPTIC_PATTERNS.TICK);
+   const newTasks = [...syncedTasks];
+   const [moved] = newTasks.splice(fromIndex, 1);
+   newTasks.splice(toIndex, 0, moved);
+   const resequenced = resequencePreviewTimes(newTasks);
+   setSyncedTasks(resequenced);
+ };
+
  const onDragStart = (e: React.DragEvent, index: number) => {
  setDraggedItemIndex(index);
  e.dataTransfer.effectAllowed = "move";
+ e.dataTransfer.setData("text/plain", `${index}`);
  };
 
  const onDragOver = (e: React.DragEvent, index: number) => {
  e.preventDefault();
  if (draggedItemIndex === null || draggedItemIndex === index) return;
- const newTasks = [...syncedTasks];
- const dragged = newTasks[draggedItemIndex];
- newTasks.splice(draggedItemIndex, 1);
- newTasks.splice(index, 0, dragged);
+ moveTask(draggedItemIndex, index);
  setDraggedItemIndex(index);
- setSyncedTasks(newTasks);
  };
 
  const onDragEnd = () => {
@@ -639,21 +666,28 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
        </div>
 
        {/* List of Synced Tasks */}
-       <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
          {syncedTasks.length === 0 ? (
            <div className="text-center py-6 text-xs text-slate-500 dark:text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
              No tasks scheduled in calendar yet. Add tasks from the Dashboard to preview them here.
            </div>
          ) : (
-           syncedTasks.map(task => (
+           syncedTasks.map((task, index) => (
              <div
                key={task.id}
-               className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between text-xs"
+               draggable
+               onDragStart={(e) => onDragStart(e, index)}
+               onDragOver={(e) => onDragOver(e, index)}
+               onDragEnd={onDragEnd}
+               className={`p-3 bg-white dark:bg-slate-900 border ${draggedItemIndex === index ? 'border-sky-500 ring-2 ring-sky-500/30 scale-[0.99] shadow-lg opacity-80' : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'} rounded-lg flex items-center justify-between text-xs transition-all cursor-grab active:cursor-grabbing select-none`}
              >
-               <div className="flex items-center gap-3">
-                 <div className={`w-2.5 h-2.5 rounded-full ${task.completed ? 'bg-emerald-500' : 'bg-sky-500'}`} />
-                 <div>
-                   <p className={`font-medium ${task.completed ? 'line-through text-slate-400' : 'dark:text-white text-slate-900'}`}>
+               <div className="flex items-center gap-3 min-w-0">
+                 <div className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
+                   <GripVertical className="w-4 h-4" />
+                 </div>
+                 <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${task.completed ? 'bg-emerald-500' : 'bg-sky-500'}`} />
+                 <div className="min-w-0">
+                   <p className={`font-medium truncate ${task.completed ? 'line-through text-slate-400' : 'dark:text-white text-slate-900'}`}>
                      {task.text}
                    </p>
                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
@@ -661,11 +695,37 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
                    </span>
                  </div>
                </div>
-               {task.calendarSynced && (
-                 <span className="px-2 py-0.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 rounded text-[10px] font-mono font-bold">
-                   Synced
-                 </span>
-               )}
+               <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                 <button
+                   type="button"
+                   title="Move up"
+                   disabled={index === 0}
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     moveTask(index, index - 1);
+                   }}
+                   className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                 >
+                   <ChevronUp className="w-3.5 h-3.5" />
+                 </button>
+                 <button
+                   type="button"
+                   title="Move down"
+                   disabled={index === syncedTasks.length - 1}
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     moveTask(index, index + 1);
+                   }}
+                   className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                 >
+                   <ChevronDown className="w-3.5 h-3.5" />
+                 </button>
+                 {task.calendarSynced && (
+                   <span className="px-2 py-0.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 rounded text-[10px] font-mono font-bold">
+                     Synced
+                   </span>
+                 )}
+               </div>
              </div>
            ))
          )}

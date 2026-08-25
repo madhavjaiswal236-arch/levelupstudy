@@ -613,12 +613,18 @@ const Dashboard = React.memo(function Dashboard() {
       tryScroll();
     };
 
+    const handleOpenCalendarShortcut = () => {
+      setShowCalendar(true);
+    };
+
     window.addEventListener("shortcut:pomodoro", handlePomodoroShortcut);
     window.addEventListener("shortcut:new-task", handleNewTaskShortcut);
+    window.addEventListener("shortcut:open-calendar", handleOpenCalendarShortcut);
 
     return () => {
       window.removeEventListener("shortcut:pomodoro", handlePomodoroShortcut);
       window.removeEventListener("shortcut:new-task", handleNewTaskShortcut);
+      window.removeEventListener("shortcut:open-calendar", handleOpenCalendarShortcut);
     };
   }, []);
 
@@ -3737,15 +3743,20 @@ const Dashboard = React.memo(function Dashboard() {
         </AnimatePresence>,
         document.body,
       )}
-      <AnimatePresence>
-        {showCalendar && (
-          <StudyCalendar
-            onClose={() => setShowCalendar(false)}
-            dailyXpRequired={Math.round(dailyXpRequired)}
-            onToggleTodo={toggleTodo}
-          />
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showCalendar && (
+              <StudyCalendar
+                key="dashboard-full-calendar-modal"
+                onClose={() => setShowCalendar(false)}
+                dailyXpRequired={Math.round(dailyXpRequired)}
+                onToggleTodo={toggleTodo}
+              />
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
     </div>
   );
 });

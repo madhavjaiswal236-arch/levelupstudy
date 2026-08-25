@@ -4,6 +4,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Calendar as CalendarIcon,
   Clock,
   Plus,
@@ -265,6 +267,59 @@ export function StudyCalendar({
     else if (view === "Week") setCurrentDate((prev) => addDays(prev, 7));
     else if (view === "Month") setCurrentDate((prev) => addMonths(prev, 1));
   };
+
+  // Timeline scroll preview state for visible feedback when dragging or scrolling the right scrollbar
+  const [isScrollingTimeline, setIsScrollingTimeline] = useState(false);
+  const [timelinePreviewText, setTimelinePreviewText] = useState("");
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleTimelineScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    const header = document.getElementById("calendar-header-scroll");
+    if (header && Math.abs(header.scrollLeft - container.scrollLeft) > 1) {
+      header.scrollLeft = container.scrollLeft;
+    }
+
+    // Calculate viewing hour preview
+    const approxHour = Math.min(23.9, Math.max(0, container.scrollTop / 80));
+    const hInt = Math.floor(approxHour);
+    const mins = Math.floor(((container.scrollTop % 80) / 80) * 60);
+    const period = hInt >= 12 ? "PM" : "AM";
+    const displayHour = hInt === 0 ? 12 : hInt > 12 ? hInt - 12 : hInt;
+    const roundedMins = Math.round(mins / 5) * 5;
+    const formattedMinutes = roundedMins >= 60 ? "00" : roundedMins.toString().padStart(2, "0");
+    const formattedTime = `${displayHour}:${formattedMinutes} ${period}`;
+
+    let timeOfDay = "Night";
+    if (hInt >= 5 && hInt < 12) timeOfDay = "Morning";
+    else if (hInt >= 12 && hInt < 17) timeOfDay = "Afternoon";
+    else if (hInt >= 17 && hInt < 21) timeOfDay = "Evening";
+
+    setTimelinePreviewText(`${formattedTime} • ${timeOfDay}`);
+    setIsScrollingTimeline(true);
+
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrollingTimeline(false);
+    }, 1200);
+  }, []);
+
+  // Auto-scroll timeline container to current hour or earliest scheduled item on mount/view change
+  useEffect(() => {
+    if (view === "Month") return;
+    const timer = setTimeout(() => {
+      const container = document.getElementById("calendar-scroll-container") as HTMLDivElement | null;
+      if (container) {
+        const now = new Date();
+        const hour = now.getHours();
+        const targetScrollTop = Math.max(0, (hour - 1) * 80);
+        container.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [view]);
 
   // Drag to create
   const [dragSelection, setDragSelection] = useState<{
@@ -665,15 +720,30 @@ export function StudyCalendar({
   const hours = Array.from({ length: 24 }, (_, i) => i); // 12 AM to 11 PM
 
   const renderTimeline = () => (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
       {/* Header Row (Sticky) */}
-      <div className="flex flex-shrink-0 border-b border-slate-200 dark:border-white/5 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-md shadow-[0_4px_24px_-4px_rgba(0,0,0,0.5)] z-[70]">
+      <div
+        className="flex flex-shrink-0 border-b border-slate-200 dark:border-white/5 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-md shadow-[0_4px_24px_-4px_rgba(0,0,0,0.5)] z-[70]"
+        onWheel={(e) => {
+          const container = document.getElementById("calendar-scroll-container");
+          if (container) {
+            container.scrollTop += e.deltaY;
+            if (e.deltaX) container.scrollLeft += e.deltaX;
+          }
+        }}
+      >
         <div className="w-16 flex-shrink-0 border-r border-slate-200 dark:border-white/5 flex justify-center items-end pb-2 h-12 bg-white dark:bg-[#121212]">
           <span className="text-[10px] text-slate-400 font-bold">TIME</span>
         </div>
         <div
           id="calendar-header-scroll"
-          className="flex-1 overflow-hidden flex"
+          className="flex-1 overflow-x-hidden flex"
+          onScroll={(e) => {
+            const container = document.getElementById("calendar-scroll-container");
+            if (container && Math.abs(container.scrollLeft - (e.target as HTMLDivElement).scrollLeft) > 1) {
+              container.scrollLeft = (e.target as HTMLDivElement).scrollLeft;
+            }
+          }}
         >
           <div
             className={`flex flex-1 ${visibleDays.length > 1 ? "min-w-[600px]" : "w-full"}`}
@@ -699,15 +769,21 @@ export function StudyCalendar({
         </div>
       </div>
 
+      {/* Floating Time Scrubbing Preview Pill */}
+      {isScrollingTimeline && (
+        <div className="absolute top-14 right-6 z-[80] pointer-events-none transition-all duration-300 animate-in fade-in zoom-in-95">
+          <div className="px-3.5 py-1.5 rounded-full bg-slate-900/90 dark:bg-black/90 text-white text-xs font-semibold backdrop-blur-md shadow-xl border border-white/20 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+            <span>{timelinePreviewText}</span>
+          </div>
+        </div>
+      )}
+
       {/* Scrollable Body */}
       <div
         id="calendar-scroll-container"
-        className="flex-1 overflow-y-auto overflow-x-auto relative flex scrollbar-hide min-h-0"
-        onScroll={(e) => {
-          const header = document.getElementById("calendar-header-scroll");
-          if (header)
-            header.scrollLeft = (e.target as HTMLDivElement).scrollLeft;
-        }}
+        className="flex-1 overflow-y-auto overflow-x-auto relative flex custom-calendar-scrollbar min-h-0 select-none"
+        onScroll={handleTimelineScroll}
       >
         {/* Time Column */}
         <div className="w-16 flex-shrink-0 border-r border-slate-200 dark:border-white/5 sticky left-0 z-[55] bg-white dark:bg-[#121212]">
@@ -787,14 +863,12 @@ export function StudyCalendar({
                 }}
                 onPointerDown={(e) => {
                   if (e.button !== 0) return; // Only left click
-                  if (e.pointerType === "touch") return; // Let browser handle touch scrolling, click event will catch tap
+                  const startClientX = e.clientX;
+                  const startClientY = e.clientY;
+                  let isDragActive = false;
                   hasMovedRef.current = false;
 
-                  e.preventDefault();
                   const target = e.currentTarget;
-                  target.setPointerCapture(e.pointerId);
-                  document.body.classList.add("is-dragging");
-
                   const rect = target.getBoundingClientRect();
                   const y = e.clientY - rect.top;
 
@@ -810,15 +884,6 @@ export function StudyCalendar({
 
                   let finalStartHour = startHour;
                   let finalEndHour = startHour + 30 / 60;
-
-                  // Instantly position the DOM visual selector
-                  if (visualSelectionRef.current) {
-                    visualSelectionRef.current.style.display = "block";
-                    visualSelectionRef.current.style.left = `calc(${colIndex * (100 / visibleDays.length)}% + 4px)`;
-                    visualSelectionRef.current.style.width = `calc(${100 / visibleDays.length}% - 8px)`;
-                    visualSelectionRef.current.style.top = `${startHour * 80}px`;
-                    visualSelectionRef.current.style.height = `${40}px`; // 30 mins default = 40px
-                  }
 
                   const updateGridDrag = (currentClientY: number) => {
                     const currentScrollY = container ? container.scrollTop : 0;
@@ -840,7 +905,6 @@ export function StudyCalendar({
                     finalStartHour = actualStart;
                     finalEndHour = actualEnd;
 
-                    // Directly manipulate DOM style for 120 FPS buttery smooth resizing during selection
                     if (visualSelectionRef.current) {
                       visualSelectionRef.current.style.top = `${actualStart * 80}px`;
                       visualSelectionRef.current.style.height = `${(actualEnd - actualStart) * 80}px`;
@@ -850,22 +914,47 @@ export function StudyCalendar({
                   const handlePointerMove = (
                     moveEvent: React.PointerEvent | PointerEvent,
                   ) => {
-                    hasMovedRef.current = true;
+                    const deltaX = Math.abs(moveEvent.clientX - startClientX);
+                    const deltaY = Math.abs(moveEvent.clientY - startClientY);
+
+                    if (!isDragActive) {
+                      if (deltaY > 6 || deltaX > 6) {
+                        isDragActive = true;
+                        hasMovedRef.current = true;
+                        try {
+                          if (target.setPointerCapture) {
+                            target.setPointerCapture(e.pointerId);
+                          }
+                        } catch (err) {}
+                        document.body.classList.add("is-dragging");
+
+                        if (visualSelectionRef.current) {
+                          visualSelectionRef.current.style.display = "block";
+                          visualSelectionRef.current.style.left = `calc(${colIndex * (100 / visibleDays.length)}% + 4px)`;
+                          visualSelectionRef.current.style.width = `calc(${100 / visibleDays.length}% - 8px)`;
+                          visualSelectionRef.current.style.top = `${startHour * 80}px`;
+                          visualSelectionRef.current.style.height = `${40}px`;
+                        }
+                      } else {
+                        return;
+                      }
+                    }
+
                     updateGridDrag(moveEvent.clientY);
 
                     if (container) {
                       const contRect = container.getBoundingClientRect();
-                      const y = moveEvent.clientY;
+                      const clientY = moveEvent.clientY;
                       if (scrollInterval) {
                         clearInterval(scrollInterval);
                         scrollInterval = null;
                       }
-                      if (y < contRect.top + 50) {
+                      if (clientY < contRect.top + 50) {
                         scrollInterval = setInterval(() => {
                           container.scrollTop -= 15;
                           updateGridDrag(moveEvent.clientY);
                         }, 16);
-                      } else if (y > contRect.bottom - 50) {
+                      } else if (clientY > contRect.bottom - 50) {
                         scrollInterval = setInterval(() => {
                           container.scrollTop += 15;
                           updateGridDrag(moveEvent.clientY);
@@ -883,20 +972,21 @@ export function StudyCalendar({
                       if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
                         target.releasePointerCapture(e.pointerId);
                       }
-                    } catch (err) {
-                      // ignore pointer capture release error
-                    }
-                    target.removeEventListener(
+                    } catch (err) {}
+                    window.removeEventListener(
                       "pointermove",
                       handlePointerMove as EventListener,
                     );
-                    target.removeEventListener(
+                    window.removeEventListener(
                       "pointerup",
+                      handlePointerUp as EventListener,
+                    );
+                    window.removeEventListener(
+                      "pointercancel",
                       handlePointerUp as EventListener,
                     );
                     document.body.classList.remove("is-dragging");
 
-                    // Hide the visual selector in DOM
                     if (visualSelectionRef.current) {
                       visualSelectionRef.current.style.display = "none";
                     }
@@ -921,12 +1011,17 @@ export function StudyCalendar({
                     }
                   };
 
-                  target.addEventListener(
+                  window.addEventListener(
                     "pointermove",
                     handlePointerMove as EventListener,
+                    { passive: true },
                   );
-                  target.addEventListener(
+                  window.addEventListener(
                     "pointerup",
+                    handlePointerUp as EventListener,
+                  );
+                  window.addEventListener(
+                    "pointercancel",
                     handlePointerUp as EventListener,
                   );
                 }}
@@ -1039,33 +1134,35 @@ export function StudyCalendar({
                       )
                         return;
 
-                      e.stopPropagation();
-                      e.preventDefault();
-
+                      const startX = e.clientX;
+                      const startY = e.clientY;
+                      let isDragging = false;
                       let hasMoved = false;
                       const target = e.currentTarget as HTMLDivElement;
-                      target.setPointerCapture(e.pointerId);
 
-                      setIsDraggingEvent(true);
-                      setDragEventId(ev.id);
-                      document.body.classList.add("is-dragging");
-
-                      const startY = e.clientY;
                       const originalStartTime = ev.start.getTime();
                       const originalEndTime = ev.end.getTime();
                       const durationMilli = originalEndTime - originalStartTime;
 
+                      const container = document.getElementById(
+                        "calendar-scroll-container",
+                      );
+                      const startScrollY = container ? container.scrollTop : 0;
+                      let scrollInterval: any = null;
+
                       let lastDeltaMins = 0;
-                      let currentDayIndex = dayIndex; // default to original day index
+                      let currentDayIndex = dayIndex;
 
-                      // Set initial positioning styles immediately on drag start
-                      target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
-                      target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
-
-                      const handlePointerMove = (moveEvent: PointerEvent) => {
-                        moveEvent.preventDefault();
-                        const deltaY = moveEvent.clientY - startY;
-                        if (Math.abs(deltaY) > 2) {
+                      const updateEventDrag = (
+                        currentClientX: number,
+                        currentClientY: number,
+                      ) => {
+                        const currentScrollY = container
+                          ? container.scrollTop
+                          : 0;
+                        const scrollDiff = currentScrollY - startScrollY;
+                        const deltaY = currentClientY - startY + scrollDiff;
+                        if (Math.abs(deltaY) > 3) {
                           hasMoved = true;
                         }
                         const rawDeltaMins = deltaY / (80 / 60);
@@ -1093,7 +1190,7 @@ export function StudyCalendar({
                         const gridContainer = target.parentElement;
                         if (gridContainer) {
                           const rect = gridContainer.getBoundingClientRect();
-                          const relativeX = moveEvent.clientX - rect.left;
+                          const relativeX = currentClientX - rect.left;
                           const colWidth = rect.width / visibleDays.length;
                           let potentialDayIndex = Math.floor(
                             relativeX / colWidth,
@@ -1139,24 +1236,99 @@ export function StudyCalendar({
                         }
                       };
 
+                      const handlePointerMove = (moveEvent: PointerEvent) => {
+                        const deltaX = Math.abs(moveEvent.clientX - startX);
+                        const deltaY = Math.abs(moveEvent.clientY - startY);
+
+                        if (!isDragging) {
+                          if (deltaX > 5 || deltaY > 5) {
+                            isDragging = true;
+                            setIsDraggingEvent(true);
+                            setDragEventId(ev.id);
+                            document.body.classList.add("is-dragging");
+                            try {
+                              if (target.setPointerCapture) {
+                                target.setPointerCapture(e.pointerId);
+                              }
+                            } catch (err) {}
+                            target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
+                            target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
+                          } else {
+                            return;
+                          }
+                        }
+
+                        updateEventDrag(moveEvent.clientX, moveEvent.clientY);
+
+                        if (container) {
+                          const containerRect =
+                            container.getBoundingClientRect();
+                          const topEdge = containerRect.top + 60;
+                          const bottomEdge = containerRect.bottom - 60;
+
+                          if (moveEvent.clientY < topEdge) {
+                            if (!scrollInterval) {
+                              scrollInterval = setInterval(() => {
+                                if (container.scrollTop > 0) {
+                                  container.scrollTop -= 14;
+                                  updateEventDrag(
+                                    moveEvent.clientX,
+                                    moveEvent.clientY,
+                                  );
+                                }
+                              }, 20);
+                            }
+                          } else if (moveEvent.clientY > bottomEdge) {
+                            if (!scrollInterval) {
+                              scrollInterval = setInterval(() => {
+                                if (
+                                  container.scrollTop <
+                                  container.scrollHeight -
+                                    container.clientHeight
+                                ) {
+                                  container.scrollTop += 14;
+                                  updateEventDrag(
+                                    moveEvent.clientX,
+                                    moveEvent.clientY,
+                                  );
+                                }
+                              }, 20);
+                            }
+                          } else {
+                            if (scrollInterval) {
+                              clearInterval(scrollInterval);
+                              scrollInterval = null;
+                            }
+                          }
+                        }
+                      };
+
                       const handlePointerUp = () => {
-                        setIsDraggingEvent(false);
-                        setDragEventId(null);
-                        setUnsyncedChanges(true);
-                        document.body.classList.remove("is-dragging");
+                        if (scrollInterval) {
+                          clearInterval(scrollInterval);
+                          scrollInterval = null;
+                        }
+                        if (isDragging) {
+                          setIsDraggingEvent(false);
+                          setDragEventId(null);
+                          setUnsyncedChanges(true);
+                          document.body.classList.remove("is-dragging");
+                        }
                         try {
                           if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
                             target.releasePointerCapture(e.pointerId);
                           }
-                        } catch (err) {
-                          // ignore pointer capture release error
-                        }
-                        target.removeEventListener(
+                        } catch (err) {}
+                        window.removeEventListener(
                           "pointermove",
                           handlePointerMove as EventListener,
                         );
-                        target.removeEventListener(
+                        window.removeEventListener(
                           "pointerup",
+                          handlePointerUp as EventListener,
+                        );
+                        window.removeEventListener(
+                          "pointercancel",
                           handlePointerUp as EventListener,
                         );
 
@@ -1236,13 +1408,17 @@ export function StudyCalendar({
                         }
                       };
 
-                      target.addEventListener(
+                      window.addEventListener(
                         "pointermove",
                         handlePointerMove as EventListener,
-                        { passive: false },
+                        { passive: true },
                       );
-                      target.addEventListener(
+                      window.addEventListener(
                         "pointerup",
+                        handlePointerUp as EventListener,
+                      );
+                      window.addEventListener(
+                        "pointercancel",
                         handlePointerUp as EventListener,
                       );
                     }}
@@ -1489,13 +1665,22 @@ export function StudyCalendar({
                         const originalDurationMins = duration * 60;
                         setResizingEventId(ev.id);
 
+                        const container = document.getElementById(
+                          "calendar-scroll-container",
+                        );
+                        const startScrollY = container
+                          ? container.scrollTop
+                          : 0;
+                        let resizeScrollInterval: any = null;
+
                         let lastDurationMins = Math.round(originalDurationMins);
 
-                        const handlePointerMove = (
-                          moveEvent: PointerEvent | React.PointerEvent,
-                        ) => {
-                          moveEvent.preventDefault();
-                          const deltaY = moveEvent.clientY - startY;
+                        const updateResize = (clientY: number) => {
+                          const currentScrollY = container
+                            ? container.scrollTop
+                            : 0;
+                          const scrollDiff = currentScrollY - startScrollY;
+                          const deltaY = clientY - startY + scrollDiff;
                           let rawDeltaMins = deltaY / (80 / 60);
                           let newDurationMins =
                             originalDurationMins + rawDeltaMins;
@@ -1552,9 +1737,45 @@ export function StudyCalendar({
                           }
                         };
 
+                        const handlePointerMove = (
+                          moveEvent: PointerEvent | React.PointerEvent,
+                        ) => {
+                          moveEvent.preventDefault();
+                          updateResize(moveEvent.clientY);
+
+                          if (container) {
+                            const containerRect =
+                              container.getBoundingClientRect();
+                            const bottomEdge = containerRect.bottom - 60;
+                            if (moveEvent.clientY > bottomEdge) {
+                              if (!resizeScrollInterval) {
+                                resizeScrollInterval = setInterval(() => {
+                                  if (
+                                    container.scrollTop <
+                                    container.scrollHeight -
+                                      container.clientHeight
+                                  ) {
+                                    container.scrollTop += 14;
+                                    updateResize(moveEvent.clientY);
+                                  }
+                                }, 20);
+                              }
+                            } else {
+                              if (resizeScrollInterval) {
+                                clearInterval(resizeScrollInterval);
+                                resizeScrollInterval = null;
+                              }
+                            }
+                          }
+                        };
+
                         const handlePointerUp = (
                           upEvent: PointerEvent | React.PointerEvent,
                         ) => {
+                          if (resizeScrollInterval) {
+                            clearInterval(resizeScrollInterval);
+                            resizeScrollInterval = null;
+                          }
                           setResizingEventId(null);
                           setUnsyncedChanges(true);
                           document.body.classList.remove("is-dragging");
@@ -1565,12 +1786,16 @@ export function StudyCalendar({
                           } catch (err) {
                             // ignore pointer capture release error
                           }
-                          target.removeEventListener(
+                          window.removeEventListener(
                             "pointermove",
                             handlePointerMove as EventListener,
                           );
-                          target.removeEventListener(
+                          window.removeEventListener(
                             "pointerup",
+                            handlePointerUp as EventListener,
+                          );
+                          window.removeEventListener(
+                            "pointercancel",
                             handlePointerUp as EventListener,
                           );
 
@@ -1632,13 +1857,17 @@ export function StudyCalendar({
                           }
                         };
 
-                        target.addEventListener(
+                        window.addEventListener(
                           "pointermove",
                           handlePointerMove as EventListener,
                           { passive: false },
                         );
-                        target.addEventListener(
+                        window.addEventListener(
                           "pointerup",
+                          handlePointerUp as EventListener,
+                        );
+                        window.addEventListener(
+                          "pointercancel",
                           handlePointerUp as EventListener,
                         );
                       }}
@@ -1980,24 +2209,16 @@ export function StudyCalendar({
       data-no-swipe="true"
       className={
         onClose
-          ? "fixed inset-0 z-[100] bg-white dark:bg-[#121212] flex items-center justify-center overflow-hidden study-calendar-container no-swipe"
+          ? "fixed inset-0 z-[9999] w-screen h-screen min-h-[100dvh] bg-white dark:bg-[#121212] flex overflow-hidden study-calendar-container no-swipe"
           : "w-full h-full overflow-hidden study-calendar-container no-swipe"
       }
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className={`w-full h-full max-w-[1600px] mx-auto dark:bg-[#121212] bg-[#f8f9fa] border border-slate-800 flex flex-col md:flex-row overflow-hidden relative text-slate-800 dark:text-slate-200 font-sans ${onClose ? "rounded-2xl md:rounded-[32px] shadow-2xl" : "rounded-none border-0"}`}
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.98 }}
+        className="w-full h-full dark:bg-[#121212] bg-[#f8f9fa] flex flex-col md:flex-row overflow-hidden relative text-slate-800 dark:text-slate-200 font-sans rounded-none border-0"
       >
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="absolute right-4 top-4 z-50 p-2 bg-slate-800 text-white rounded-full hover:bg-slate-700 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
 
         {/* Create Task Modal */}
         <AnimatePresence>
@@ -2555,13 +2776,13 @@ export function StudyCalendar({
               Schedule
             </h1>
           </div>
-          <div className="p-6 flex-1 overflow-y-auto space-y-6 scrollbar-hide min-h-0">
+          <div className="p-6 flex-1 overflow-y-auto space-y-6 custom-calendar-scrollbar min-h-0">
             {renderSidebarContents("desktop")}
           </div>
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col bg-white dark:bg-[#121212] order-1 md:order-2 h-full md:h-auto min-h-0">
+        <div className="flex-1 flex flex-col bg-white dark:bg-[#121212] order-1 md:order-2 h-full min-h-0">
           {/* Header */}
           <div className="min-h-[80px] py-4 md:py-0 border-b border-slate-200 dark:border-white/10 flex flex-wrap items-center justify-between px-4 md:px-6 bg-white dark:bg-[#1A1A1A] gap-4 shrink-0">
             <div className="flex items-center gap-2 md:gap-4">
@@ -2624,6 +2845,16 @@ export function StudyCalendar({
                   </button>
                 ))}
               </div>
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="p-2 md:px-3 md:py-2 bg-rose-500/10 dark:bg-rose-500/20 hover:bg-rose-600 hover:text-white text-rose-600 dark:text-rose-400 rounded-xl transition-all flex items-center justify-center shrink-0 ml-1 font-semibold gap-1.5 text-xs md:text-sm"
+                  title="Close Fullscreen Calendar"
+                >
+                  <X className="w-4 h-4" />
+                  <span className="hidden sm:inline">Close</span>
+                </button>
+              )}
             </div>
           </div>
 
