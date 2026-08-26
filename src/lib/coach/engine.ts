@@ -49,6 +49,9 @@ export function generateDeterministicDynamicInsight(data: {
   streak?: number;
   questionsSolved?: number;
   target?: number;
+  targetXp?: number;
+  dailyTarget?: number;
+  totalXpGoal?: number;
   accuracy?: number;
   pendingTasksCount?: number;
   recentTaskTypes?: string;
@@ -61,7 +64,7 @@ export function generateDeterministicDynamicInsight(data: {
     sleep: data.sleep || 0,
     screenTime: data.screenTime || 0,
     streakDays: data.streak || 0,
-    targetXp: data.target || 1000,
+    targetXp: data.targetXp || data.dailyTarget || data.totalXpGoal || data.target || 1000,
     accuracy: data.accuracy || 0,
     history: data.history || [],
     plannedTasks: data.pendingTasksCount ? Array(data.pendingTasksCount).fill({ text: "Pending Task", completed: false }) : [],

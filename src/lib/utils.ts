@@ -5,8 +5,23 @@ export function cn(...inputs: ClassValue[]) {
  return twMerge(clsx(inputs))
 }
 
-export const getXpForLevel = (level: number) => {
- return Math.ceil(800000 * Math.pow((level - 1) / 99, 2));
+export const getXpForLevel = (level: number, totalXpGoal: number = 800000) => {
+  if (level <= 1) return 0;
+  return Math.floor(totalXpGoal * Math.pow((Math.min(level, 100) - 1) / 99, 2));
+};
+
+export const getLevelFromXp = (xp: number, totalXpGoal: number = 800000) => {
+  if (xp <= 0) return 1;
+  return Math.min(100, Math.floor(Math.pow(xp / totalXpGoal, 0.5) * 99) + 1);
+};
+
+export const getLevelProgress = (xp: number, level: number, totalXpGoal: number = 800000) => {
+  if (level >= 100) return 100;
+  const currentLevelStartXp = getXpForLevel(level, totalXpGoal);
+  const nextLevelStartXp = getXpForLevel(level + 1, totalXpGoal);
+  const xpInCurrentLevel = Math.max(0, xp - currentLevelStartXp);
+  const xpNeededForNextLevel = Math.max(1, nextLevelStartXp - currentLevelStartXp);
+  return Math.min(100, Math.max(0, (xpInCurrentLevel / xpNeededForNextLevel) * 100));
 };
 
 export const getRankInfo = (level: number) => {

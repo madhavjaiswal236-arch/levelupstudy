@@ -68,6 +68,7 @@ export default function JeeSessionLogger({
     setPendingTasks,
     history,
     getCurrentChapterForSubject,
+    logSession,
   } = useAppContext();
   const { hapticSuccess } = useHaptic();
 
@@ -273,6 +274,25 @@ export default function JeeSessionLogger({
 
     updateChapterStats(subject, chapter, updates);
 
+    // Record practice session for accuracy and speed analytics
+    if (numQuestions > 0 && chapter) {
+      const isDppAccuracyNeeded =
+        ((sessionType === "Lecture" || sessionType === "Theory") &&
+          dppStatus === "solved") ||
+        sessionType === "DPP";
+      const finalAccuracy = isDppAccuracyNeeded ? calculatedDppAccuracy : accuracy;
+      const correctQuestions = Math.round((numQuestions * finalAccuracy) / 100);
+      const timeSpentMinutes = Math.max(1, Math.round(numHours * 60));
+      logSession(
+        subject,
+        [chapter],
+        numQuestions,
+        correctQuestions,
+        timeSpentMinutes,
+        [],
+      );
+    }
+
     const extraInfo =
       sessionType === "DPP" && dppMarksScored !== "" && dppTotalMarks !== ""
         ? ` | Score: ${dppMarksScored}/${dppTotalMarks} (${calculatedDppAccuracy}%)`
@@ -354,6 +374,7 @@ export default function JeeSessionLogger({
           if (t.id === pendingTaskId) {
             return {
               ...t,
+              completed: true,
               lectureHours: numHours,
               homeworkDone: true, // simplified logic
               dppDone:

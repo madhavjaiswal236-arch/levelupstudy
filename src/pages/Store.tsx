@@ -246,6 +246,35 @@ const Store = React.memo(function Store() {
     }
   });
 
+  // Hydrate arcade keys from cloud-synced unlockedItems if local storage was empty
+  useEffect(() => {
+    if (unlockedItems && unlockedItems.length > 0) {
+      const cloudKeys: ArcadeKey[] = [];
+      unlockedItems.forEach((item) => {
+        if (typeof item === 'string' && item.startsWith('key:')) {
+          const parts = item.split(':');
+          if (parts.length >= 4) {
+            cloudKeys.push({
+              code: parts[1],
+              duration: parseInt(parts[2], 10) || 10,
+              purchasedAt: parseInt(parts[3], 10) || Date.now(),
+            });
+          }
+        }
+      });
+      if (cloudKeys.length > 0) {
+        setArcadeKeys((prev) => {
+          const existingCodes = new Set(prev.map((k) => k.code));
+          const toAdd = cloudKeys.filter((k) => !existingCodes.has(k.code));
+          if (toAdd.length > 0) {
+            return [...prev, ...toAdd];
+          }
+          return prev;
+        });
+      }
+    }
+  }, [unlockedItems]);
+
   const [issuedCodes, setIssuedCodes] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('arcade_issued_codes');
@@ -297,6 +326,7 @@ const Store = React.memo(function Store() {
 
   const handleDisposeKey = (code: string) => {
     setArcadeKeys(prev => prev.filter(k => k.code !== code));
+    setUnlockedItems(prev => (prev || []).filter(item => !item.startsWith(`key:${code}`)));
     if (latestCodeCard?.code === code) {
       setLatestCodeCard(null);
     }
@@ -341,6 +371,7 @@ const Store = React.memo(function Store() {
 
       setIssuedCodes(prev => [...prev, selectedCode]);
       setArcadeKeys(prev => [newKey, ...prev]);
+      setUnlockedItems(prev => [...(prev || []), `key:${selectedCode}:${pass.duration}:${newKey.purchasedAt}`]);
       setNewPurchase(newKey);
       setLatestCodeCard(newKey);
     }

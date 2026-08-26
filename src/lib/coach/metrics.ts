@@ -29,7 +29,7 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
   const allTasks: typeof data.loggedTasksToday = [];
 
   for (const t of [...data.loggedTasksToday, ...data.completedTasks]) {
-    const key = t.id ? String(t.id) : t.text;
+    const key = t.id ? String(t.id) : `${t.text}_${t.type || ''}_${t.subject || ''}_${t.lectureHours || 0}`;
     if (!seenTaskIds.has(key)) {
       seenTaskIds.add(key);
       allTasks.push(t);

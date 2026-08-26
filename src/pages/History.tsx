@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { TiltWrapper } from '../components/TiltWrapper';
 import { useAppContext, PlayHistoryEntry, Todo } from '../context/AppContext';
+import { getXpForLevel, getLevelProgress } from '@/lib/utils';
 import { Calendar, Clock, Target, Zap, CheckCircle2, ChevronRight, Monitor, Activity, TrendingUp, Cpu, Award, ShieldAlert, Sparkles, Flame, Loader2, BrainCircuit } from 'lucide-react';
 import { TourStep, useTour } from '../components/TourGuide';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -15,7 +16,7 @@ const getDailyRating = (hoursStudied: number) => {
 };
 
 const History = React.memo(function History() {
- const { history, xp, level, streakDays, isLoaded, hoursStudiedToday, loggedTasksToday, practiceSessions } = useAppContext();
+ const { history, xp, level, streakDays, isLoaded, hoursStudiedToday, loggedTasksToday, practiceSessions, totalXpGoal = 800000 } = useAppContext();
  const { activeStep, setActiveStep, hasCompleted } = useTour();
  
  const [selectedTask, setSelectedTask] = useState<Todo | null>(null);
@@ -59,11 +60,11 @@ const History = React.memo(function History() {
  setExpandedArchiveDates(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
  };
 
- const currentLevelStartXp = Math.floor(800000 * Math.pow((level - 1) / 99, 2));
-  const nextLevelStartXp = Math.floor(800000 * Math.pow(level / 99, 2));
-  const xpInCurrentLevel = xp - currentLevelStartXp;
-  const xpNeededForNextLevel = nextLevelStartXp - currentLevelStartXp;
-  const levelProgress = level === 100 ? 100 : Math.min(100, Math.max(0, (xpInCurrentLevel / xpNeededForNextLevel) * 100));
+ const currentLevelStartXp = getXpForLevel(level, totalXpGoal);
+ const nextLevelStartXp = getXpForLevel(level + 1, totalXpGoal);
+ const xpInCurrentLevel = Math.max(0, xp - currentLevelStartXp);
+ const xpNeededForNextLevel = Math.max(1, nextLevelStartXp - currentLevelStartXp);
+ const levelProgress = getLevelProgress(xp, level, totalXpGoal);
 
  const containerVariants = {
  hidden: { opacity: 0 },
@@ -328,7 +329,7 @@ const History = React.memo(function History() {
  </h3>
  <div className="flex justify-between items-end mb-2">
  <span className="text-2xl font-black dark:text-white text-slate-900">Level {level}</span>
- <span className="dark:text-slate-400 text-slate-600 font-mono text-sm">Next Rank: {xp} / {xpNeededForNextLevel} XP</span>
+ <span className="dark:text-slate-400 text-slate-600 font-mono text-sm">Next Rank: {xpInCurrentLevel} / {xpNeededForNextLevel} XP</span>
  </div>
  <div className="h-3 w-full dark:bg-slate-900 bg-white rounded-full overflow-hidden shadow-md">
  <motion.div 

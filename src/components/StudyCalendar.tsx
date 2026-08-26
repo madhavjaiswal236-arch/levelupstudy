@@ -925,7 +925,9 @@ export function StudyCalendar({
                           if (target.setPointerCapture) {
                             target.setPointerCapture(e.pointerId);
                           }
-                        } catch (err) {}
+                        } catch (err) {
+                          console.debug("Pointer capture not supported or failed", err);
+                        }
                         document.body.classList.add("is-dragging");
 
                         if (visualSelectionRef.current) {
@@ -972,7 +974,9 @@ export function StudyCalendar({
                       if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
                         target.releasePointerCapture(e.pointerId);
                       }
-                    } catch (err) {}
+                    } catch (err) {
+                      console.debug("Pointer release capture failed", err);
+                    }
                     window.removeEventListener(
                       "pointermove",
                       handlePointerMove as EventListener,
@@ -1250,7 +1254,9 @@ export function StudyCalendar({
                               if (target.setPointerCapture) {
                                 target.setPointerCapture(e.pointerId);
                               }
-                            } catch (err) {}
+                            } catch (err) {
+                              console.debug("Pointer capture on event move failed", err);
+                            }
                             target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
                             target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
                           } else {
@@ -1318,7 +1324,9 @@ export function StudyCalendar({
                           if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
                             target.releasePointerCapture(e.pointerId);
                           }
-                        } catch (err) {}
+                        } catch (err) {
+                          console.debug("Pointer release capture failed", err);
+                        }
                         window.removeEventListener(
                           "pointermove",
                           handlePointerMove as EventListener,

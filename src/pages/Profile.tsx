@@ -868,12 +868,10 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  <p className="text-sm dark:text-rose-400 text-rose-700">Purges all local state, history, syllabus progress, and starts completely fresh as a Level 1 user. This action cannot be undone.</p>
  </div>
  <button
- onMouseDown={startResetTimer}
- onMouseUp={cancelResetTimer}
- onMouseLeave={cancelResetTimer}
- onTouchStart={startResetTimer}
- onTouchEnd={cancelResetTimer}
- onTouchCancel={cancelResetTimer}
+ onPointerDown={startResetTimer}
+ onPointerUp={cancelResetTimer}
+ onPointerLeave={cancelResetTimer}
+ onPointerCancel={cancelResetTimer}
  className="relative overflow-hidden bg-rose-950 border-2 border-rose-600 dark:text-rose-400 text-rose-700 uppercase font-black whitespace-nowrap rounded-md font-mono select-none px-6 py-3 transition-colors shadow-md"
  >
  <div 

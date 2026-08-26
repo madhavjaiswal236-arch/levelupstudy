@@ -54,6 +54,8 @@ export function buildCoachReport(
     diagCategory = state.recovery;
   } else if (priority.primaryFocus === "screen" && state.screen === "HIGH") {
     diagCategory = "HIGH_SCREEN";
+  } else if (priority.primaryFocus === "screen" && state.screen === "ESCALATING") {
+    diagCategory = "ESCALATING_SCREEN";
   } else if (priority.primaryFocus === "planning" && state.planning === "OVERPLANNING") {
     diagCategory = "OVERPLANNING";
   } else if (priority.primaryFocus === "practice" && state.practice === "THEORY_HEAVY") {

@@ -121,7 +121,9 @@ const Settings = React.memo(function Settings() {
         if (parsed.pomoTime) setPomoTime(parsed.pomoTime);
         if (parsed.deepWorkTime) setDeepWorkTime(parsed.deepWorkTime);
         if (parsed.mainGoal) setMainGoal(parsed.mainGoal);
-      } catch (e) {}
+      } catch (e) {
+        console.warn("Failed to parse app_settings_extended in Settings", e);
+      }
     }
   }, []);
 

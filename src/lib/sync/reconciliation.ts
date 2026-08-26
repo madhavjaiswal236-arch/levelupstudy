@@ -40,6 +40,11 @@ export function mergeTaskArrays(
     const local = localMap.get(id);
     const cloud = cloudMap.get(id);
 
+    // If either side marked this task as deleted (tombstone), do not resurrect it
+    if (local?.isDeleted || cloud?.isDeleted || local?.deletedAt || cloud?.deletedAt) {
+      continue;
+    }
+
     if (local && cloud) {
       mergedMap.set(id, {
         ...cloud,

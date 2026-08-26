@@ -16,6 +16,7 @@ import React, {
   useCallback,
 } from "react";
 import { initAuth } from "@/lib/firebase";
+import { getLevelFromXp } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
@@ -143,6 +144,8 @@ export interface Todo {
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
+  isDeleted?: boolean;
+  deletedAt?: number;
 }
 
 export const generateUniqueTaskId = (prefix = "task"): string => {
@@ -1163,6 +1166,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (parsed.unlockedItems !== undefined) setUnlockedItems(parsed.unlockedItems);
           if (parsed.ongoingChapters !== undefined) setOngoingChapters(parsed.ongoingChapters);
           if (parsed.activeBoost !== undefined) setActiveBoost(parsed.activeBoost);
+          if (parsed.playerName !== undefined) setPlayerName(parsed.playerName);
+          if (parsed.class11EndDate !== undefined) setClass11EndDate(parsed.class11EndDate);
+          if (parsed.isClass11SetupDone !== undefined) setIsClass11SetupDone(parsed.isClass11SetupDone);
+          if (parsed.backlogPriorities !== undefined) setBacklogPriorities(parsed.backlogPriorities);
+          if (parsed.totalXpGoal !== undefined) setTotalXpGoal(parsed.totalXpGoal);
+          if (parsed.bossDayTargetXp !== undefined) setBossDayTargetXp(parsed.bossDayTargetXp);
+          if (parsed.bossDayCompleted !== undefined) setBossDayCompleted(parsed.bossDayCompleted);
+          if (parsed.lastBossDayDate !== undefined) setLastBossDayDate(parsed.lastBossDayDate);
+          if (parsed.notificationSettings !== undefined) setNotificationSettings(parsed.notificationSettings);
+          if (parsed.hasSeenRules !== undefined) setHasSeenRules(parsed.hasSeenRules);
           setTimeout(() => {
             isRemoteSyncingRef.current = false;
           }, 300);
@@ -1590,7 +1603,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...updated[idx],
           sleepTime: sleepInput,
           screenTime: screenTimeInput,
-          aiFeedback: undefined,
+          aiFeedback: updated[idx].aiFeedback ?? undefined,
         };
       } else {
         const state = latestStateRef.current;
@@ -1647,10 +1660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const currentXp = state.xp ?? xp;
     const goal = state.totalXpGoal || totalXpGoal;
     const calculatedNewXp = currentXp + roundedFinal;
-    const calculatedNewLevel = Math.min(
-      100,
-      Math.floor(Math.pow(calculatedNewXp / goal, 0.5) * 99) + 1,
-    );
+    const calculatedNewLevel = getLevelFromXp(calculatedNewXp, goal);
 
     setXp(calculatedNewXp);
     if (calculatedNewLevel !== (state.level ?? level)) {
@@ -1816,17 +1826,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reasons: { date: string; reason: string }[],
   ) => {
     setHistory((prev) => {
-      const newEntries = reasons.map((r) => ({
-        date: r.date,
-        hoursStudied: 0,
-        xpEarned: 0,
-        completedTasks: [],
-        screenTime: 0,
-        sleepTime: 0,
-        isMissed: true,
-        missedReason: r.reason,
-      }));
-      return [...prev, ...newEntries];
+      const updated = [...prev];
+      reasons.forEach((r) => {
+        const rDateStr = new Date(r.date).toDateString();
+        const existingIdx = updated.findIndex(
+          (h) => new Date(h.date).toDateString() === rDateStr,
+        );
+        if (existingIdx >= 0) {
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            isMissed: true,
+            missedReason: r.reason,
+          };
+        } else {
+          updated.push({
+            date: r.date,
+            hoursStudied: 0,
+            xpEarned: 0,
+            completedTasks: [],
+            screenTime: 0,
+            sleepTime: 0,
+            isMissed: true,
+            missedReason: r.reason,
+          });
+        }
+      });
+      return updated;
     });
     setPendingMissedDays([]);
   }, []);

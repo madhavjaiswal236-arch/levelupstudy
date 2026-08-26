@@ -648,7 +648,9 @@ const Dashboard = React.memo(function Dashboard() {
         if (parsed.pomoTime) customPomo = parsed.pomoTime;
         if (parsed.deepWorkTime) customDeep = parsed.deepWorkTime;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Failed to parse app_settings_extended in Dashboard", e);
+    }
 
     if (timerMode === "pomodoro") minutes = customPomo;
     else if (timerMode === "deepwork") minutes = customDeep;

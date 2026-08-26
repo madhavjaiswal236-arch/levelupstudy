@@ -32,7 +32,7 @@ export function useNotificationScheduler({
   const stateRef = useRef({ notificationSettings, todos, streakDays, hoursStudiedToday, dailyTarget });
   useEffect(() => {
     stateRef.current = { notificationSettings, todos, streakDays, hoursStudiedToday, dailyTarget };
-  });
+  }, [notificationSettings, todos, streakDays, hoursStudiedToday, dailyTarget]);
 
   useEffect(() => {
     if (!isLoaded) return;
