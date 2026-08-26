@@ -341,9 +341,9 @@ const Dashboard = React.memo(function Dashboard() {
 
   const allBacklogTasks = useMemo(() => {
     const rawBacklogs = [
-      ...pendingTasks.filter((t) => t.subject !== "Personal"),
+      ...pendingTasks.filter((t) => t.subject !== "Personal" && !t.isDeleted),
       ...todos.filter((t) => {
-        if (t.completed || t.subject === "Personal") return false;
+        if (t.completed || t.isDeleted || t.subject === "Personal") return false;
         if (typeof t.id === "number") {
           return new Date(t.id).toDateString() !== new Date().toDateString() && t.id < Date.now();
         }
@@ -380,13 +380,14 @@ const Dashboard = React.memo(function Dashboard() {
   const recentTaskTypesStr = useMemo(
     () =>
       todos
+        .filter((t) => !t.isDeleted)
         .slice(-3)
         .map((t) => t.type)
         .join(", "),
     [todos],
   );
   const completedTodosCount = useMemo(
-    () => todos.filter((t) => t.completed).length,
+    () => todos.filter((t) => t.completed && !t.isDeleted).length,
     [todos],
   );
 
@@ -1234,7 +1235,9 @@ const Dashboard = React.memo(function Dashboard() {
 
   const deleteTodo = async (id: number) => {
     const todoToDelete = todos.find((t) => t.id === id);
-    const updatedTodos = todos.filter((t) => t.id !== id);
+    const updatedTodos = todos.map((t) =>
+      t.id === id ? { ...t, isDeleted: true, deletedAt: Date.now() } : t,
+    );
     setTodos(updatedTodos);
     saveStateToCloudNow({ todos: updatedTodos });
 
@@ -1324,7 +1327,7 @@ const Dashboard = React.memo(function Dashboard() {
   const formattedOptimizedHours = optimizedStudyHours.toFixed(1);
 
   const displayedTodos = useMemo(() => {
-    let sourceTodos = todos.filter((t) => t.subject !== "Personal");
+    let sourceTodos = todos.filter((t) => t.subject !== "Personal" && !t.isDeleted);
     const uniqueMap = new Map();
     sourceTodos.forEach((t) => uniqueMap.set(t.id, t));
     sourceTodos = Array.from(uniqueMap.values());

@@ -221,10 +221,6 @@ export default function JeeSessionLogger({
     const finalEarnedXp = addXp(earnedXp);
     setHoursStudiedToday((prev) => Math.min(24, prev + numHours));
 
-    if (numQuestions > 0) {
-      setQuestionsSolved((prev) => prev + numQuestions);
-    }
-
     const currentStats = syllabus[subject].find((c) => c.name === chapter);
     const currentAccuracy = currentStats?.accuracy || 0;
     const currentPyq = currentStats?.pyq || 0;

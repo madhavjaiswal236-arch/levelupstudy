@@ -12,11 +12,20 @@ service cloud.firestore {
         && (!('xpGainedToday' in data) || (data.xpGainedToday is number && data.xpGainedToday >= 0));
     }
 
+    function isValidDelta(currData, nextData) {
+      return (!('xp' in currData) || !('xp' in nextData) || nextData.xp >= currData.xp - 50000)
+        && (!('level' in currData) || !('level' in nextData) || (nextData.level >= currData.level - 5 && nextData.level <= currData.level + 20));
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create, update: if request.auth != null && request.auth.uid == userId
+      allow create: if request.auth != null && request.auth.uid == userId
         && request.resource.size() < 800000
         && isValidUserData(request.resource.data);
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.size() < 800000
+        && isValidUserData(request.resource.data)
+        && isValidDelta(resource.data, request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == userId;
 
       // Allow access to user subcollections (e.g. sessions, tasks, metrics) with size guard

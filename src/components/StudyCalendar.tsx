@@ -209,6 +209,7 @@ export function StudyCalendar({
 
   const scheduledEvents = useMemo(() => {
     const localEvents = todos
+      .filter((t) => !t.isDeleted)
       .filter((t) => activeCalendars.includes(t.subject || "General"))
       .filter((t) => t.startTime && t.endTime)
       .map((t) => {
@@ -227,7 +228,7 @@ export function StudyCalendar({
       });
 
     const externalGoogleEvents = googleEvents
-      .filter((g) => !todos.some((t) => t.calendarEventId === g.id))
+      .filter((g) => !todos.some((t) => !t.isDeleted && t.calendarEventId === g.id))
       .filter((g) => g.start?.dateTime && g.end?.dateTime)
       .map((g) => {
         return {
@@ -248,6 +249,7 @@ export function StudyCalendar({
 
   const unscheduledTasks = useMemo(() => {
     return todos
+      .filter((t) => !t.isDeleted)
       .filter((t) => t.subject !== "Personal")
       .filter((t) => activeCalendars.includes(t.subject || "General"))
       .filter((t) => !t.startTime || !t.endTime)
@@ -496,6 +498,7 @@ export function StudyCalendar({
       const eventsToUpdate = todos
         .filter(
           (t) =>
+            !t.isDeleted &&
             t.calendarEventId &&
             !t.calendarEventId.startsWith("local-") &&
             t.startTime &&
@@ -514,6 +517,7 @@ export function StudyCalendar({
       // Create new events on Google Calendar for unsynced or local-only tasks
       const eventsToCreate = todos.filter(
         (t) =>
+          !t.isDeleted &&
           (!t.calendarEventId || t.calendarEventId.startsWith("local-")) &&
           t.startTime &&
           t.endTime,
