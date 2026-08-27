@@ -549,11 +549,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [showWelcomeHero, setShowWelcomeHero] = useState<boolean>(() => {
     try {
-      const todayKey = getStandardDateKey(getLogicalDate());
+      if (typeof window === "undefined" || !window.localStorage) return false;
+      const dismissedForever = localStorage.getItem("welcome_hero_dismissed_forever");
+      if (dismissedForever === "true") return false;
+
+      // If user already has any recorded local state, do not show welcome hero on load
+      const localRaw = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem("jee_tracker_state");
+      if (localRaw) {
+        try {
+          const parsed = JSON.parse(localRaw);
+          if (
+            (parsed.xp && parsed.xp > 0) ||
+            (parsed.todos && parsed.todos.length > 0) ||
+            (parsed.history && parsed.history.length > 0)
+          ) {
+            return false;
+          }
+        } catch {}
+      }
+
       const lastWelcomeDate = localStorage.getItem("levelup_last_welcome_hero_date");
-      return lastWelcomeDate !== todayKey;
+      return !lastWelcomeDate;
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -569,9 +587,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const triggerWelcomeScreen = useCallback(() => {
-    try {
-      localStorage.removeItem("levelup_last_welcome_hero_date");
-    } catch {}
     setShowWelcomeHero(true);
   }, []);
 
@@ -776,18 +791,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ) as Todo[],
           );
           let loadedHistory = parsed.history || [];
-
-          // Remove fake data based on fake task names, but DO NOT delete historical entries for new months.
-          loadedHistory = loadedHistory.filter((entry: any) => {
-            const hasFakeTasks = entry.completedTasks?.some(
-              (t: any) =>
-                t.text === "Completed Physics Module" ||
-                t.text === "Chemistry PYQs",
-            );
-            if (hasFakeTasks) return false;
-            return true;
-          });
-
           setHistory(loadedHistory);
           setPracticeSessions(parsed.practiceSessions || []);
           setPlayerName(parsed.playerName || "Player 1");
@@ -969,6 +972,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Dedicated single-instance listener for page unload, visibility hidden and mobile pause
   useEffect(() => {
     const flushCurrentState = () => {
+      if (!isLoaded || isRemoteSyncingRef.current) return;
       const stateToSave = latestStateRef.current;
       if (!stateToSave || Object.keys(stateToSave).length === 0) return;
       const currentJson = JSON.stringify(stateToSave);
@@ -1030,12 +1034,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         capAppStateListener.remove();
       }
     };
-  }, [firebaseUser, isCloudSyncComplete]);
+  }, [isLoaded, firebaseUser, isCloudSyncComplete]);
 
   // Initial Cloud Data Fetch on Auth to ensure cloud state is single source of truth
   useEffect(() => {
     if (!firebaseUser?.uid) {
       setIsCloudSyncComplete(true);
+      return;
+    }
+
+    // Gated: wait until local state is fully loaded from disk before reconciling with Cloud
+    if (!isLoaded) {
       return;
     }
 
@@ -1137,7 +1146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [firebaseUser]);
+  }, [firebaseUser, isLoaded]);
 
   // Real-Time Cloud Listener removed to prevent feedback write loops and stream exhaustion.
   // Data is loaded on initial app load / refresh via syncCloudOnLogin.
@@ -1421,36 +1430,71 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHistory((prevHistory) => {
         let updatedHistory = [...prevHistory];
 
-        // 1. Log the actual last active date
-        if (
-          !updatedHistory.some(
-            (h) => new Date(h.date).toDateString() === lastDate.toDateString(),
-          )
-        ) {
-          const isLastDateYesterday =
-            lastDate.toDateString() === yesterday.toDateString();
-          let lifeM = (state.lifeMetrics || []).find((m: LifeMetric) => m.day === lastDate.getDate());
-          if (!lifeM)
-            lifeM = { day: lastDate.getDate(), sleep: 0, screenTime: 0 };
+        // 1. Log or merge the actual last active date
+        const existingLastDateIndex = updatedHistory.findIndex(
+          (h) => new Date(h.date).toDateString() === lastDate.toDateString(),
+        );
 
-          const sleepUsed =
-            isLastDateYesterday && overrideSleep !== undefined
-              ? overrideSleep
-              : lifeM.sleep;
-          const screenUsed =
-            isLastDateYesterday && overrideScreen !== undefined
-              ? overrideScreen
-              : lifeM.screenTime;
+        const isLastDateYesterday =
+          lastDate.toDateString() === yesterday.toDateString();
+        let lifeM = (state.lifeMetrics || []).find((m: LifeMetric) => m.day === lastDate.getDate());
+        if (!lifeM)
+          lifeM = { day: lastDate.getDate(), sleep: 0, screenTime: 0 };
 
+        const sleepUsed =
+          isLastDateYesterday && overrideSleep !== undefined
+            ? overrideSleep
+            : lifeM.sleep;
+        const screenUsed =
+          isLastDateYesterday && overrideScreen !== undefined
+            ? overrideScreen
+            : lifeM.screenTime;
+
+        const tasksToLog = [...completedTasks, ...(state.loggedTasksToday || [])];
+        const plannedToLog = [...(state.todos || []), ...(state.loggedTasksToday || [])];
+
+        if (existingLastDateIndex === -1) {
           updatedHistory.push({
             date: lastDate.toISOString(),
             hoursStudied: Number((state.hoursStudiedToday || 0).toFixed(1)),
             xpEarned: curXpGainedToday,
-            completedTasks: [...completedTasks, ...(state.loggedTasksToday || [])],
-            plannedTasks: [...(state.todos || []), ...(state.loggedTasksToday || [])],
+            completedTasks: tasksToLog,
+            plannedTasks: plannedToLog,
             sleepTime: sleepUsed,
             screenTime: screenUsed,
           });
+        } else {
+          // Merge completedTasks and plannedTasks into existing entry without dropping them
+          const existing = updatedHistory[existingLastDateIndex];
+          const mergedCompleted = Array.from(
+            new Map(
+              [...(existing.completedTasks || []), ...tasksToLog].map((t: Todo) => [
+                String(t.id || t.text),
+                t,
+              ]),
+            ).values(),
+          );
+          const mergedPlanned = Array.from(
+            new Map(
+              [...(existing.plannedTasks || []), ...plannedToLog].map((t: Todo) => [
+                String(t.id || t.text),
+                t,
+              ]),
+            ).values(),
+          );
+
+          updatedHistory[existingLastDateIndex] = {
+            ...existing,
+            hoursStudied: Math.max(
+              existing.hoursStudied || 0,
+              Number((state.hoursStudiedToday || 0).toFixed(1)),
+            ),
+            xpEarned: Math.max(existing.xpEarned || 0, curXpGainedToday),
+            completedTasks: mergedCompleted,
+            plannedTasks: mergedPlanned,
+            sleepTime: (sleepUsed > 0 ? sleepUsed : existing.sleepTime) || 0,
+            screenTime: (screenUsed > 0 ? screenUsed : existing.screenTime) || 0,
+          };
         }
 
         // 2. Fill in gaps up to yesterday if the lastDate was before yesterday

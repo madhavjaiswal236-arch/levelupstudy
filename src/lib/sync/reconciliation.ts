@@ -410,8 +410,18 @@ export function reconcileState(
   const ongoingChapters = { ...(cloudState.ongoingChapters || {}), ...(localState.ongoingChapters || {}) };
   const notificationSettings = localState.notificationSettings || cloudState.notificationSettings;
 
+  const accuracy = Math.max(localState.accuracy || 0, cloudState.accuracy || 0);
+  const speedScore = Math.max(localState.speedScore || 0, cloudState.speedScore || 0);
+  const dailyTarget = localState.dailyTarget || cloudState.dailyTarget || 100;
+  const bossDayTargetXp = localState.bossDayTargetXp || cloudState.bossDayTargetXp || null;
+  const bossDayCompleted = Boolean(localState.bossDayCompleted || cloudState.bossDayCompleted);
+  const lastBossDayDate = localState.lastBossDayDate || cloudState.lastBossDayDate || null;
+  const activeBoost = localState.activeBoost || cloudState.activeBoost || null;
+  const hasSeenRules = Boolean(localState.hasSeenRules || cloudState.hasSeenRules);
+
   const mergedState = {
-    ...baseState,
+    ...cloudState,
+    ...localState,
     xp,
     level,
     questionsSolved,
@@ -422,6 +432,14 @@ export function reconcileState(
     hoursStudiedToday,
     spentXpToday,
     lastStudyDate,
+    accuracy,
+    speedScore,
+    dailyTarget,
+    bossDayTargetXp,
+    bossDayCompleted,
+    lastBossDayDate,
+    activeBoost,
+    hasSeenRules,
     todos,
     loggedTasksToday,
     pendingTasks,
