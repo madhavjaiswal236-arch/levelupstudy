@@ -459,6 +459,23 @@ export const hasTodayProtocolRecord = (
 
 const LOCAL_STORAGE_KEY = "jee_tracker_state";
 
+export const calculate8HourGoalXp = (
+  endDateStr: string | null | undefined,
+  currentXp: number = 0,
+): { goalXp: number; daysRemaining: number; totalHours: number } => {
+  let daysRemaining = 300;
+  if (endDateStr) {
+    const end = new Date(endDateStr).getTime();
+    if (!isNaN(end) && end > Date.now()) {
+      const diffDays = Math.ceil((end - Date.now()) / (1000 * 3600 * 24));
+      daysRemaining = Math.max(1, diffDays);
+    }
+  }
+  const totalHours = daysRemaining * 8;
+  const goalXp = Math.round(daysRemaining * 8 * 300 + Math.max(0, currentXp));
+  return { goalXp, daysRemaining, totalHours };
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [needsRolloverState, setNeedsRolloverState] = useState(false);
@@ -764,10 +781,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSyllabus(mergedSyllabus);
 
           setActiveBoost(parsed.activeBoost || null);
-          setClass11EndDate(parsed.class11EndDate || null);
-          setTotalXpGoal(parsed.totalXpGoal || 800000);
+          const loadedEndDate = parsed.class11EndDate || null;
+          setClass11EndDate(loadedEndDate);
+          const calc8Hr = calculate8HourGoalXp(loadedEndDate, parsed.xp || 0);
+          setTotalXpGoal(parsed.totalXpGoal || calc8Hr.goalXp);
           setIsClass11SetupDone(
-            parsed.class11EndDate ? parsed.isClass11SetupDone || false : false,
+            loadedEndDate ? parsed.isClass11SetupDone || false : false,
           );
           setBacklogPriorities(parsed.backlogPriorities || {});
           setHasSeenRules(parsed.hasSeenRules || false);

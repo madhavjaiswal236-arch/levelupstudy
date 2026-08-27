@@ -567,56 +567,127 @@ const Settings = React.memo(function Settings() {
                 <Target className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   Target Calibrator & Goal Milestones
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    8h/Day Auto-Paced
+                  </span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Select your exam XP benchmark to compute total and daily required hours (based on ~300 XP/hr).
+                  Select your exam XP benchmark to compute total and daily required hours (based on ~300 XP/hr). The 8 Hours/Day Target automatically calculates the optimal goal until your target date.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-            {[100000, 500000, 600000, 650000, 700000, 800000, 1000000].map((goalVal) => {
-              const remainingXp = Math.max(0, goalVal - (xp || 0));
-              const totalHours = Math.ceil(remainingXp / 300);
+          {/* Featured 8h/day Block + Milestone Presets Grid */}
+          <div className="space-y-4">
+            {(() => {
+              const daysRemaining = (() => {
+                if (class11EndDate) {
+                  const end = new Date(class11EndDate).getTime();
+                  if (!isNaN(end) && end > Date.now()) {
+                    return Math.max(1, Math.ceil((end - Date.now()) / (1000 * 3600 * 24)));
+                  }
+                }
+                return 300;
+              })();
 
-              let dailyHoursStr = "";
-              if (class11EndDate) {
-                const end = new Date(class11EndDate).getTime();
-                const days = Math.max(1, Math.ceil((end - Date.now()) / (1000 * 3600 * 24)));
-                const daily = (totalHours / days).toFixed(1);
-                dailyHoursStr = `${daily} h/d`;
-              }
+              const eightHourGoalVal = Math.round(daysRemaining * 8 * 300 + Math.max(0, xp || 0));
+              const eightHourTotalHours = daysRemaining * 8;
+              const isEightHourSelected = totalXpGoal === eightHourGoalVal;
 
-              const isSelected = totalXpGoal === goalVal;
+              const presetGoals = [100000, 500000, 600000, 650000, 700000, 800000, 1000000];
 
               return (
-                <button
-                  key={goalVal}
-                  type="button"
-                  onClick={() => setTotalXpGoal(goalVal)}
-                  className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer ${
-                    isSelected
-                      ? "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-sm ring-1 ring-emerald-500/30"
-                      : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 text-slate-700 dark:text-slate-300"
-                  }`}
-                >
-                  <div className="text-xs font-black font-mono tracking-tight">
-                    {goalVal / 1000}k XP
-                  </div>
-                  <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
-                    {totalHours}h total
-                  </div>
-                  {dailyHoursStr && (
-                    <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                      {dailyHoursStr}
+                <>
+                  {/* Primary 8-Hour Goal Block */}
+                  <div
+                    onClick={() => {
+                      setTotalXpGoal(eightHourGoalVal);
+                      setDailyTarget(2400);
+                    }}
+                    className={`p-4 md:p-5 rounded-2xl border transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                      isEightHourSelected
+                        ? "bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-cyan-500/15 border-emerald-500 text-slate-900 dark:text-white shadow-md ring-2 ring-emerald-500/30"
+                        : "bg-slate-50/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3.5">
+                      <div className={`p-3 rounded-xl ${isEightHourSelected ? "bg-emerald-500 text-white" : "bg-emerald-500/10 text-emerald-500"}`}>
+                        <Zap className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm md:text-base font-black tracking-tight text-slate-900 dark:text-white">
+                            8 Hours / Day Target (Recommended)
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                            Auto-Calibrated
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Calculated for {daysRemaining} days remaining until {class11EndDate ? new Date(class11EndDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "Target Exam Date"} at 8h/day (2,400 XP/d)
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </button>
+
+                    <div className="flex items-center gap-4 self-end md:self-auto">
+                      <div className="text-right">
+                        <div className="text-lg md:text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                          {(eightHourGoalVal / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k XP
+                        </div>
+                        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 font-mono">
+                          {eightHourTotalHours}h total (8.0 h/d)
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isEightHourSelected ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 dark:border-slate-700"}`}>
+                        {isEightHourSelected && <CheckCircle2 className="w-4 h-4" />}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Standard Milestone Blocks */}
+                  <div>
+                    <div className="text-xs font-mono font-bold uppercase text-slate-400 dark:text-slate-500 mb-2">
+                      Or Select Fixed Milestone:
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                      {presetGoals.map((goalVal) => {
+                        const remainingXp = Math.max(0, goalVal - (xp || 0));
+                        const totalHours = Math.ceil(remainingXp / 300);
+                        const daily = (totalHours / daysRemaining).toFixed(1);
+                        const dailyHoursStr = `${daily} h/d`;
+                        const isSelected = totalXpGoal === goalVal;
+
+                        return (
+                          <button
+                            key={goalVal}
+                            type="button"
+                            onClick={() => setTotalXpGoal(goalVal)}
+                            className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-sm ring-1 ring-emerald-500/30"
+                                : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 text-slate-700 dark:text-slate-300"
+                            }`}
+                          >
+                            <div className="text-xs font-black font-mono tracking-tight">
+                              {goalVal / 1000}k XP
+                            </div>
+                            <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
+                              {totalHours}h total
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-1 font-mono">
+                              {dailyHoursStr}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
               );
-            })}
+            })()}
           </div>
         </Card>
       </div>

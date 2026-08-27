@@ -219,6 +219,8 @@ const Dashboard = React.memo(function Dashboard() {
     playerName,
     setPlayerName,
     totalXpGoal,
+    setTotalXpGoal,
+    setDailyTarget,
     xp,
     level,
     xpGainedToday,
@@ -1264,6 +1266,13 @@ const Dashboard = React.memo(function Dashboard() {
     e.preventDefault();
     if (tempDate) {
       setClass11EndDate(tempDate);
+      const end = new Date(tempDate).getTime();
+      const days = !isNaN(end) && end > Date.now()
+        ? Math.max(1, Math.ceil((end - Date.now()) / (1000 * 3600 * 24)))
+        : 300;
+      const eightHourGoal = Math.round(days * 8 * 300 + Math.max(0, xp || 0));
+      setTotalXpGoal(eightHourGoal);
+      setDailyTarget(2400);
     }
     setIsClass11SetupDone(true);
   };
