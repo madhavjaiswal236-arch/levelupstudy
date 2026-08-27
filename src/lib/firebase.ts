@@ -225,6 +225,8 @@ export const loadUserDataFromCloud = async (userId: string) => {
       const snap = await getDoc(userRef);
       if (snap.exists()) {
         return snap.data();
+      } else {
+        return { __docExists: false };
       }
     } catch (readErr: any) {
       const isOfflineErr =
@@ -261,6 +263,22 @@ export const loadUserDataFromCloud = async (userId: string) => {
     handleFirestoreError(err, OperationType.GET, path);
   }
   return null;
+};
+
+// Force fetch directly from Firestore for manual restore
+export const fetchUserDataDirectlyFromFirestore = async (userId: string): Promise<{ success: boolean; exists: boolean; data?: any; error?: string }> => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      return { success: true, exists: true, data: snap.data() };
+    } else {
+      return { success: true, exists: false, error: "No document found for this user in Firestore." };
+    }
+  } catch (err: any) {
+    console.error("fetchUserDataDirectlyFromFirestore error:", err);
+    return { success: false, exists: false, error: err?.message || String(err) };
+  }
 };
 
 // Listen to real-time changes from Firestore across devices

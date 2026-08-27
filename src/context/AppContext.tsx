@@ -3,6 +3,8 @@ import {
   saveUserDataToCloud,
   subscribeToCloudUserData,
   loadUserDataFromCloud,
+  fetchUserDataDirectlyFromFirestore,
+  auth,
 } from "@/lib/firebase";
 import { reconcileState } from "@/lib/sync/reconciliation";
 import React, {
@@ -307,6 +309,13 @@ interface AppState {
   scheduleBacklogTask: (task: Todo) => Promise<void>;
   notifyCalendarPreviewOpened: () => void;
   notifyCalendarPreviewClosed: () => void;
+  forceFetchAndRestoreFromCloud: () => Promise<{
+    success: boolean;
+    message: string;
+    stats?: { xp: number; level: number; tasks: number; historyDays: number };
+  }>;
+  exportLocalBackup: () => void;
+  importLocalBackup: (jsonContent: string) => { success: boolean; message: string };
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -1007,48 +1016,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
 
         if (!cloudData) {
-          const initialStateToSave = {
-            xp,
-            xpGainedToday,
-            spentXpToday,
-            totalSpentXp,
-            hoursStudiedToday,
-            level,
-            questionsSolved,
-            dailyTarget,
-            accuracy,
-            speedScore,
-            streakDays,
-            lastStudyDate,
-            focusBadges,
-            syllabus,
-            activeBoost,
-            class11EndDate,
-            isClass11SetupDone,
-            backlogPriorities,
-            todos,
-            loggedTasksToday,
-            pendingTasks,
-            history,
-            practiceSessions,
-            playerName,
-            hasSeenRules,
-            habits,
-            lifeMetrics,
-            monthlyGoals,
-            lastBossDayDate,
-            bossDayTargetXp,
-            bossDayCompleted,
-            equippedTitle,
-            equippedAura,
-            unlockedItems,
-            notificationSettings,
-            totalXpGoal,
-            ongoingChapters,
-            lastSyncTimestamp: Date.now(),
-          };
-          await saveUserDataToCloud(firebaseUser.uid, initialStateToSave, true);
-          lastSavedCloudJsonRef.current = JSON.stringify(initialStateToSave);
+          // Network error or offline: keep local state safe, do NOT overwrite cloud with empty state!
+          setIsCloudSyncComplete(true);
+          return;
+        }
+
+        if ((cloudData as any).__docExists === false) {
+          // Brand new Firestore account with no document yet: if user has local data, push to cloud
+          const currentLocal = latestStateRef.current;
+          const hasLocalData = (currentLocal.xp || 0) > 0 || (currentLocal.todos || []).length > 0 || (currentLocal.history || []).length > 0;
+          if (hasLocalData && firebaseUser?.uid) {
+            await saveUserDataToCloud(firebaseUser.uid, currentLocal, true);
+            lastSavedCloudJsonRef.current = JSON.stringify(currentLocal);
+          }
           setIsCloudSyncComplete(true);
           return;
         }
@@ -1909,6 +1889,196 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveStateToCloudNow();
   }, [saveStateToCloudNow]);
 
+  const forceFetchAndRestoreFromCloud = useCallback(async (): Promise<{
+    success: boolean;
+    message: string;
+    stats?: { xp: number; level: number; tasks: number; historyDays: number };
+  }> => {
+    const currentUid = firebaseUser?.uid || auth.currentUser?.uid;
+    if (!currentUid) {
+      return {
+        success: false,
+        message: "You are not signed in. Please sign in with your Google account first to restore your data from Cloud.",
+      };
+    }
+
+    try {
+      const res = await fetchUserDataDirectlyFromFirestore(currentUid);
+      if (!res.success || !res.data) {
+        return {
+          success: false,
+          message: res.error || "No existing cloud document was found in Firestore for this account.",
+        };
+      }
+
+      const cloudData = res.data;
+      const currentLocal = latestStateRef.current;
+      const { mergedState } = reconcileState(currentLocal, cloudData);
+
+      isRemoteSyncingRef.current = true;
+
+      if (mergedState.xp !== undefined) setXp(mergedState.xp);
+      if (mergedState.xpGainedToday !== undefined) setXpGainedToday(mergedState.xpGainedToday);
+      if (mergedState.spentXpToday !== undefined) setSpentXpToday(mergedState.spentXpToday);
+      if (mergedState.totalSpentXp !== undefined) setTotalSpentXp(mergedState.totalSpentXp);
+      if (mergedState.hoursStudiedToday !== undefined) setHoursStudiedToday(mergedState.hoursStudiedToday);
+      if (mergedState.level !== undefined) setLevel(mergedState.level);
+      if (mergedState.questionsSolved !== undefined) setQuestionsSolved(mergedState.questionsSolved);
+      if (mergedState.streakDays !== undefined) setStreakDays(mergedState.streakDays);
+      if (mergedState.dailyTarget !== undefined) setDailyTarget(mergedState.dailyTarget);
+      if (mergedState.accuracy !== undefined) setAccuracy(mergedState.accuracy);
+      if (mergedState.speedScore !== undefined) setSpeedScore(mergedState.speedScore);
+      if (mergedState.lastStudyDate !== undefined) setLastStudyDate(mergedState.lastStudyDate);
+      if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
+      if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
+      if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
+      if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
+      if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
+      if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
+      if (mergedState.todos !== undefined) setTodos(mergedState.todos);
+      if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
+      if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
+      if (mergedState.history !== undefined) setHistory(mergedState.history);
+      if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
+      if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
+      if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);
+      if (mergedState.habits !== undefined) setHabits(mergedState.habits);
+      if (mergedState.lifeMetrics !== undefined) setLifeMetrics(mergedState.lifeMetrics);
+      if (mergedState.monthlyGoals !== undefined) setMonthlyGoals(mergedState.monthlyGoals);
+      if (mergedState.lastBossDayDate !== undefined) setLastBossDayDate(mergedState.lastBossDayDate);
+      if (mergedState.bossDayTargetXp !== undefined) setBossDayTargetXp(mergedState.bossDayTargetXp);
+      if (mergedState.bossDayCompleted !== undefined) setBossDayCompleted(mergedState.bossDayCompleted);
+      if (mergedState.equippedTitle !== undefined) setEquippedTitle(mergedState.equippedTitle);
+      if (mergedState.equippedAura !== undefined) setEquippedAura(mergedState.equippedAura);
+      if (mergedState.unlockedItems !== undefined) setUnlockedItems(mergedState.unlockedItems);
+      if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
+      if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
+      if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
+
+      latestStateRef.current = mergedState;
+      const jsonString = JSON.stringify(mergedState);
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      }
+
+      lastSavedCloudJsonRef.current = jsonString;
+      hasUnsavedLocalChangesRef.current = false;
+
+      setTimeout(() => {
+        isRemoteSyncingRef.current = false;
+        setIsCloudSyncComplete(true);
+      }, 300);
+
+      const tasksCount = (mergedState.todos || []).length;
+      const historyDays = (mergedState.history || []).length;
+
+      return {
+        success: true,
+        message: `Successfully restored data from Cloud! Found ${mergedState.xp || 0} XP (Level ${mergedState.level || 1}), ${tasksCount} tasks, and ${historyDays} study history days.`,
+        stats: {
+          xp: mergedState.xp || 0,
+          level: mergedState.level || 1,
+          tasks: tasksCount,
+          historyDays,
+        },
+      };
+    } catch (err: any) {
+      console.error("forceFetchAndRestoreFromCloud error:", err);
+      return {
+        success: false,
+        message: `Restore failed: ${err?.message || String(err)}`,
+      };
+    }
+  }, [firebaseUser]);
+
+  const exportLocalBackup = useCallback(() => {
+    try {
+      const stateToExport = latestStateRef.current;
+      const jsonString = JSON.stringify(stateToExport, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dateStr = new Date().toISOString().split("T")[0];
+      a.href = url;
+      a.download = `jee_tracker_backup_${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Failed to export local backup:", e);
+    }
+  }, []);
+
+  const importLocalBackup = useCallback((jsonContent: string): { success: boolean; message: string } => {
+    try {
+      const parsed = JSON.parse(jsonContent);
+      if (!parsed || typeof parsed !== "object") {
+        return { success: false, message: "Invalid backup JSON file format." };
+      }
+      const currentLocal = latestStateRef.current;
+      const { mergedState } = reconcileState(currentLocal, parsed);
+
+      isRemoteSyncingRef.current = true;
+
+      if (mergedState.xp !== undefined) setXp(mergedState.xp);
+      if (mergedState.xpGainedToday !== undefined) setXpGainedToday(mergedState.xpGainedToday);
+      if (mergedState.spentXpToday !== undefined) setSpentXpToday(mergedState.spentXpToday);
+      if (mergedState.totalSpentXp !== undefined) setTotalSpentXp(mergedState.totalSpentXp);
+      if (mergedState.hoursStudiedToday !== undefined) setHoursStudiedToday(mergedState.hoursStudiedToday);
+      if (mergedState.level !== undefined) setLevel(mergedState.level);
+      if (mergedState.questionsSolved !== undefined) setQuestionsSolved(mergedState.questionsSolved);
+      if (mergedState.streakDays !== undefined) setStreakDays(mergedState.streakDays);
+      if (mergedState.dailyTarget !== undefined) setDailyTarget(mergedState.dailyTarget);
+      if (mergedState.accuracy !== undefined) setAccuracy(mergedState.accuracy);
+      if (mergedState.speedScore !== undefined) setSpeedScore(mergedState.speedScore);
+      if (mergedState.lastStudyDate !== undefined) setLastStudyDate(mergedState.lastStudyDate);
+      if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
+      if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
+      if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
+      if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
+      if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
+      if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
+      if (mergedState.todos !== undefined) setTodos(mergedState.todos);
+      if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
+      if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
+      if (mergedState.history !== undefined) setHistory(mergedState.history);
+      if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
+      if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
+      if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);
+      if (mergedState.habits !== undefined) setHabits(mergedState.habits);
+      if (mergedState.lifeMetrics !== undefined) setLifeMetrics(mergedState.lifeMetrics);
+      if (mergedState.monthlyGoals !== undefined) setMonthlyGoals(mergedState.monthlyGoals);
+      if (mergedState.lastBossDayDate !== undefined) setLastBossDayDate(mergedState.lastBossDayDate);
+      if (mergedState.bossDayTargetXp !== undefined) setBossDayTargetXp(mergedState.bossDayTargetXp);
+      if (mergedState.bossDayCompleted !== undefined) setBossDayCompleted(mergedState.bossDayCompleted);
+      if (mergedState.equippedTitle !== undefined) setEquippedTitle(mergedState.equippedTitle);
+      if (mergedState.equippedAura !== undefined) setEquippedAura(mergedState.equippedAura);
+      if (mergedState.unlockedItems !== undefined) setUnlockedItems(mergedState.unlockedItems);
+      if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
+      if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
+      if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
+
+      latestStateRef.current = mergedState;
+      const jsonString = JSON.stringify(mergedState);
+      if (Capacitor.isNativePlatform()) {
+        Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      }
+
+      setTimeout(() => {
+        isRemoteSyncingRef.current = false;
+      }, 300);
+
+      return { success: true, message: `Backup restored successfully (${mergedState.xp || 0} XP, ${(mergedState.todos || []).length} tasks)!` };
+    } catch (e: any) {
+      return { success: false, message: `Failed to parse backup file: ${e?.message || String(e)}` };
+    }
+  }, []);
+
   const scheduleBacklogTask = useCallback(
     async (task: Todo): Promise<void> => {
       const updatedPending = pendingTasks.filter((pt) => String(pt.id) !== String(task.id));
@@ -2031,6 +2201,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       scheduleBacklogTask,
       notifyCalendarPreviewOpened,
       notifyCalendarPreviewClosed,
+      forceFetchAndRestoreFromCloud,
+      exportLocalBackup,
+      importLocalBackup,
       lastSyncTimestamp,
       setLastSyncTimestamp,
     }),
@@ -2129,6 +2302,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       scheduleBacklogTask,
       notifyCalendarPreviewOpened,
       notifyCalendarPreviewClosed,
+      forceFetchAndRestoreFromCloud,
+      exportLocalBackup,
+      importLocalBackup,
     ],
   );
 

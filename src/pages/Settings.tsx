@@ -26,8 +26,25 @@ import {
   Save,
   FileText,
   Check,
+  CloudDownload,
+  CloudUpload,
+  Download,
+  Upload,
+  AlertTriangle,
+  Loader2,
+  Lock,
+  Trophy,
+  Sparkles,
+  RotateCcw,
+  Award,
 } from "lucide-react";
 import { useAppContext, PlayHistoryEntry } from "../context/AppContext";
+import {
+  getLevelFromXp,
+  getXpForLevel,
+  getRankInfo,
+  getLevelProgress,
+} from "../lib/utils";
 import {
   requestNotificationPermissions,
   triggerMotivationNotification,
@@ -68,9 +85,156 @@ const Settings = React.memo(function Settings() {
     resetApp,
     firebaseUser,
     todos,
+    forceFetchAndRestoreFromCloud,
+    saveStateToCloudNow,
+    exportLocalBackup,
+    importLocalBackup,
   } = useAppContext();
 
   const [permStatus, setPermStatus] = useState<string | null>(null);
+  const [isRestoringCloud, setIsRestoringCloud] = useState(false);
+  const [cloudStatusMsg, setCloudStatusMsg] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  const [isSavingCloud, setIsSavingCloud] = useState(false);
+  const [nukeProgress, setNukeProgress] = useState(0);
+  const nukeTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // XP and Level Editor State
+  const [customXp, setCustomXp] = useState<number>(xp || 0);
+  const [customLevel, setCustomLevel] = useState<number>(level || 1);
+  const [autoComputeLevel, setAutoComputeLevel] = useState<boolean>(true);
+  const [xpFeedback, setXpFeedback] = useState<string | null>(null);
+
+  // Keep local editor in sync with context
+  React.useEffect(() => {
+    setCustomXp(xp || 0);
+    setCustomLevel(level || 1);
+  }, [xp, level]);
+
+  const handleXpChange = (val: number) => {
+    const safeXp = Math.max(0, Math.floor(val || 0));
+    setCustomXp(safeXp);
+    if (autoComputeLevel) {
+      const calculatedLvl = getLevelFromXp(safeXp, totalXpGoal);
+      setCustomLevel(calculatedLvl);
+    }
+  };
+
+  const handleLevelChange = (val: number) => {
+    const safeLvl = Math.max(1, Math.min(100, Math.floor(val || 1)));
+    setCustomLevel(safeLvl);
+    if (autoComputeLevel) {
+      const neededXp = getXpForLevel(safeLvl, totalXpGoal);
+      setCustomXp(neededXp);
+    }
+  };
+
+  const handleSaveXpLevel = async () => {
+    setXp(customXp);
+    setLevel(customLevel);
+    setXpFeedback(`Saved: ${customXp.toLocaleString()} XP • Level ${customLevel}`);
+    if (firebaseUser) {
+      saveStateToCloudNow();
+    }
+    setTimeout(() => setXpFeedback(null), 3500);
+  };
+
+  const startNukeTimer = () => {
+    if (nukeTimerRef.current) return;
+    setNukeProgress(0);
+    nukeTimerRef.current = setInterval(() => {
+      setNukeProgress((prev) => {
+        if (prev >= 100) {
+          if (nukeTimerRef.current) {
+            clearInterval(nukeTimerRef.current);
+            nukeTimerRef.current = null;
+          }
+          resetApp();
+          return 100;
+        }
+        return prev + 0.5; // 20 seconds hold to wipe: 100ms interval * 200 ticks = 20000ms = 20s
+      });
+    }, 100);
+  };
+
+  const cancelNukeTimer = () => {
+    if (nukeTimerRef.current) {
+      clearInterval(nukeTimerRef.current);
+      nukeTimerRef.current = null;
+    }
+    setNukeProgress(0);
+  };
+
+  const handleForceRestore = async () => {
+    setIsRestoringCloud(true);
+    setCloudStatusMsg(null);
+    try {
+      const res = await forceFetchAndRestoreFromCloud();
+      if (res.success) {
+        setCloudStatusMsg({
+          type: "success",
+          text: res.message,
+        });
+      } else {
+        setCloudStatusMsg({
+          type: "error",
+          text: res.message,
+        });
+      }
+    } catch (err: any) {
+      setCloudStatusMsg({
+        type: "error",
+        text: err?.message || "Failed to fetch data from cloud.",
+      });
+    } finally {
+      setIsRestoringCloud(false);
+    }
+  };
+
+  const handlePushToCloud = async () => {
+    setIsSavingCloud(true);
+    setCloudStatusMsg(null);
+    try {
+      const ok = await saveStateToCloudNow();
+      if (ok) {
+        setCloudStatusMsg({
+          type: "success",
+          text: "Local state successfully saved to Cloud Firestore!",
+        });
+      } else {
+        setCloudStatusMsg({
+          type: "error",
+          text: "Failed to push to Cloud. Check if you are signed in.",
+        });
+      }
+    } catch (err: any) {
+      setCloudStatusMsg({
+        type: "error",
+        text: err?.message || "Cloud push failed.",
+      });
+    } finally {
+      setIsSavingCloud(false);
+    }
+  };
+
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target?.result as string;
+      if (content) {
+        const res = importLocalBackup(content);
+        if (res.success) {
+          setCloudStatusMsg({ type: "success", text: res.message });
+        } else {
+          setCloudStatusMsg({ type: "error", text: res.message });
+        }
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   // Progress Stats Editor State
 
@@ -197,6 +361,191 @@ const Settings = React.memo(function Settings() {
                 to hit your goal.
               </p>
             </div>
+          </div>
+        </Card>
+
+        {/* XP & Level Calibration Editor */}
+        <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                XP & Level Editor
+              </h2>
+            </div>
+            {xpFeedback ? (
+              <span className="px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-mono font-bold rounded-lg flex items-center gap-1 animate-pulse">
+                <Check className="w-3.5 h-3.5" />
+                {xpFeedback}
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-mono font-bold rounded-lg flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" />
+                Stat Calibration
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+            Directly customize your player XP and Level to fix desyncs or test ranks.
+          </p>
+
+          {/* Current Rank Badge Preview */}
+          {(() => {
+            const rank = getRankInfo(customLevel);
+            const progress = getLevelProgress(customXp, customLevel, totalXpGoal);
+            return (
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 mb-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase font-mono border ${rank.bg} ${rank.color} ${rank.border}`}>
+                      Rank {rank.rank}
+                    </span>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      {rank.title}
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400 font-bold">
+                    {progress.toFixed(1)}% to Lvl {Math.min(100, customLevel + 1)}
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 via-cyan-500 to-emerald-500 transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Total XP Points</span>
+                  <span className="text-[10px] text-amber-500 font-mono">
+                    {customXp.toLocaleString()} XP
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="5000000"
+                  step="50"
+                  value={customXp}
+                  onChange={(e) => handleXpChange(Number(e.target.value))}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Player Level (1-100)</span>
+                  <span className="text-[10px] text-cyan-500 font-mono">
+                    Lvl {customLevel}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={customLevel}
+                  onChange={(e) => handleLevelChange(Number(e.target.value))}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono font-bold text-sm focus:outline-none focus:border-cyan-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Auto-calculate toggle */}
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div className="text-xs">
+                <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                  Auto-link XP & Level
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {autoComputeLevel ? "XP and Level stay mathematically aligned" : "Allows setting arbitrary Level and XP separately"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoComputeLevel(!autoComputeLevel)}
+                className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${
+                  autoComputeLevel ? "bg-cyan-500" : "bg-slate-300 dark:bg-slate-700"
+                }`}
+              >
+                <div
+                  className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
+                    autoComputeLevel ? "left-5" : "left-1"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Quick XP modifiers */}
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 font-mono">
+                Quick XP Adjust
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: "+1k", val: 1000 },
+                  { label: "+5k", val: 5000 },
+                  { label: "+25k", val: 25000 },
+                  { label: "+100k", val: 100000 },
+                  { label: "-1k", val: -1000 },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => handleXpChange(customXp + item.val)}
+                    className="px-2.5 py-1 text-xs font-mono font-bold bg-slate-100 dark:bg-slate-900 hover:bg-amber-500/10 hover:text-amber-500 hover:border-amber-500/40 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-lg transition-colors"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => handleXpChange(0)}
+                  className="px-2.5 py-1 text-xs font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30 rounded-lg transition-colors ml-auto"
+                >
+                  Reset 0
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Level Presets */}
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 font-mono">
+                Level Presets
+              </span>
+              <div className="grid grid-cols-6 gap-1.5">
+                {[1, 10, 25, 50, 75, 100].map((lvl) => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => handleLevelChange(lvl)}
+                    className={`py-1 text-xs font-mono font-bold rounded-lg border transition-all ${
+                      customLevel === lvl
+                        ? "bg-cyan-500/20 text-cyan-400 border-cyan-500"
+                        : "bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-cyan-500/40 hover:text-cyan-400"
+                    }`}
+                  >
+                    L{lvl}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <button
+              type="button"
+              onClick={handleSaveXpLevel}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-black text-xs py-2.5 rounded-xl transition-all shadow-md active:scale-98 font-mono uppercase tracking-wider"
+            >
+              <Save className="w-4 h-4" />
+              Apply & Save XP / Level
+            </button>
           </div>
         </Card>
 
@@ -624,49 +973,184 @@ const Settings = React.memo(function Settings() {
           </div>
         </Card>
 
-        {/* Data & Account */}
+        {/* Data Persistence, Cloud Restore & Account */}
         <Card className="p-6 bg-white dark:bg-black border-slate-200 dark:border-slate-800 shadow-md rounded-2xl">
-          <div className="flex items-center gap-2 mb-6">
-            <Database className="w-5 h-5 text-red-500" />
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-              Data & Account
-            </h2>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-cyan-500" />
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                Cloud Sync & Data Persistence
+              </h2>
+            </div>
+            {firebaseUser ? (
+              <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-mono font-bold rounded-full flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                {firebaseUser.email || "Cloud Connected"}
+              </span>
+            ) : (
+              <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-mono font-bold rounded-full">
+                Offline / Local Storage
+              </span>
+            )}
           </div>
 
-          <div className="space-y-4">
-            <button
-              onClick={handleSave}
-              className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-3 rounded-xl hover:opacity-90 transition-opacity shadow-md"
-            >
-              Save Configuration
-            </button>
+          <div className="space-y-5">
+            {/* Status Toast / Alert if any */}
+            {cloudStatusMsg && (
+              <div
+                className={`p-4 rounded-xl text-sm font-medium border flex items-start gap-3 ${
+                  cloudStatusMsg.type === "success"
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                    : cloudStatusMsg.type === "error"
+                    ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                    : "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400"
+                }`}
+              >
+                {cloudStatusMsg.type === "success" ? (
+                  <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <p className="font-bold">{cloudStatusMsg.type === "success" ? "Success" : "Notice"}</p>
+                  <p className="text-xs opacity-90 mt-0.5">{cloudStatusMsg.text}</p>
+                </div>
+              </div>
+            )}
 
-            <button
-              onClick={() => {
-                localStorage.removeItem("welcome_hero_dismissed_forever");
-                window.location.reload();
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-bold py-3 rounded-xl hover:bg-cyan-500/20 transition-colors border border-cyan-500/20 shadow-sm"
-            >
-              <RefreshCw className="w-4 h-4 animate-spin-slow" />
-              Return to Welcome Screen
-            </button>
+            {/* Cloud Restore & Sync Actions */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <CloudDownload className="w-4 h-4 text-cyan-500" />
+                    Restore Data Directly From Cloud
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Fetches your full state (XP, Level, Tasks, History, Syllabus) from Firestore and merges safely.
+                  </p>
+                </div>
+              </div>
 
-            <button
-              onClick={() => {
-                if (
-                  confirm(
-                    "Are you sure you want to hard reset the app? This will wipe ALL your local data and progress!",
-                  )
-                ) {
-                  resetApp();
-                }
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-600 dark:text-red-400 font-bold py-3 rounded-xl hover:bg-red-500/20 transition-colors border border-red-500/20 shadow-sm"
-            >
-              <Trash2 className="w-4 h-4" />
-              Hard Reset App Data
-            </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={handleForceRestore}
+                  disabled={isRestoringCloud || !firebaseUser}
+                  className="w-full flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-md text-xs font-mono"
+                >
+                  {isRestoringCloud ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CloudDownload className="w-4 h-4" />
+                  )}
+                  {isRestoringCloud ? "Fetching Firestore..." : "Fetch & Restore From Cloud"}
+                </button>
+
+                <button
+                  onClick={handlePushToCloud}
+                  disabled={isSavingCloud || !firebaseUser}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl transition-all border border-slate-700 text-xs font-mono"
+                >
+                  {isSavingCloud ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CloudUpload className="w-4 h-4" />
+                  )}
+                  {isSavingCloud ? "Saving to Cloud..." : "Sync Local State to Cloud"}
+                </button>
+              </div>
+            </div>
+
+            {/* Offline JSON Backup & Recovery */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-purple-500" />
+                  Offline Local Backup (.json)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Export or import an encrypted snapshot of all your local tasks, syllabus masteries, and XP.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={exportLocalBackup}
+                  className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 font-bold py-2.5 px-4 rounded-xl transition-all border border-purple-500/20 text-xs font-mono"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Backup (.json)
+                </button>
+
+                <label className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 font-bold py-2.5 px-4 rounded-xl transition-all border border-purple-500/20 text-xs font-mono cursor-pointer">
+                  <Upload className="w-4 h-4" />
+                  Restore From JSON File
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileImport}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* General Actions */}
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={handleSave}
+                className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-3 rounded-xl hover:opacity-90 transition-opacity shadow-md text-sm"
+              >
+                Save Configuration
+              </button>
+
+              <button
+                onClick={() => {
+                  localStorage.removeItem("welcome_hero_dismissed_forever");
+                  window.location.reload();
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-bold py-3 rounded-xl hover:bg-cyan-500/20 transition-colors border border-cyan-500/20 shadow-sm text-sm"
+              >
+                <RefreshCw className="w-4 h-4 animate-spin-slow" />
+                Return to Welcome Screen
+              </button>
+
+              {/* Secure Click & Hold Nuke Button */}
+              <div className="pt-2">
+                <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/5 space-y-3">
+                  <div className="flex items-center gap-2 text-rose-500">
+                    <Lock className="w-4 h-4" />
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider">
+                      Protected Data Destruction (Hold To Wipe)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    To prevent accidental data loss, local data cannot be deleted with a single click. Click and hold the button below for 20 seconds to permanently wipe local storage.
+                  </p>
+
+                  <div className="relative overflow-hidden rounded-xl">
+                    <div
+                      className="absolute left-0 top-0 bottom-0 bg-rose-600 transition-all"
+                      style={{ width: `${nukeProgress}%` }}
+                    />
+                    <button
+                      type="button"
+                      onMouseDown={startNukeTimer}
+                      onMouseUp={cancelNukeTimer}
+                      onMouseLeave={cancelNukeTimer}
+                      onTouchStart={startNukeTimer}
+                      onTouchEnd={cancelNukeTimer}
+                      className="relative z-10 w-full py-3 text-center text-xs font-mono font-bold text-rose-500 hover:text-rose-400 active:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-xl transition-all select-none"
+                    >
+                      {nukeProgress > 0
+                        ? `HOLDING... ${Math.round(nukeProgress)}% (${Math.max(0, 20 - nukeProgress * 0.2).toFixed(1)}s remaining)`
+                        : "CLICK & HOLD TO NUKE ALL DATA (20s)"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </Card>
       </div>

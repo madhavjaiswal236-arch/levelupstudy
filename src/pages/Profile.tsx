@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/context/AppContext';
-import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, GripVertical, Lock as LockIcon, CheckCircle2, AlertTriangle, Settings, LogOut, RefreshCw, Clock, ChevronUp, ChevronDown, CalendarDays } from 'lucide-react';
+import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, GripVertical, Lock as LockIcon, CheckCircle2, AlertTriangle, Settings, LogOut, RefreshCw, Clock, ChevronUp, ChevronDown, CalendarDays, CloudDownload, CloudUpload, Loader2 } from 'lucide-react';
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getRankInfo } from '@/lib/utils';
@@ -19,11 +19,12 @@ const Profile = React.memo(function Profile() {
  playerName, setPlayerName, xp, level, streakDays, syllabus, todos, setTodos, 
  pendingTasks, setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
  resetApp, equippedTitle, setEquippedTitle, equippedAura, setEquippedAura, history, questionsSolved,
- notificationSettings, setNotificationSettings
+ notificationSettings, setNotificationSettings, forceFetchAndRestoreFromCloud, saveStateToCloudNow
  } = useAppContext();
  const [isEditing, setIsEditing] = useState(false);
  const [tempName, setTempName] = useState(playerName);
  const [isLoggingIn, setIsLoggingIn] = useState(false);
+ const [isRestoringData, setIsRestoringData] = useState(false);
  const [currentTimeDate, setCurrentTimeDate] = useState(new Date());
 
  const auraStyles: Record<string, string> = {
@@ -622,14 +623,46 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
 
        <div className="flex items-center gap-3 w-full sm:w-auto">
          {firebaseUser ? (
-           <Button
-             variant="outline"
-             onClick={handleLogout}
-             className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30 text-xs font-bold font-mono"
-           >
-             <LogOut className="w-4 h-4 mr-2" />
-             Disconnect
-           </Button>
+           <div className="flex items-center gap-2">
+             <Button
+               variant="outline"
+               disabled={isRestoringData}
+               onClick={async () => {
+                 setIsRestoringData(true);
+                 try {
+                   const res = await forceFetchAndRestoreFromCloud();
+                   if (res.success) {
+                     setToastType('success');
+                     setToastMessage(res.message);
+                   } else {
+                     setToastType('error');
+                     setToastMessage(res.message);
+                   }
+                 } catch (e: any) {
+                   setToastType('error');
+                   setToastMessage(e?.message || 'Restore error');
+                 } finally {
+                   setIsRestoringData(false);
+                 }
+               }}
+               className="border-cyan-500/40 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10 text-xs font-bold font-mono"
+             >
+               {isRestoringData ? (
+                 <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+               ) : (
+                 <CloudDownload className="w-4 h-4 mr-1.5" />
+               )}
+               {isRestoringData ? "Fetching..." : "Fetch Cloud Data"}
+             </Button>
+             <Button
+               variant="outline"
+               onClick={handleLogout}
+               className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30 text-xs font-bold font-mono"
+             >
+               <LogOut className="w-4 h-4 mr-2" />
+               Disconnect
+             </Button>
+           </div>
          ) : (
            <Button
              onClick={handleLogin}
@@ -865,7 +898,7 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-rose-950/20 rounded-xl border border-rose-900/50 gap-4">
  <div>
  <h3 className="text-rose-100 font-bold tracking-wide">Factory Reset Profile</h3>
- <p className="text-sm dark:text-rose-400 text-rose-700">Purges all local state, history, syllabus progress, and starts completely fresh as a Level 1 user. This action cannot be undone.</p>
+ <p className="text-sm dark:text-rose-400 text-rose-700">Purges all local state, history, syllabus progress, and starts completely fresh as a Level 1 user. Press and hold button for 20 seconds to confirm.</p>
  </div>
  <button
  onPointerDown={startResetTimer}
@@ -880,7 +913,7 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
  />
  <span className={`relative z-10 flex items-center justify-center gap-2 ${resetProgress > 0 ? "dark:text-white text-slate-900" : ""}`}>
  <Shield className="w-4 h-4" />
- {resetProgress > 0 ? `HOLD: ${Math.floor(resetProgress)}%` : "NUKE ACCOUNT DATA"}
+ {resetProgress > 0 ? `HOLD: ${Math.floor(resetProgress)}% (${Math.max(0, 20 - resetProgress * 0.2).toFixed(1)}s)` : "NUKE ACCOUNT DATA (20s)"}
  </span>
  </button>
  </div>
