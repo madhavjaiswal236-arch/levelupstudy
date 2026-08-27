@@ -948,12 +948,16 @@ export default function JeeSessionLogger({
       {createPortal(
         <AnimatePresence>
           {isChapterModalOpen && subject && (
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 dark:bg-black bg-slate-50 ">
+            <div
+              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 dark:bg-black/80 bg-slate-950/75 backdrop-blur-md overflow-y-auto"
+              onClick={() => setIsChapterModalOpen(false)}
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="dark:bg-[#0a0f1c] bg-white border border-cyan-500/50 rounded-2xl p-6 w-full max-w-4xl max-h-[85vh] flex flex-col shadow-md font-sans"
+                onClick={(e) => e.stopPropagation()}
+                className="dark:bg-[#0a0f1c] bg-white border border-cyan-500/50 rounded-2xl p-6 w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl font-sans my-auto"
               >
                 <div className="flex justify-between items-center mb-6">
                   <div>

@@ -3640,12 +3640,12 @@ const Dashboard = React.memo(function Dashboard() {
       {createPortal(
         <AnimatePresence>
           {!hasSeenRules && isLoaded && (
-            <div className="fixed inset-0 dark:bg-black bg-slate-50 z-[9999] flex items-center justify-center p-4">
+            <div className="fixed inset-0 dark:bg-black/80 bg-slate-950/75 backdrop-blur-md z-[99999] flex items-center justify-center p-4 overflow-y-auto">
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="dark:bg-slate-900 bg-white border dark:border-cyan-500/30 border-cyan-300/40 rounded-xl p-6 max-w-md w-full shadow-lg shadow-cyan-900/20"
+                className="dark:bg-slate-900 bg-white border dark:border-cyan-500/30 border-cyan-300/40 rounded-2xl p-6 max-w-md w-full shadow-2xl shadow-cyan-900/20 my-auto"
               >
                 <div className="flex items-center gap-3 mb-4 group/welcome">
                   <motion.div

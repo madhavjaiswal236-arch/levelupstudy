@@ -316,6 +316,10 @@ interface AppState {
   }>;
   exportLocalBackup: () => void;
   importLocalBackup: (jsonContent: string) => { success: boolean; message: string };
+  showWelcomeHero: boolean;
+  setShowWelcomeHero: React.Dispatch<React.SetStateAction<boolean>>;
+  triggerWelcomeScreen: () => void;
+  dismissWelcomeHero: () => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -542,6 +546,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ongoingChapters, setOngoingChapters] = useState<Record<string, string>>({});
   const isCalendarPreviewOpenRef = useRef(false);
   const calendarSyncTimerRef = useRef<any>(null);
+
+  const [showWelcomeHero, setShowWelcomeHero] = useState<boolean>(() => {
+    try {
+      const todayKey = getStandardDateKey(getLogicalDate());
+      const lastWelcomeDate = localStorage.getItem("levelup_last_welcome_hero_date");
+      return lastWelcomeDate !== todayKey;
+    } catch {
+      return true;
+    }
+  });
+
+  const dismissWelcomeHero = useCallback(() => {
+    try {
+      const todayKey = getStandardDateKey(getLogicalDate());
+      localStorage.setItem("levelup_last_welcome_hero_date", todayKey);
+      localStorage.setItem("welcome_hero_dismissed_forever", "true");
+    } catch (e) {
+      console.warn("Could not save welcome hero date to localStorage", e);
+    }
+    setShowWelcomeHero(false);
+  }, []);
+
+  const triggerWelcomeScreen = useCallback(() => {
+    try {
+      localStorage.removeItem("levelup_last_welcome_hero_date");
+    } catch {}
+    setShowWelcomeHero(true);
+  }, []);
 
   const notifyCalendarPreviewOpened = useCallback(() => {
     isCalendarPreviewOpenRef.current = true;
@@ -2206,8 +2238,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       importLocalBackup,
       lastSyncTimestamp,
       setLastSyncTimestamp,
+      showWelcomeHero,
+      setShowWelcomeHero,
+      triggerWelcomeScreen,
+      dismissWelcomeHero,
     }),
     [
+      showWelcomeHero,
+      triggerWelcomeScreen,
+      dismissWelcomeHero,
       xp,
       xpGainedToday,
       spentXpToday,

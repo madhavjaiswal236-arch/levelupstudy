@@ -147,6 +147,8 @@ function AppContent() {
     syllabus,
     accuracy,
     loggedTasksToday,
+    showWelcomeHero,
+    dismissWelcomeHero,
   } = useAppContext();
 
   useNotificationScheduler({
@@ -199,7 +201,6 @@ function AppContent() {
   useAuthToken();
   const processedHistoryRef = useRef(new Set<string>());
 
-  const [showWelcomeHero, setShowWelcomeHero] = useState(false);
   const [forceLoaded, setForceLoaded] = useState(false);
 
   useEffect(() => {
@@ -220,29 +221,8 @@ function AppContent() {
 
   const effectiveLoaded = (isLoaded || forceLoaded) && (isCloudSyncComplete || forceLoaded);
 
-  useEffect(() => {
-    if (!effectiveLoaded) return;
-
-    const hasSeenForever = localStorage.getItem(
-      "welcome_hero_dismissed_forever",
-    );
-    if (
-      firebaseUser ||
-      lastStudyDate ||
-      (playerName && playerName !== "Player 1") ||
-      xp > 0 ||
-      hasSeenForever
-    ) {
-      setShowWelcomeHero(false);
-      localStorage.setItem("welcome_hero_dismissed_forever", "true");
-    } else {
-      setShowWelcomeHero(true);
-    }
-  }, [effectiveLoaded, firebaseUser, lastStudyDate, playerName, xp]);
-
   const handleEnterApp = () => {
-    localStorage.setItem("welcome_hero_dismissed_forever", "true");
-    setShowWelcomeHero(false);
+    dismissWelcomeHero();
     vibrate(HAPTIC_PATTERNS.SUCCESS);
   };
 

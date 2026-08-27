@@ -14,45 +14,73 @@ import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask } from 
 import { Todo } from '@/context/AppContext';
 import { format } from 'date-fns';
 
+const safeParseDate = (val: any): Date | undefined => {
+  if (!val) return undefined;
+  try {
+    const d = val instanceof Date ? val : new Date(val);
+    return isNaN(d.getTime()) ? undefined : d;
+  } catch {
+    return undefined;
+  }
+};
+
+const safeFormatDate = (val: any, formatStr: string, fallback: string = 'Not scheduled'): string => {
+  const d = safeParseDate(val);
+  if (!d) return fallback;
+  try {
+    return format(d, formatStr);
+  } catch {
+    return fallback;
+  }
+};
+
 const Profile = React.memo(function Profile() {
- const { 
- playerName, setPlayerName, xp, level, streakDays, syllabus, todos, setTodos, 
- pendingTasks, setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
- resetApp, equippedTitle, setEquippedTitle, equippedAura, setEquippedAura, history, questionsSolved,
- notificationSettings, setNotificationSettings, forceFetchAndRestoreFromCloud, saveStateToCloudNow
- } = useAppContext();
- const [isEditing, setIsEditing] = useState(false);
- const [tempName, setTempName] = useState(playerName);
- const [isLoggingIn, setIsLoggingIn] = useState(false);
- const [isRestoringData, setIsRestoringData] = useState(false);
- const [currentTimeDate, setCurrentTimeDate] = useState(new Date());
+  const { 
+    playerName = "Player", setPlayerName, xp = 0, level = 1, streakDays = 0, syllabus = {}, todos = [], setTodos, 
+    pendingTasks = [], setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
+    resetApp, equippedTitle = "", setEquippedTitle, equippedAura = "", setEquippedAura, history = [], questionsSolved = 0,
+    notificationSettings, setNotificationSettings, forceFetchAndRestoreFromCloud, saveStateToCloudNow
+  } = useAppContext();
+  const [isEditing, setIsEditing] = useState(false);
+  const [tempName, setTempName] = useState(playerName || "Player");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isRestoringData, setIsRestoringData] = useState(false);
+  const [currentTimeDate, setCurrentTimeDate] = useState(new Date());
 
- const auraStyles: Record<string, string> = {
- aura_flame: "shadow-md border-amber-500 ring-2 ring-amber-500/50 animate-pulse",
- aura_emerald: "shadow-md border-emerald-500 ring-2 ring-emerald-500/50 animate-pulse",
- aura_solar: "shadow-md border-rose-500 ring-2 ring-rose-500/50 animate-pulse",
- aura_neon: "shadow-md border-cyan-400 ring-2 ring-cyan-400/50 animate-pulse"
- };
+  const auraStyles: Record<string, string> = {
+    aura_flame: "shadow-md border-amber-500 ring-2 ring-amber-500/50 animate-pulse",
+    aura_emerald: "shadow-md border-emerald-500 ring-2 ring-emerald-500/50 animate-pulse",
+    aura_solar: "shadow-md border-rose-500 ring-2 ring-rose-500/50 animate-pulse",
+    aura_neon: "shadow-md border-cyan-400 ring-2 ring-cyan-400/50 animate-pulse"
+  };
 
- const stats = useMemo(() => {
- const totalCompleted = (todos || []).filter(t => t.completed).length + 
- (history || []).reduce((sum, entry) => sum + (entry.completedTasks?.length || 0), 0);
- 
- const hasEarlyBird = (todos || []).some(t => {
- if (!t.startTime) return false;
- const h = new Date(t.startTime).getHours();
- return h >= 4 && h < 9;
- }) || new Date().getHours() >= 4 && new Date().getHours() < 9 || (history || []).some(h => h.completedTasks?.some(t => {
- if (!t.startTime) return false;
- const hh = new Date(t.startTime).getHours();
- return hh >= 4 && hh < 9;
- }));
+  const stats = useMemo(() => {
+    const safeTodos = Array.isArray(todos) ? todos : [];
+    const safeHistory = Array.isArray(history) ? history : [];
+    
+    const totalCompleted = safeTodos.filter(t => Boolean(t?.completed)).length + 
+      safeHistory.reduce((sum, entry) => sum + (Array.isArray(entry?.completedTasks) ? entry.completedTasks.length : 0), 0);
+    
+    const currentH = new Date().getHours();
+    const isNowEarly = currentH >= 4 && currentH < 9;
 
- return {
- totalCompleted,
- hasEarlyBird
- };
- }, [todos, history]);
+    const hasEarlyBird = isNowEarly || safeTodos.some(t => {
+      const d = safeParseDate(t?.startTime);
+      if (!d) return false;
+      const h = d.getHours();
+      return h >= 4 && h < 9;
+    }) || safeHistory.some(h => Array.isArray(h?.completedTasks) && h.completedTasks.some(t => {
+      const d = safeParseDate(t?.startTime);
+      if (!d) return false;
+      const hh = d.getHours();
+      return hh >= 4 && hh < 9;
+    }));
+
+    return {
+      totalCompleted,
+      hasEarlyBird
+    };
+  }, [todos, history]);
 
  const badges = useMemo(() => {
  return [
@@ -214,25 +242,16 @@ const Profile = React.memo(function Profile() {
  setHasToken(false);
  };
 
- const [syncedTasks, setSyncedTasks] = useState<(Todo & { previewStart?: Date, previewEnd?: Date })[]>([]);
- 
- useEffect(() => {
- // Include previously synced tasks, and any unsynced tasks that have a preview (we'll filter later)
- // Actually, just include all todos that have a calendar event or need scheduling
- const tasks = todos;
- setSyncedTasks(prev => {
- // Re-map synced tasks from todos directly
- if (prev.length !== tasks.length) {
- return tasks.map(t => ({ ...t, previewStart: t.startTime ? new Date(t.startTime) : undefined, previewEnd: t.endTime ? new Date(t.endTime) : undefined }));
- }
- for (let i = 0; i < prev.length; i++) {
- if (prev[i].id !== tasks[i].id || prev[i].startTime !== tasks[i].startTime || prev[i].endTime !== tasks[i].endTime || prev[i].completed !== tasks[i].completed) {
- return tasks.map(t => ({ ...t, previewStart: t.startTime ? new Date(t.startTime) : undefined, previewEnd: t.endTime ? new Date(t.endTime) : undefined }));
- }
- }
- return prev;
- });
- }, [todos]);
+  const [syncedTasks, setSyncedTasks] = useState<(Todo & { previewStart?: Date, previewEnd?: Date })[]>([]);
+  
+  useEffect(() => {
+    const tasks = Array.isArray(todos) ? todos : [];
+    setSyncedTasks(tasks.map(t => ({
+      ...t,
+      previewStart: safeParseDate(t?.startTime),
+      previewEnd: safeParseDate(t?.endTime)
+    })));
+  }, [todos]);
 
  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
  const [isRescheduling, setIsRescheduling] = useState(false);
@@ -377,38 +396,50 @@ const Profile = React.memo(function Profile() {
  setIsEditing(false);
  };
 
- const rankInfo = getRankInfo(level);
+  const rankInfo = getRankInfo(Number(level) || 1);
 
- // Calculate performance data from actual syllabus
- const performanceData = useMemo(() => {
- const data: { subject: string, chapter: string, score: number }[] = [];
- ['Physics', 'Chemistry', 'Mathematics'].forEach(sub => {
- const chapters = syllabus[sub as keyof typeof syllabus];
- // Only show chapters that have some progress
- const activeChapters = chapters.filter(c => c.pyq > 0 || c.accuracy > 0 || c.lectures > 0);
- 
- activeChapters.forEach(chap => {
- const score = Math.round((chap.pyq + chap.accuracy + chap.lectures) / 3);
- data.push({
- subject: sub,
- chapter: chap.name.length > 15 ? chap.name.substring(0, 15) + '...' : chap.name,
- score
- });
- });
- });
- 
- // If no data, provide some empty state or placeholders
- if (data.length === 0) {
- return [
- { subject: 'Physics', chapter: 'No Data Yet', score: 0 },
- { subject: 'Chemistry', chapter: 'No Data Yet', score: 0 },
- { subject: 'Mathematics', chapter: 'No Data Yet', score: 0 },
- ];
- }
- 
- // Sort by score descending and take top 10 to avoid overcrowding
- return data.sort((a, b) => b.score - a.score).slice(0, 10);
- }, [syllabus]);
+  // Calculate performance data from actual syllabus
+  const performanceData = useMemo(() => {
+    if (!syllabus || typeof syllabus !== 'object') {
+      return [
+        { subject: 'Physics', chapter: 'No Data Yet', score: 0 },
+        { subject: 'Chemistry', chapter: 'No Data Yet', score: 0 },
+        { subject: 'Mathematics', chapter: 'No Data Yet', score: 0 },
+      ];
+    }
+    const data: { subject: string, chapter: string, score: number }[] = [];
+    ['Physics', 'Chemistry', 'Mathematics'].forEach(sub => {
+      const chapters = (syllabus as any)[sub];
+      if (!Array.isArray(chapters)) return;
+      
+      const activeChapters = chapters.filter(c => c && (Number(c.pyq || 0) > 0 || Number(c.accuracy || 0) > 0 || Number(c.lectures || 0) > 0));
+      
+      activeChapters.forEach(chap => {
+        const pyq = Number(chap?.pyq || 0);
+        const acc = Number(chap?.accuracy || 0);
+        const lec = Number(chap?.lectures || 0);
+        const score = Math.round((pyq + acc + lec) / 3);
+        const name = chap?.name || 'Chapter';
+        data.push({
+          subject: sub,
+          chapter: name.length > 15 ? name.substring(0, 15) + '...' : name,
+          score: Math.min(100, Math.max(0, score))
+        });
+      });
+    });
+    
+    // If no data, provide some empty state or placeholders
+    if (data.length === 0) {
+      return [
+        { subject: 'Physics', chapter: 'No Data Yet', score: 0 },
+        { subject: 'Chemistry', chapter: 'No Data Yet', score: 0 },
+        { subject: 'Mathematics', chapter: 'No Data Yet', score: 0 },
+      ];
+    }
+    
+    // Sort by score descending and take top 10 to avoid overcrowding
+    return data.sort((a, b) => b.score - a.score).slice(0, 10);
+  }, [syllabus]);
 
 const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
 
@@ -724,7 +755,7 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
                      {task.text}
                    </p>
                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                     {task.subject || 'General'} • {task.previewStart ? format(task.previewStart, 'MMM d, h:mm a') : 'Not scheduled'}
+                     {task.subject || 'General'} • {task.previewStart ? safeFormatDate(task.previewStart, 'MMM d, h:mm a') : 'Not scheduled'}
                    </span>
                  </div>
                </div>

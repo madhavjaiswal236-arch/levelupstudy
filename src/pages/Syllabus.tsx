@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TiltWrapper } from "@/components/TiltWrapper";
@@ -435,22 +436,24 @@ const Syllabus = React.memo(function Syllabus() {
         </motion.div>
       </TourStep>
 
-      <AnimatePresence>
-        {selectedChapterDetail && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 dark:bg-black bg-slate-50 flex items-center justify-center p-4"
-            onClick={() => setSelectedChapterDetail(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="dark:bg-slate-900 bg-white border dark:border-slate-700 border-slate-300 w-full max-w-lg rounded-xl overflow-hidden shadow-lg relative"
-            >
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {selectedChapterDetail && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[99999] dark:bg-black/80 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+                onClick={() => setSelectedChapterDetail(null)}
+              >
+                <motion.div
+                  initial={{ scale: 0.9, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.9, y: 20 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="dark:bg-slate-900 bg-white border dark:border-slate-700 border-slate-300 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl relative my-auto"
+                >
               <button
                 onClick={() => setSelectedChapterDetail(null)}
                 className="absolute top-4 right-4 dark:text-slate-400 text-slate-600 hover:dark:text-white text-slate-900"
@@ -676,21 +679,25 @@ const Syllabus = React.memo(function Syllabus() {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showBacklogs && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center sm:p-6 dark:bg-black bg-slate-50 "
-            onClick={() => setShowBacklogs(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="dark:bg-slate-900 bg-white border border-orange-500/30 sm:rounded-2xl p-4 sm:p-6 lg:p-8 w-full sm:max-w-4xl h-full sm:h-auto max-h-screen sm:max-h-[85vh] overflow-y-auto custom-scrollbar shadow-lg relative flex flex-col"
+      </AnimatePresence>,
+      document.body,
+    )}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showBacklogs && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 dark:bg-black/80 bg-slate-950/75 backdrop-blur-md overflow-y-auto"
+                onClick={() => setShowBacklogs(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                  className="dark:bg-slate-900 bg-white border border-orange-500/30 sm:rounded-2xl p-4 sm:p-6 lg:p-8 w-full sm:max-w-4xl h-full sm:h-auto max-h-screen sm:max-h-[85vh] overflow-y-auto custom-scrollbar shadow-2xl relative flex flex-col my-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -910,7 +917,9 @@ const Syllabus = React.memo(function Syllabus() {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+    )}
     </div>
   );
 });

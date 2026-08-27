@@ -1,18 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Bell, Flame, Zap, Clock, ShieldAlert, CheckCircle2, X } from 'lucide-react';
-import { subscribeInAppNotifications, InAppToast } from '../lib/notifications';
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Bell,
+  Flame,
+  Zap,
+  Clock,
+  ShieldAlert,
+  CheckCircle2,
+  X,
+} from "lucide-react";
+import {
+  subscribeInAppNotifications,
+  InAppToast,
+} from "../lib/notifications";
 
 export function NotificationToastContainer() {
   const [toasts, setToasts] = useState<InAppToast[]>([]);
 
   useEffect(() => {
     const unsubscribe = subscribeInAppNotifications((toast) => {
-      setToasts(prev => [toast, ...prev].slice(0, 3)); // Keep max 3 on screen
+      setToasts((prev) => [toast, ...prev].slice(0, 3)); // Keep max 3 on screen
 
       // Auto dismiss after 6 seconds
       setTimeout(() => {
-        setToasts(prev => prev.filter(t => t.id !== toast.id));
+        setToasts((prev) => prev.filter((t) => t.id !== toast.id));
       }, 6000);
     });
 
@@ -22,55 +34,57 @@ export function NotificationToastContainer() {
   }, []);
 
   const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const getToastIcon = (type: InAppToast['type']) => {
+  const getToastIcon = (type: InAppToast["type"]) => {
     switch (type) {
-      case 'streak':
+      case "streak":
         return <Flame className="w-5 h-5 text-amber-500 animate-pulse" />;
-      case 'motivation':
+      case "motivation":
         return <Zap className="w-5 h-5 text-yellow-400" />;
-      case 'task':
+      case "task":
         return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
-      case 'study_block':
+      case "study_block":
         return <Clock className="w-5 h-5 text-cyan-400" />;
       default:
         return <Bell className="w-5 h-5 text-purple-400" />;
     }
   };
 
-  const getToastBorder = (type: InAppToast['type']) => {
+  const getToastBorder = (type: InAppToast["type"]) => {
     switch (type) {
-      case 'streak':
-        return 'border-amber-500/50 bg-amber-950/80 text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.25)]';
-      case 'motivation':
-        return 'border-yellow-500/40 bg-slate-900/90 text-yellow-100 shadow-[0_0_20px_rgba(234,179,8,0.2)]';
-      case 'task':
-        return 'border-emerald-500/40 bg-slate-900/90 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.2)]';
-      case 'study_block':
-        return 'border-cyan-500/40 bg-slate-900/90 text-cyan-100 shadow-[0_0_20px_rgba(6,182,212,0.2)]';
+      case "streak":
+        return "border-amber-500/50 bg-amber-950/90 text-amber-100 shadow-[0_0_25px_rgba(245,158,11,0.3)]";
+      case "motivation":
+        return "border-yellow-500/40 bg-slate-900/95 text-yellow-100 shadow-[0_0_25px_rgba(234,179,8,0.25)]";
+      case "task":
+        return "border-emerald-500/40 bg-slate-900/95 text-emerald-100 shadow-[0_0_25px_rgba(16,185,129,0.25)]";
+      case "study_block":
+        return "border-cyan-500/40 bg-slate-900/95 text-cyan-100 shadow-[0_0_25px_rgba(6,182,212,0.25)]";
       default:
-        return 'border-purple-500/40 bg-slate-900/90 text-purple-100 shadow-[0_0_20px_rgba(168,85,247,0.2)]';
+        return "border-purple-500/40 bg-slate-900/95 text-purple-100 shadow-[0_0_25px_rgba(168,85,247,0.25)]";
     }
   };
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       role="region"
       aria-label="Notifications"
       aria-live="polite"
-      className="fixed top-4 right-4 left-4 sm:left-auto sm:w-96 z-[9999] pointer-events-none space-y-3"
+      className="fixed top-5 right-5 left-4 sm:left-auto sm:w-96 z-[999999] pointer-events-none space-y-3"
     >
       <AnimatePresence>
-        {toasts.map(toast => (
+        {toasts.map((toast) => (
           <motion.div
             key={toast.id}
             role="status"
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, x: 50, scale: 0.9 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
             className={`pointer-events-auto p-4 rounded-2xl border backdrop-blur-xl flex items-start gap-3 shadow-2xl relative overflow-hidden ${getToastBorder(toast.type)}`}
           >
             <div className="p-2 rounded-xl bg-black/30 border border-white/10 shrink-0 mt-0.5">
@@ -97,12 +111,13 @@ export function NotificationToastContainer() {
             <motion.div
               initial={{ scaleX: 1 }}
               animate={{ scaleX: 0 }}
-              transition={{ duration: 6, ease: 'linear' }}
+              transition={{ duration: 6, ease: "linear" }}
               className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 origin-left"
             />
           </motion.div>
         ))}
       </AnimatePresence>
-    </div>
+    </div>,
+    document.body,
   );
 }
