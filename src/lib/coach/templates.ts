@@ -29,8 +29,8 @@ export const TEMPLATES: TemplatePool = {
       "Your study time contracted to ${hours}h today, down significantly from your ${avgHours}h benchmark. The day was severely under-executed.",
     ],
     TOTAL_COLLAPSE: [
-      "Near-zero execution today (${hours}h logged). This is a total breakdown in study routine. You allowed friction or distraction to derail the day entirely.",
-      "Critical execution failure with only ${hours}h logged. Your day ended in surrender. Re-establishing baseline discipline must happen immediately tomorrow.",
+      "You didn't just miss your study targets; you completely surrendered. Your brain got ${sleep}h of sleep, only for you to squander ${screenTime}h staring at a screen while your commitment to IIT-JEE bled out on the floor. ${hours}h of study, ${questions} questions solved, zero discipline. You weren't even on the track yesterday — you have a gaping wound where your discipline should be.",
+      "Total execution breakdown (${hours}h logged). You folded at the first sign of friction. Staring at screens for ${screenTime}h while your competitors solved hundreds of PYQs is cowardice. You either kill your excuses today or the exam will kill your dream.",
     ],
 
     // Recovery & Sleep Diagnoses
@@ -195,10 +195,10 @@ export const TEMPLATES: TemplatePool = {
   },
 
   closings: [
-    "Disciplined execution compounds over time. Show up tomorrow.",
-    "Consistency is built day by day. Reset and execute.",
-    "Small daily wins compound into massive results. Stay focused.",
-    "Focus on the process. Execution speaks louder than intention.",
-    "No excuses. Protect your routine and execute.",
+    "The IIT paper doesn't give a damn about your excuses or your screen time. It only cares about the work. Stay hard.",
+    "Nobody is coming to save your rank. Put your head down, eliminate the friction, and execute.",
+    "Don't count the days, make the days count. Zero excuses tomorrow.",
+    "Discipline equals freedom. Show up tomorrow and take what is yours.",
+    "The difference between where you are and where you want to be is the work you're avoiding. Stay hard.",
   ],
 };

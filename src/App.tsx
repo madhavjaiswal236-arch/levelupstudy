@@ -206,20 +206,26 @@ function AppContent() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setForceLoaded(true);
-    }, 2500);
+    }, 1200);
 
-    // Run Forensic Data-Safety Simulations
-    const syncTest = runSyncSimulations();
-    if (!syncTest.passed) {
-      console.warn("[Data Safety Guard] Sync simulations failed:", syncTest.results);
-    } else {
-      console.log("[Data Safety Guard] 11 Synchronization Simulations Passed.");
+    // Run Forensic Data-Safety Simulations in dev mode or deferred idle
+    if (process.env.NODE_ENV !== "production") {
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        (window as any).requestIdleCallback(() => {
+          const syncTest = runSyncSimulations();
+          if (!syncTest.passed) {
+            console.warn("[Data Safety Guard] Sync simulations failed:", syncTest.results);
+          } else {
+            console.log("[Data Safety Guard] 11 Synchronization Simulations Passed.");
+          }
+        });
+      }
     }
 
     return () => clearTimeout(timer);
   }, []);
 
-  const effectiveLoaded = (isLoaded || forceLoaded) && (isCloudSyncComplete || forceLoaded);
+  const effectiveLoaded = isLoaded || forceLoaded;
 
   const handleEnterApp = () => {
     dismissWelcomeHero();
@@ -521,17 +527,8 @@ function AppContent() {
     };
 
     let planned = yesterdayEntry.plannedTasks;
-    if (!planned || planned.length === 0) {
+    if (!planned) {
       planned = (yesterdayEntry.completedTasks || []).map((t) => ({ ...t }));
-      if (planned.length === 0) {
-        planned = [
-          {
-            id: "dummy",
-            text: "Daily Planned Tasks",
-            completed: false,
-          } as any,
-        ];
-      }
     }
 
     try {
@@ -578,63 +575,6 @@ function AppContent() {
       console.error("Error generating AI Coach feedback on rollover submit:", err);
     }
   };
-
-  useEffect(() => {
-    if (!isLoaded || history.length === 0) return;
-
-    const processHistory = async () => {
-      let needsUpdate = false;
-      const updatedHistory = [...history];
-
-      for (let i = 0; i < updatedHistory.length; i++) {
-        const fb = updatedHistory[i].aiFeedback;
-        if (
-          (!fb || !fb.includes("Diagnosis:")) &&
-          !processedHistoryRef.current.has(updatedHistory[i].date)
-        ) {
-          processedHistoryRef.current.add(updatedHistory[i].date);
-          needsUpdate = true;
-          const entry = updatedHistory[i];
-
-          let planned = entry.plannedTasks;
-          if (!planned || planned.length === 0) {
-            planned = entry.completedTasks.map((t) => ({ ...t })) as any;
-            if (planned.length === 0) {
-              planned = [
-                {
-                  id: "dummy",
-                  text: "Daily Planned Tasks",
-                  completed: false,
-                } as any,
-              ];
-            }
-          }
-
-          const feedback = await getAICoachFeedback({
-            hours: entry.hoursStudied || 0,
-            sleep: entry.sleepTime !== undefined ? entry.sleepTime : 0,
-            screenTime: entry.screenTime !== undefined ? entry.screenTime : 0,
-            completedTasks: entry.completedTasks || [],
-            plannedTasks: planned || [],
-            practiceSessions: (entry as any).practiceSessions || practiceSessions || [],
-            xpEarned: entry.xpEarned || 0,
-            targetXp: dailyTarget || 1000,
-            level: level || 1,
-            streakDays: streakDays || 0,
-            history: updatedHistory.slice(Math.max(0, i - 7), i),
-          });
-
-          updatedHistory[i] = {
-            ...entry,
-            aiFeedback: feedback,
-          };
-          setHistory([...updatedHistory]);
-        }
-      }
-    };
-
-    processHistory();
-  }, [JSON.stringify(history.map(h => ({ d: h.date, fb: h.aiFeedback, sl: h.sleepTime, sc: h.screenTime }))), isLoaded, setHistory, practiceSessions]);
 
   const closeRollover = () => {
     setNeedsRollover(false);
