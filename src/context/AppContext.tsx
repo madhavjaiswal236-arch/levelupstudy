@@ -1033,6 +1033,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       CapApp.addListener("appStateChange", (state) => {
         if (!state.isActive) {
           flushCurrentState();
+        } else {
+          // App resumed from background: check if date shifted past 3 AM
+          const today = getLogicalDate();
+          const todayKey = getStandardDateKey(today);
+          if (lastStudyDateRef.current && lastStudyDateRef.current !== todayKey) {
+            setNeedsRollover(true, "App resumed across logical day boundary");
+          }
         }
       }).then((listener) => {
         if (isMounted) {

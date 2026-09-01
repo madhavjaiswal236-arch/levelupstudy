@@ -164,14 +164,35 @@ function AppContent() {
     levelRef.current = level;
   }, [level]);
 
+  const lastBackPressRef = useRef<number>(0);
+
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
       const listener = CapApp.addListener("backButton", () => {
+        // 1. Close keyboard shortcuts modal if open
+        if (showShortcutsModalRef.current) {
+          setShowShortcutsModal(false);
+          return;
+        }
+
+        // 2. If on secondary tab, return to dashboard first
         setActiveTab((prev) => {
           if (prev !== "dashboard") {
             return "dashboard";
           } else {
-            CapApp.exitApp();
+            // 3. Graceful exit on dashboard with double-tap check
+            const now = Date.now();
+            if (now - lastBackPressRef.current < 2000) {
+              CapApp.exitApp();
+            } else {
+              lastBackPressRef.current = now;
+              // Notify user politely
+              sendNotification("Press Back Again to Exit", {
+                body: "Tap back once more within 2 seconds to close LevelUp Study.",
+                silent: true,
+                type: "general"
+              });
+            }
             return prev;
           }
         });

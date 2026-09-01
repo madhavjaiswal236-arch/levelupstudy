@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, getDocFromCache, onSnapshot, serverTimestamp, enableIndexedDbPersistence } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
+import { Preferences } from '@capacitor/preferences';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -309,6 +310,42 @@ let cachedAccessToken: string | null = null;
 let cachedTokenExpiresAt: number = 0;
 let pendingSignInPromise: Promise<{ user: User; accessToken: string } | null> | null = null;
 
+const persistOAuthToken = async (token: string | null, expiresAt: number) => {
+  cachedAccessToken = token;
+  cachedTokenExpiresAt = expiresAt;
+  try {
+    if (token) {
+      await Preferences.set({ key: 'google_access_token', value: token });
+      await Preferences.set({ key: 'google_token_expires_at', value: String(expiresAt) });
+    } else {
+      await Preferences.remove({ key: 'google_access_token' });
+      await Preferences.remove({ key: 'google_token_expires_at' });
+    }
+  } catch (e) {
+    console.warn('Preferences token persistence error:', e);
+  }
+};
+
+const hydratePersistedToken = async (): Promise<string | null> => {
+  try {
+    const [tokenRes, expRes] = await Promise.all([
+      Preferences.get({ key: 'google_access_token' }),
+      Preferences.get({ key: 'google_token_expires_at' }),
+    ]);
+    if (tokenRes.value) {
+      const exp = expRes.value ? parseInt(expRes.value, 10) : 0;
+      if (exp > Date.now() + 60 * 1000) {
+        cachedAccessToken = tokenRes.value;
+        cachedTokenExpiresAt = exp;
+        return cachedAccessToken;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to hydrate persisted OAuth token:', e);
+  }
+  return null;
+};
+
 export const initAuth = (
   onAuthChange?: (user: User | null, token: string | null) => void
 ) => {
@@ -318,9 +355,9 @@ export const initAuth = (
       if (result) {
         const credential = GoogleAuthProvider.credentialFromResult(result);
         if (credential?.accessToken) {
-          cachedAccessToken = credential.accessToken;
-          cachedTokenExpiresAt = Date.now() + 3500 * 1000;
-          if (onAuthChange) onAuthChange(result.user, cachedAccessToken);
+          const exp = Date.now() + 3500 * 1000;
+          persistOAuthToken(credential.accessToken, exp);
+          if (onAuthChange) onAuthChange(result.user, credential.accessToken);
         }
       }
     }).catch((err) => {
@@ -331,10 +368,12 @@ export const initAuth = (
 
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
+      if (!cachedAccessToken) {
+        await hydratePersistedToken();
+      }
       if (onAuthChange) onAuthChange(user, cachedAccessToken);
     } else {
-      cachedAccessToken = null;
-      cachedTokenExpiresAt = 0;
+      await persistOAuthToken(null, 0);
       if (onAuthChange) onAuthChange(null, null);
     }
   });
@@ -371,8 +410,8 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
         const fbResult = await signInWithCredential(auth, credential);
         
         if (result.credential.accessToken) {
-          cachedAccessToken = result.credential.accessToken;
-          cachedTokenExpiresAt = Date.now() + 3500 * 1000;
+          const exp = Date.now() + 3500 * 1000;
+          await persistOAuthToken(result.credential.accessToken, exp);
         }
 
         return { user: fbResult.user, accessToken: cachedAccessToken || '' };
@@ -386,8 +425,8 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
           throw new Error('Failed to get access token from Firebase Auth');
         }
 
-        cachedAccessToken = credential.accessToken;
-        cachedTokenExpiresAt = Date.now() + 3500 * 1000;
+        const exp = Date.now() + 3500 * 1000;
+        await persistOAuthToken(credential.accessToken, exp);
 
         return { user: result.user, accessToken: cachedAccessToken };
       } catch (popupErr: any) {
@@ -429,7 +468,9 @@ export const getAccessTokenSync = (): string | null => {
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  return getAccessTokenSync();
+  const syncToken = getAccessTokenSync();
+  if (syncToken) return syncToken;
+  return await hydratePersistedToken();
 };
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -453,8 +494,8 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
           scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
         });
         if (result.credential?.accessToken) {
-          cachedAccessToken = result.credential.accessToken;
-          cachedTokenExpiresAt = Date.now() + 3500 * 1000;
+          const exp = Date.now() + 3500 * 1000;
+          await persistOAuthToken(result.credential.accessToken, exp);
           return cachedAccessToken;
         }
         return null;
@@ -484,6 +525,5 @@ export const logout = async () => {
     } catch(e) {}
   }
   await auth.signOut();
-  cachedAccessToken = null;
-  cachedTokenExpiresAt = 0;
+  await persistOAuthToken(null, 0);
 };

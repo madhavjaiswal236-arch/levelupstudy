@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { CheckCircle2, AlertTriangle, Play, Pause, Square, XSquare, ShieldAlert, Zap } from "lucide-react";
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
+import { Capacitor } from "@capacitor/core";
 
 interface ImmersiveTimerProps {
   initialSeconds: number;
@@ -63,44 +64,47 @@ export function ImmersiveTimer({
     return () => clearInterval(interval);
   }, [isActive, isPaused, isBreached, initialSeconds, taskId, onComplete, breaches]);
 
- useEffect(() => {
- if (!isStrictMode) return;
+  useEffect(() => {
+    if (!isStrictMode) return;
+    const isNative = Capacitor.isNativePlatform();
 
- const requestFS = () => {
- if (!document.fullscreenElement && containerRef.current) {
- containerRef.current.requestFullscreen().catch(() => {});
- }
- };
- 
- // Initial request
- requestFS();
+    const requestFS = () => {
+      if (!isNative && !document.fullscreenElement && containerRef.current) {
+        containerRef.current.requestFullscreen().catch(() => {});
+      }
+    };
+    
+    // Initial request
+    requestFS();
 
- const handleVisibilityChange = () => {
- if (document.hidden) {
- triggerBreach("TAB SWITCHING DETECTED");
- }
- };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        triggerBreach("APP / TAB SWITCHING DETECTED");
+      }
+    };
 
- const handleFullscreenChange = () => {
- if (!document.fullscreenElement) {
- triggerBreach("EXITED FULLSCREEN");
- }
- };
- 
- const handleBlur = () => {
- triggerBreach("WINDOW FOCUS LOST");
- };
+    const handleFullscreenChange = () => {
+      if (!isNative && !document.fullscreenElement) {
+        triggerBreach("EXITED FULLSCREEN");
+      }
+    };
+    
+    const handleBlur = () => {
+      if (!isNative) {
+        triggerBreach("WINDOW FOCUS LOST");
+      }
+    };
 
- document.addEventListener("visibilitychange", handleVisibilityChange);
- document.addEventListener("fullscreenchange", handleFullscreenChange);
- window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    window.addEventListener("blur", handleBlur);
 
- return () => {
- document.removeEventListener("visibilitychange", handleVisibilityChange);
- document.removeEventListener("fullscreenchange", handleFullscreenChange);
- window.removeEventListener("blur", handleBlur);
- };
- }, [isStrictMode]);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [isStrictMode]);
 
  const triggerBreach = (reason: string) => {
  if (!isBreached) {

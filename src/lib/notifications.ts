@@ -117,9 +117,34 @@ export function playNotificationChime(type: InAppToast['type'] = 'general') {
   }
 }
 
+export async function initializeNotificationChannels() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await LocalNotifications.createChannel({
+        id: 'study_reminders',
+        name: 'Study Reminders & Tasks',
+        description: 'Alerts for scheduled study blocks, tasks, streaks and boss events',
+        importance: 5, // High importance (banner + sound)
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#22d3ee',
+      });
+    } catch (e) {
+      console.warn('Failed to create LocalNotifications channel:', e);
+    }
+  }
+}
+
+// Auto-run channel creation on native platform
+if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+  initializeNotificationChannels();
+}
+
 export async function checkNotificationPermissions(): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
     try {
+      await initializeNotificationChannels();
       const perms = await LocalNotifications.checkPermissions();
       return perms.display === 'granted';
     } catch (e) {
@@ -133,6 +158,7 @@ export async function checkNotificationPermissions(): Promise<boolean> {
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
     try {
+      await initializeNotificationChannels();
       const perms = await LocalNotifications.requestPermissions();
       return perms.display === 'granted';
     } catch (e) {
@@ -183,6 +209,7 @@ export async function sendNotification(title: string, options: NotificationOptio
   // Handle OS-level / Push-level / Chrome Web Notifications
   if (Capacitor.isNativePlatform()) {
     try {
+      await initializeNotificationChannels();
       const perms = await LocalNotifications.checkPermissions();
       let isGranted = perms.display === 'granted';
       if (!isGranted) {
@@ -198,6 +225,7 @@ export async function sendNotification(title: string, options: NotificationOptio
               id: Math.floor(Math.random() * 1000000) + 1,
               schedule: { at: new Date(Date.now() + 500) },
               sound: sound ? 'res://platform_default' : undefined,
+              channelId: 'study_reminders',
               actionTypeId: 'OPEN_APP'
             }
           ]
