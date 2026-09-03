@@ -72,12 +72,22 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
 
     const newFutureTodos = generateTodosFromRoadmap(newRoadmap, updatedPlan.id);
 
-    // Keep completed tasks, replace incomplete backlog tasks
+    // Keep completed tasks, replace incomplete backlog tasks without duplicating
+    const completedBacklog = todos.filter(t => t.isBacklogTask && t.completed);
+    const completedSignatures = new Set(
+      completedBacklog.map(t => `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`)
+    );
+
+    const freshTasks = newFutureTodos.filter(t => {
+      const sig = `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`;
+      return !completedSignatures.has(sig);
+    });
+
     const preservedTodos = todos.filter(
       t => !t.isBacklogTask || t.backlogPlanId !== updatedPlan.id || t.completed
     );
 
-    const mergedTodos = [...preservedTodos, ...newFutureTodos];
+    const mergedTodos = [...preservedTodos, ...freshTasks];
 
     setBacklogPlan(updatedPlan);
     if (typeof window !== "undefined") {

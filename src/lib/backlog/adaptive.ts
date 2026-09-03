@@ -40,24 +40,44 @@ export function recalculateRoadmap(
     startDate: todayDateStr
   };
 
-  // Recompute subjects queue by subtracting what is ALREADY completed in todos
-  const completedTaskIds = new Set(
-    currentTodos.filter(t => t.completed && t.backlogPlanId === plan.id).map(t => t.id)
+  // Completed tasks signatures
+  const completedBacklogTasks = currentTodos.filter(
+    t => t.completed && t.isBacklogTask && (!t.backlogPlanId || t.backlogPlanId === plan.id)
+  );
+  const completedSignatures = new Set(
+    completedBacklogTasks.map(t => `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`)
   );
 
-  // Recalculate remaining chapters from completed tasks
+  // Recalculate remaining chapters from completed tasks without compounding subtraction
   const updatedSubjects = plan.subjects.map(sub => {
     return {
       ...sub,
       chapters: sub.chapters.map(chap => {
-        // Count how many lectures of this chapter are completed
-        const completedLecsForChap = currentTodos.filter(
-          t => t.completed && t.backlogPlanId === plan.id && t.backlogChapterId === chap.id && t.backlogTaskType === 'lecture'
-        ).length;
+        // Collect completed lecture numbers for this chapter
+        const completedLectureNumbers = new Set(
+          completedBacklogTasks
+            .filter(t => (t.backlogChapterId === chap.id || t.chapter === chap.name) && (t.backlogTaskType === 'lecture' || t.type === 'Lecture') && typeof t.lectureNumber === 'number')
+            .map(t => t.lectureNumber!)
+        );
 
-        const remainingLecs = Math.max(0, chap.lecturesRemaining - completedLecsForChap);
+        let remainingSelectedLectures: number[] | undefined;
+        let remainingLecs = 0;
+
+        if (chap.selectedLectures && chap.selectedLectures.length > 0) {
+          remainingSelectedLectures = chap.selectedLectures.filter(
+            lecNum => !completedLectureNumbers.has(lecNum)
+          );
+          remainingLecs = remainingSelectedLectures.length;
+        } else {
+          const totalEnrolled = chap.totalLecturesInChapter && chap.totalLecturesInChapter >= chap.lecturesRemaining
+            ? chap.totalLecturesInChapter
+            : chap.lecturesRemaining;
+          remainingLecs = Math.max(0, totalEnrolled - completedLectureNumbers.size);
+        }
+
         return {
           ...chap,
+          selectedLectures: remainingSelectedLectures,
           lecturesRemaining: remainingLecs
         };
       })
@@ -76,20 +96,26 @@ export function recalculateRoadmap(
   const newRoadmap = generateRoadmap(updatedPlan);
   updatedPlan.roadmap = newRoadmap;
 
-  // Generate new todos for future days
+  // Generate new todos for future days and filter out any that match already-completed tasks
   const newFutureTodos = generateTodosFromRoadmap(newRoadmap, plan.id);
+  const freshTasks = newFutureTodos.filter(t => {
+    const sig = `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`;
+    return !completedSignatures.has(sig);
+  });
 
   // Combine: keep all COMPLETED todos and non-backlog todos, replace future incomplete backlog todos
   const preservedTodos = currentTodos.filter(
     t => !t.isBacklogTask || t.backlogPlanId !== plan.id || t.completed
   );
 
-  const mergedTodos = [...preservedTodos, ...newFutureTodos];
+  const mergedTodos = [...preservedTodos, ...freshTasks];
 
   // Generate reassuring human diff summary
   const changesSummary: string[] = [];
   if (missedTasks.length > 0) {
-    changesSummary.push(`${missedTasks.length} missed tasks (${Math.round(missedMinutes / 60)}h ${missedMinutes % 60}m) redistributed smoothly`);
+    const missedHours = Math.floor(missedMinutes / 60);
+    const missedMinsRemainder = missedMinutes % 60;
+    changesSummary.push(`${missedTasks.length} missed tasks (${missedHours}h ${missedMinsRemainder}m) redistributed smoothly`);
     const bumpMins = Math.round(missedMinutes / Math.min(5, remainingDays));
     if (bumpMins > 0) {
       changesSummary.push(`+${bumpMins} min/day added across the next ${Math.min(5, remainingDays)} study days`);

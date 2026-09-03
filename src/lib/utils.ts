@@ -158,8 +158,12 @@ export function isCurrentDayTask(
 
   if (taskDate) {
     if (taskDate === currentDay) return true;
-    // An unfinished task from past days rolls over into today's active study plan
-    if (taskDate < currentDay && !task.completed) return true;
+    // An unfinished non-backlog task from past days rolls over into today's active study plan.
+    // Overdue backlog tasks are handled via BacklogHQ adaptive recalculation and should not pollute today's plan.
+    if (taskDate < currentDay && !task.completed) {
+      if (task.isBacklogTask) return false;
+      return true;
+    }
     // Future date task is strictly excluded from today's plan
     return false;
   }

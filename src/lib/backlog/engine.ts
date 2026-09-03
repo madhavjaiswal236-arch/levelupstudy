@@ -11,16 +11,21 @@ import {
 import { Todo, generateUniqueTaskId } from '@/context/AppContext';
 
 export function calculateDateDiffDays(startDateStr: string, endDateStr: string): number {
-  const start = new Date(startDateStr);
-  const end = new Date(endDateStr);
+  const [sy, sm, sd] = startDateStr.split('-').map(Number);
+  const [ey, em, ed] = endDateStr.split('-').map(Number);
+  const start = new Date(sy, sm - 1, sd);
+  const end = new Date(ey, em - 1, ed);
   const diffTime = end.getTime() - start.getTime();
-  return Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+  return Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
 }
 
 export function addDaysToDate(dateStr: string, daysToAdd: number): string {
-  const date = new Date(dateStr);
-  date.setDate(date.getDate() + daysToAdd);
-  return date.toISOString().split('T')[0];
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d + daysToAdd);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function calculateMetrics(
@@ -291,13 +296,21 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
       }
 
       // If head task didn't fit, check if any subject in rotation has a smaller task (e.g. revision or practice)
+      // BUT strictly enforce that prerequisite tasks from the same chapter are not skipped!
       if (!chosenQueue) {
         for (let offset = 0; offset < numTotalQueues; offset++) {
           const qIdx = (subjectRotationIndex + offset) % numTotalQueues;
           const q = subjectQueues[qIdx];
           if (!q || q.tasks.length === 0) continue;
 
-          const smallerIdx = q.tasks.findIndex(t => t.durationMinutes <= dayRemainingMins);
+          const smallerIdx = q.tasks.findIndex((t, idx) => {
+            if (t.durationMinutes > dayRemainingMins) return false;
+            // Prerequisite check: ensure no prior tasks belonging to the same chapter remain unscheduled
+            const hasUnscheduledPrereqsInChapter = q.tasks.slice(0, idx).some(prev => prev.chapterId === t.chapterId);
+            if (hasUnscheduledPrereqsInChapter) return false;
+            return true;
+          });
+
           if (smallerIdx !== -1) {
             chosenQueue = q;
             chosenTaskIndex = smallerIdx;
@@ -322,7 +335,29 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
           dayRemainingMins = Math.min(dayRemainingMins, 30);
         }
       } else {
-        // No task fits without gross overflow; close this day realistically!
+        // If the day is completely empty and no task fits within dayRemainingMins,
+        // force-schedule the head task from the current rotation queue to avoid an infinite 365 empty-day loop.
+        if (dayTasks.length === 0) {
+          for (let offset = 0; offset < numTotalQueues; offset++) {
+            const qIdx = (subjectRotationIndex + offset) % numTotalQueues;
+            const q = subjectQueues[qIdx];
+            if (q && q.tasks.length > 0) {
+              const popped = q.tasks.shift()!;
+              dayTasks.push({
+                ...popped,
+                plannedDate: dayDate,
+                dayIndex: currentDayIndex
+              });
+              dayRemainingMins = 0;
+              subjectRotationIndex = (qIdx + 1) % numTotalQueues;
+              if (popped.type === 'test') {
+                hasTest = true;
+              }
+              break;
+            }
+          }
+        }
+        // Day complete
         break;
       }
     }
@@ -432,7 +467,7 @@ export function reconstructPlanFromTodos(todos: Todo[]): BacklogPlan | null {
   const startDate = dates.length > 0 ? dates[0] : new Date().toISOString().split('T')[0];
   const deadlineDate = dates.length > 0 ? dates[dates.length - 1] : addDaysToDate(startDate, 30);
 
-  // Group by subject and chapter
+  // Group by subject and chapter dynamically
   const subjectsMap: Record<string, Map<string, {
     id: string;
     name: string;
@@ -442,16 +477,13 @@ export function reconstructPlanFromTodos(todos: Todo[]): BacklogPlan | null {
     hasRevision: boolean;
     hasTest: boolean;
     order: number;
-  }>> = {
-    Physics: new Map(),
-    Chemistry: new Map(),
-    Mathematics: new Map()
-  };
+  }>> = {};
 
   backlogTasks.forEach((t) => {
-    const subName = (t.subject === 'Physics' || t.subject === 'Chemistry' || t.subject === 'Mathematics')
-      ? t.subject
-      : 'Physics';
+    const subName = t.subject || 'General';
+    if (!subjectsMap[subName]) {
+      subjectsMap[subName] = new Map();
+    }
     const chapName = t.chapter || 'Backlog Chapter';
     const chapId = t.backlogChapterId || `chap_${chapName.toLowerCase().replace(/\s+/g, '_')}`;
 
@@ -487,9 +519,21 @@ export function reconstructPlanFromTodos(todos: Todo[]): BacklogPlan | null {
     }
   });
 
-  const subjects: BacklogSubject[] = (['Physics', 'Chemistry', 'Mathematics'] as const).map(subName => {
-    const color = subName === 'Physics' ? '#3B82F6' : subName === 'Chemistry' ? '#10B981' : '#F59E0B';
-    const chapters: BacklogChapterInput[] = Array.from(subjectsMap[subName].values()).map(c => {
+  const defaultSubjectColors: Record<string, string> = {
+    Physics: '#06b6d4',
+    Chemistry: '#a855f7',
+    Mathematics: '#f59e0b',
+    Biology: '#10b981',
+  };
+  const colorPalette = ['#06b6d4', '#a855f7', '#f59e0b', '#10b981', '#ec4899', '#3b82f6'];
+
+  const subjectKeys = Object.keys(subjectsMap);
+  const orderedSubjectKeys = subjectKeys.length > 0 ? subjectKeys : ['Physics', 'Chemistry', 'Mathematics'];
+
+  const subjects: BacklogSubject[] = orderedSubjectKeys.map((subName, sIdx) => {
+    const color = defaultSubjectColors[subName] || colorPalette[sIdx % colorPalette.length];
+    const chapterMap = subjectsMap[subName] || new Map();
+    const chapters: BacklogChapterInput[] = Array.from(chapterMap.values()).map(c => {
       const lecs = c.lectures.length > 0 ? c.lectures.sort((a, b) => a - b) : [1];
       const avgDur = c.lectureDurations.length > 0
         ? Math.round(c.lectureDurations.reduce((a, b) => a + b, 0) / c.lectureDurations.length)

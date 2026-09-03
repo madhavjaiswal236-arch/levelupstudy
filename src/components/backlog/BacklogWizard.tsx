@@ -169,6 +169,25 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
   const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);
   const [editingChapter, setEditingChapter] = useState<BacklogChapterInput | null>(null);
 
+  const handleAddSubject = () => {
+    const name = window.prompt("Enter new subject name (e.g. Biology, Computer Science, English):");
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (subjects.some(s => s.name.toLowerCase() === trimmed.toLowerCase())) {
+      alert("This subject already exists!");
+      return;
+    }
+    const colorPalette = ['#10b981', '#ec4899', '#8b5cf6', '#3b82f6', '#f59e0b', '#06b6d4'];
+    const newSub: BacklogSubject = {
+      id: `sub-${trimmed.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+      name: trimmed,
+      color: colorPalette[subjects.length % colorPalette.length],
+      chapters: []
+    };
+    setSubjects(prev => [...prev, newSub]);
+    setActiveSubjectId(newSub.id);
+  };
+
   // Settings State
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const defaultDeadline = useMemo(() => {
@@ -446,7 +465,7 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
           className="space-y-6"
         >
           {/* Subject Switcher */}
-          <div className="flex gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
+          <div className="flex gap-2 border-b border-slate-800 pb-3 overflow-x-auto items-center">
             {subjects.map(s => {
               const count = s.chapters.reduce(
                 (acc, c) => acc + (c.selectedLectures?.length ?? c.lecturesRemaining),
@@ -475,6 +494,15 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={handleAddSubject}
+              className="px-3.5 py-2.5 rounded-xl border border-dashed border-slate-700 hover:border-amber-400 text-slate-400 hover:text-amber-400 bg-slate-950/50 flex items-center gap-1.5 text-xs font-bold transition whitespace-nowrap shrink-0"
+              title="Add a custom subject (e.g. Biology, English)"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Subject</span>
+            </button>
           </div>
 
           {/* Chapters List for Active Subject */}
@@ -617,15 +645,30 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
             </div>
           </div>
 
-          <div className="flex justify-end pt-2">
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-sm flex items-center gap-2 transition"
-            >
-              <span>Review Backlog Summary</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+            {metrics.totalLectures === 0 && (
+              <p className="text-xs text-rose-400 font-semibold flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>Please enroll at least 1 chapter and lecture to proceed.</span>
+              </p>
+            )}
+            <div className="ml-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  if (metrics.totalLectures > 0) setStep(2);
+                }}
+                disabled={metrics.totalLectures === 0}
+                className={`px-6 py-3 rounded-xl font-black text-sm shadow-sm flex items-center gap-2 transition ${
+                  metrics.totalLectures > 0
+                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer'
+                    : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                }`}
+              >
+                <span>Review Backlog Summary</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </motion.div>
       )}

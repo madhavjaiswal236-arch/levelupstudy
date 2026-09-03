@@ -21,7 +21,8 @@ import {
   Repeat,
   ChevronRight,
   Filter,
-  Compass
+  Compass,
+  Trash2
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { BacklogWizard } from '@/components/backlog/BacklogWizard';
@@ -48,6 +49,7 @@ export default function BacklogHQ() {
     setBacklogPlan,
     todos,
     setTodos,
+    updateTask,
     addXp,
     saveStateToCloudNow
   } = useAppContext();
@@ -129,18 +131,28 @@ export default function BacklogHQ() {
   }, [backlogPlan, todos, todayStr]);
 
   const handleToggleTask = (task: typeof todos[0]) => {
-    setTodos(prev =>
-      prev.map(t => {
-        if (t.id === task.id) {
-          const nextState = !t.completed;
-          if (nextState) {
-            addXp(t.xpReward || 50);
-          }
-          return { ...t, completed: nextState };
-        }
-        return t;
-      })
-    );
+    const nextState = !task.completed;
+    if (nextState) {
+      addXp(task.xpReward || 50);
+    } else {
+      addXp(-(task.xpReward || 50));
+    }
+    updateTask(task.id, { completed: nextState });
+  };
+
+  const handleDeletePlan = () => {
+    if (window.confirm("Are you sure you want to reset and delete your Backlog Plan? This will remove all scheduled backlog tasks from your daily study plan.")) {
+      setBacklogPlan(null);
+      let updatedTodos: typeof todos = [];
+      setTodos(prev => {
+        updatedTodos = prev.filter(t => !t.isBacklogTask);
+        return updatedTodos;
+      });
+      try {
+        localStorage.removeItem("jee_tracker_backlog_plan");
+      } catch (e) {}
+      saveStateToCloudNow({ backlogPlan: null, todos: updatedTodos });
+    }
   };
 
   // Open modal to add a chapter to a specific subject
@@ -201,14 +213,19 @@ export default function BacklogHQ() {
       } catch (e) {}
     }
 
-    // Keep completed backlog tasks, replace unfinished ones
+    // Keep completed backlog tasks, replace unfinished ones without duplicating
     let nextTodos: any[] = [];
     setTodos(prev => {
       const nonBacklog = prev.filter(t => !t.isBacklogTask);
       const completedBacklog = prev.filter(t => t.isBacklogTask && t.completed);
-      const completedIds = new Set(completedBacklog.map(t => t.id));
+      const completedSignatures = new Set(
+        completedBacklog.map(t => `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`)
+      );
 
-      const freshTasks = newTodos.filter(t => !completedIds.has(t.id));
+      const freshTasks = newTodos.filter(t => {
+        const sig = `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`;
+        return !completedSignatures.has(sig);
+      });
       nextTodos = [...nonBacklog, ...completedBacklog, ...freshTasks];
       return nextTodos;
     });
@@ -304,6 +321,15 @@ export default function BacklogHQ() {
             >
               <Edit3 className="w-4 h-4" />
               <span>Edit Full Plan</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleDeletePlan}
+              className="px-3.5 py-2 min-h-[42px] rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition"
+              title="Reset and clear active backlog plan"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Reset Plan</span>
             </button>
           </div>
         )}
@@ -616,7 +642,7 @@ export default function BacklogHQ() {
                               >
                                 {task.subject}
                               </span>
-                              <span>{task.durationMinutes || 120} min (2h)</span>
+                              <span>{task.durationMinutes || 120} min ({+((task.durationMinutes || 120) / 60).toFixed(1)}h)</span>
                               <span>•</span>
                               <span className="text-amber-600 dark:text-amber-400 font-bold">+{task.xpReward} XP</span>
                             </div>
@@ -797,6 +823,21 @@ export default function BacklogHQ() {
                                 TODAY
                               </span>
                             )}
+                            {day.tasks.length > 0 && day.tasks.every(dt =>
+                              todos.some(
+                                todo =>
+                                  todo.isBacklogTask &&
+                                  todo.completed &&
+                                  (todo.id === dt.id ||
+                                    (todo.backlogChapterId === dt.chapterId &&
+                                      todo.backlogTaskType === dt.type &&
+                                      (dt.lectureNumber ? todo.lectureNumber === dt.lectureNumber : true)))
+                              )
+                            ) && (
+                              <span className="px-2 py-0.2 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                                COMPLETED
+                              </span>
+                            )}
                             <span
                               className={`px-2 py-0.2 rounded text-[10px] font-bold ${
                                 day.dayType === 'TEST'
@@ -810,7 +851,7 @@ export default function BacklogHQ() {
                             </span>
                           </div>
 
-                          <div className="space-y-1 mt-2">
+                          <div className="space-y-1.5 mt-2">
                             {dayTasks.map(t => {
                               const subColor =
                                 t.subject === 'Physics'
@@ -819,12 +860,33 @@ export default function BacklogHQ() {
                                   ? '#a855f7'
                                   : '#f59e0b';
 
+                              const matchingTodo = todos.find(
+                                todo =>
+                                  todo.isBacklogTask &&
+                                  (todo.id === t.id ||
+                                    (todo.backlogChapterId === t.chapterId &&
+                                      todo.backlogTaskType === t.type &&
+                                      (t.lectureNumber ? todo.lectureNumber === t.lectureNumber : true)))
+                              );
+                              const isCompleted = Boolean(matchingTodo?.completed);
+
                               return (
-                                <div key={t.id} className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200 flex-wrap">
-                                  <span
-                                    className="w-2 h-2 rounded-full shrink-0"
-                                    style={{ backgroundColor: subColor }}
-                                  />
+                                <div
+                                  key={t.id}
+                                  className={`flex items-center gap-2 text-xs flex-wrap transition ${
+                                    isCompleted
+                                      ? 'text-slate-400 dark:text-slate-500 line-through'
+                                      : 'text-slate-700 dark:text-slate-200'
+                                  }`}
+                                >
+                                  {isCompleted ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  ) : (
+                                    <span
+                                      className="w-2 h-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: subColor }}
+                                    />
+                                  )}
                                   <span
                                     className="font-bold text-[11px] px-1 py-0.2 rounded font-mono"
                                     style={{
@@ -836,6 +898,11 @@ export default function BacklogHQ() {
                                   </span>
                                   <span className="font-medium">{t.title}</span>
                                   <span className="text-slate-400 dark:text-slate-500 font-mono">({t.durationMinutes}m)</span>
+                                  {isCompleted && (
+                                    <span className="no-underline text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                      Done
+                                    </span>
+                                  )}
                                 </div>
                               );
                             })}

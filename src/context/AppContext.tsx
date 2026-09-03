@@ -1447,6 +1447,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
         saveStateToCloudNow({ todos: updatedTodosList });
       });
     }
+
+    // Synchronize backlog lecture completion with Syllabus Tracker (BUG-06)
+    if (updates.completed === true) {
+      const targetTask = updatedTodosList.find((t) => String(t.id) === String(id));
+      if (
+        targetTask &&
+        targetTask.isBacklogTask &&
+        (targetTask.backlogTaskType === 'lecture' || targetTask.type?.toLowerCase() === 'lecture') &&
+        targetTask.subject &&
+        targetTask.chapter
+      ) {
+        const subjectKey = targetTask.subject as keyof SyllabusData;
+        setSyllabus((prevSyllabus) => {
+          const subList = prevSyllabus[subjectKey];
+          if (!subList) return prevSyllabus;
+
+          const chapIndex = subList.findIndex(
+            (c) =>
+              c.name.toLowerCase() === targetTask.chapter!.toLowerCase() ||
+              c.name.toLowerCase().includes(targetTask.chapter!.toLowerCase()) ||
+              targetTask.chapter!.toLowerCase().includes(c.name.toLowerCase())
+          );
+
+          if (chapIndex === -1) return prevSyllabus;
+
+          const oldChap = subList[chapIndex];
+          const newLastLec = Math.max(oldChap.lastLectureNumber || 0, targetTask.lectureNumber || 1);
+          const newLecCount = Math.max(oldChap.lectures || 0, newLastLec);
+
+          const updatedSubject = [...subList];
+          updatedSubject[chapIndex] = {
+            ...oldChap,
+            lastLectureNumber: newLastLec,
+            lectures: newLecCount,
+          };
+
+          const nextSyllabus = { ...prevSyllabus, [subjectKey]: updatedSubject };
+          queueMicrotask(() => {
+            saveStateToCloudNow({ syllabus: nextSyllabus });
+          });
+          return nextSyllabus;
+        });
+      }
+    }
   }, [saveStateToCloudNow]);
 
   // Check and update streak on load or when logging session
