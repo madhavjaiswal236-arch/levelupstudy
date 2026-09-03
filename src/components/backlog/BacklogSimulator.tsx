@@ -243,7 +243,7 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
           </div>
 
           {/* Body */}
-          <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
+          <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-calendar-scrollbar">
             {/* High Backlog Alert if > 50 Lectures */}
             {simMetrics.totalLectures > 50 && (
               <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">

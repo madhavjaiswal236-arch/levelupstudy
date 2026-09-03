@@ -19,14 +19,18 @@ export default defineConfig(({ mode }) => {
       target: 'es2020',
       cssCodeSplit: true,
       chunkSizeWarningLimit: 1500,
+      minify: 'esbuild',
       rollupOptions: {
         output: {
           manualChunks: {
-            vendor: ['react', 'react-dom'],
-            firebase: ['firebase/app', 'firebase/firestore', 'firebase/auth'],
-            charts: ['recharts'],
-            icons: ['lucide-react'],
-            three: ['three'],
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-motion': ['motion'],
+            'vendor-firebase': ['firebase/app', 'firebase/firestore', 'firebase/auth'],
+            'vendor-charts': ['recharts'],
+            'vendor-icons': ['lucide-react'],
+            'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+            'vendor-date': ['date-fns'],
+            'vendor-three': ['three'],
           }
         }
       }

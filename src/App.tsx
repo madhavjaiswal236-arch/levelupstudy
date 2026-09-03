@@ -245,6 +245,28 @@ function AppContent() {
       }
     }
 
+    // Preload next tabs in background idle time for 0ms transition latency
+    const preloadTabs = () => {
+      import("./pages/Syllabus");
+      import("./pages/BacklogHQ");
+      import("./pages/Missions");
+      import("./pages/Protocols");
+      import("./pages/History");
+      import("./pages/Analytics");
+      import("./pages/Store");
+      import("./pages/Profile");
+      import("./pages/Settings");
+      import("./pages/Rivals");
+    };
+
+    if (typeof window !== "undefined") {
+      if ("requestIdleCallback" in window) {
+        (window as any).requestIdleCallback(preloadTabs, { timeout: 2500 });
+      } else {
+        setTimeout(preloadTabs, 1500);
+      }
+    }
+
     return () => clearTimeout(timer);
   }, []);
 

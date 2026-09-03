@@ -148,7 +148,7 @@ export function StudyCalendar({
   const justDraggedRef = useRef(false);
   const visualSelectionRef = useRef<HTMLDivElement | null>(null);
 
-  // Computed Days
+  // Computed Days & Background Sync
   useEffect(() => {
     let isMounted = true;
     const sync = async () => {
@@ -164,8 +164,48 @@ export function StudyCalendar({
 
         setTodos((prev) => {
           let updated = false;
-          const next = prev.map((t) => {
-            if (t.calendarEventId) {
+          // Step 1: Deduplicate prev todos by id, google calendarEventId, and content signature
+          const seenIds = new Set<string | number>();
+          const seenGoogleIds = new Set<string>();
+          const seenContentSignatures = new Set<string>();
+          const deduplicatedList: typeof prev = [];
+
+          prev.forEach((t) => {
+            if (t.isDeleted) return;
+
+            // Unique ID check
+            if (seenIds.has(t.id)) {
+              updated = true;
+              return;
+            }
+            seenIds.add(t.id);
+
+            // Google Calendar Event ID check
+            if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+              if (seenGoogleIds.has(t.calendarEventId)) {
+                updated = true;
+                return;
+              }
+              seenGoogleIds.add(t.calendarEventId);
+            }
+
+            // Content + Time check (prevent duplicate preview tasks created for same slot)
+            if (t.startTime && t.text) {
+              const startMs = new Date(t.startTime).getTime();
+              const sig = `${(t.subject || "").trim().toLowerCase()}_${t.text.trim().toLowerCase()}_${startMs}`;
+              if (seenContentSignatures.has(sig)) {
+                updated = true;
+                return;
+              }
+              seenContentSignatures.add(sig);
+            }
+
+            deduplicatedList.push(t);
+          });
+
+          // Step 2: Keep times synced with Google Calendar
+          const next = deduplicatedList.map((t) => {
+            if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
               const match = events.find((e: any) => e.id === t.calendarEventId);
               if (match && match.start?.dateTime && match.end?.dateTime) {
                 const mStart = new Date(match.start.dateTime).toISOString();
@@ -174,6 +214,20 @@ export function StudyCalendar({
                   updated = true;
                   return { ...t, startTime: mStart, endTime: mEnd };
                 }
+              }
+            } else if ((!t.calendarEventId || t.calendarEventId.startsWith("local-")) && t.startTime) {
+              const tStartMs = new Date(t.startTime).getTime();
+              const match = events.find((e: any) => {
+                if (!e.start?.dateTime) return false;
+                const eStartMs = new Date(e.start.dateTime).getTime();
+                const sameSummary =
+                  e.summary?.trim().toLowerCase() === t.text?.trim().toLowerCase() ||
+                  e.summary?.trim().toLowerCase().includes(t.text?.trim().toLowerCase() || "");
+                return sameSummary && Math.abs(eStartMs - tStartMs) <= 3 * 60 * 1000;
+              });
+              if (match && match.id) {
+                updated = true;
+                return { ...t, calendarEventId: match.id };
               }
             }
             return t;
@@ -208,28 +262,68 @@ export function StudyCalendar({
   }, [view, currentDate]);
 
   const scheduledEvents = useMemo(() => {
-    const localEvents = todos
+    // 1. Map local events and deduplicate
+    const seenLocalKeys = new Set<string>();
+    const localEvents: Array<{
+      id: string | number;
+      title: string;
+      subject: string;
+      calendarEventId?: string;
+      start: Date;
+      end: Date;
+      completed: boolean;
+      todo: any;
+      isExternalGoogleEvent?: boolean;
+      htmlLink?: string;
+    }> = [];
+
+    todos
       .filter((t) => !t.isDeleted)
       .filter((t) => activeCalendars.includes(t.subject || "General"))
       .filter((t) => t.startTime && t.endTime)
-      .map((t) => {
+      .forEach((t) => {
         const start = new Date(t.startTime as string);
         const end = new Date(t.endTime as string);
-        return {
-          id: t.id,
-          title: t.text,
-          subject: t.subject || "Default",
-          calendarEventId: t.calendarEventId,
-          start,
-          end,
-          completed: t.completed,
-          todo: t,
-        };
+        const dedupeKey = `${t.text?.trim().toLowerCase()}_${start.getTime()}`;
+        if (!seenLocalKeys.has(dedupeKey)) {
+          seenLocalKeys.add(dedupeKey);
+          localEvents.push({
+            id: t.id,
+            title: t.text,
+            subject: t.subject || "Default",
+            calendarEventId: t.calendarEventId,
+            start,
+            end,
+            completed: t.completed,
+            todo: t,
+          });
+        }
       });
 
+    // 2. Map external Google events, strictly excluding any that match a local task
     const externalGoogleEvents = googleEvents
-      .filter((g) => !todos.some((t) => !t.isDeleted && t.calendarEventId === g.id))
-      .filter((g) => g.start?.dateTime && g.end?.dateTime)
+      .filter((g) => {
+        if (!g.start?.dateTime || !g.end?.dateTime) return false;
+        const gStartMs = new Date(g.start.dateTime).getTime();
+
+        // Check if matching non-deleted local todo exists by event ID OR by title + start time
+        const isMatchedInLocal = todos.some((t) => {
+          if (t.isDeleted) return false;
+          if (t.calendarEventId === g.id) return true;
+          if (t.startTime) {
+            const tStartMs = new Date(t.startTime).getTime();
+            const sameTitle =
+              t.text?.trim().toLowerCase() === g.summary?.trim().toLowerCase() ||
+              g.summary?.trim().toLowerCase().includes(t.text?.trim().toLowerCase() || "");
+            if (sameTitle && Math.abs(tStartMs - gStartMs) <= 3 * 60 * 1000) {
+              return true;
+            }
+          }
+          return false;
+        });
+
+        return !isMatchedInLocal;
+      })
       .map((g) => {
         return {
           id: `gcal-${g.id}`,
@@ -238,13 +332,22 @@ export function StudyCalendar({
           calendarEventId: g.id,
           start: new Date(g.start.dateTime),
           end: new Date(g.end.dateTime),
-          completed: g.summary?.startsWith("[Done]"),
+          completed: g.summary?.startsWith("[Done]") || false,
           isExternalGoogleEvent: true,
           htmlLink: g.htmlLink,
+          todo: undefined,
         };
       });
 
-    return [...localEvents, ...externalGoogleEvents];
+    // 3. Final unified list deduplicated by time & summary
+    const combined = [...localEvents, ...externalGoogleEvents];
+    const finalSeen = new Set<string>();
+    return combined.filter((ev) => {
+      const key = `${ev.title?.trim().toLowerCase()}_${ev.start.getTime()}`;
+      if (finalSeen.has(key)) return false;
+      finalSeen.add(key);
+      return true;
+    });
   }, [todos, activeCalendars, googleEvents]);
 
   const unscheduledTasks = useMemo(() => {
@@ -494,8 +597,88 @@ export function StudyCalendar({
         return;
       }
 
+      // Step 0: Auto-Deduplicate local preview tasks and remote duplicate Google Calendar events
+      const seenIds = new Set<string | number>();
+      const seenGoogleIds = new Set<string>();
+      const seenContentKeys = new Set<string>();
+      const duplicatesToDelete = new Set<string | number>();
+      const duplicateGoogleEventIdsToDelete: string[] = [];
+
+      todos.forEach((t) => {
+        if (t.isDeleted) return;
+
+        let isDup = false;
+        // 1. By ID
+        if (seenIds.has(t.id)) {
+          isDup = true;
+        } else {
+          seenIds.add(t.id);
+        }
+
+        // 2. By Google Calendar Event ID
+        if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+          if (seenGoogleIds.has(t.calendarEventId)) {
+            isDup = true;
+            duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
+          } else {
+            seenGoogleIds.add(t.calendarEventId);
+          }
+        }
+
+        // 3. By text + start time
+        if (t.startTime && t.text) {
+          const contentKey = `${(t.subject || "").trim().toLowerCase()}_${t.text.trim().toLowerCase()}_${new Date(t.startTime).getTime()}`;
+          if (seenContentKeys.has(contentKey)) {
+            isDup = true;
+            if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+              duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
+            }
+          } else {
+            seenContentKeys.add(contentKey);
+          }
+        }
+
+        if (isDup) {
+          duplicatesToDelete.add(t.id);
+        }
+      });
+
+      // Also clean up any multiple Google Calendar events that share identical summary and time
+      const gcalEvents = await fetchGoogleCalendarEvents(
+        addDays(new Date(), -14),
+        addDays(new Date(), 30)
+      );
+      if (gcalEvents && gcalEvents.length > 0) {
+        const seenGcalSignatures = new Set<string>();
+        for (const ge of gcalEvents) {
+          if (!ge.start?.dateTime || !ge.summary) continue;
+          const sig = `${ge.summary.trim().toLowerCase()}_${new Date(ge.start.dateTime).getTime()}`;
+          if (seenGcalSignatures.has(sig)) {
+            duplicateGoogleEventIdsToDelete.push(ge.id);
+          } else {
+            seenGcalSignatures.add(sig);
+          }
+        }
+      }
+
+      // Delete remote duplicate events from Google Calendar
+      for (const gid of duplicateGoogleEventIdsToDelete) {
+        try {
+          await deleteCalendarEvent(gid);
+        } catch (e) {
+          console.warn("Failed to delete duplicate calendar event", gid, e);
+        }
+      }
+
+      // Clean duplicate tasks from todos state & cloud storage
+      let cleanTodos = todos;
+      if (duplicatesToDelete.size > 0) {
+        cleanTodos = todos.filter((t) => !duplicatesToDelete.has(t.id));
+        setCalendarTodos(cleanTodos);
+      }
+
       // Update existing Google Calendar events (excluding local- placeholder IDs)
-      const eventsToUpdate = todos
+      const eventsToUpdate = cleanTodos
         .filter(
           (t) =>
             !t.isDeleted &&
@@ -515,7 +698,7 @@ export function StudyCalendar({
       }
 
       // Create new events on Google Calendar for unsynced or local-only tasks
-      const eventsToCreate = todos.filter(
+      const eventsToCreate = cleanTodos.filter(
         (t) =>
           !t.isDeleted &&
           (!t.calendarEventId || t.calendarEventId.startsWith("local-")) &&
@@ -536,7 +719,7 @@ export function StudyCalendar({
               durationMinutes,
               t.type || "Lecture",
               false,
-              todos,
+              cleanTodos,
               new Date(t.startTime!),
               new Date(t.endTime!),
             );
@@ -566,7 +749,7 @@ export function StudyCalendar({
         e.message || "Failed to apply all changes to Google Calendar.";
     }
     if (allSuccess) {
-      showToast("Timeline applied successfully!", "success");
+      showToast("Timeline applied & duplicate tasks cleared!", "success");
       setUnsyncedChanges(false);
     } else if (isManual) {
       showToast(
@@ -786,7 +969,7 @@ export function StudyCalendar({
       {/* Scrollable Body */}
       <div
         id="calendar-scroll-container"
-        className="flex-1 overflow-y-auto overflow-x-auto relative flex custom-calendar-scrollbar min-h-0 select-none"
+        className="flex-1 overflow-y-scroll overflow-x-auto relative flex custom-calendar-scrollbar min-h-0 touch-pan-y"
         onScroll={handleTimelineScroll}
       >
         {/* Time Column */}
@@ -1160,87 +1343,83 @@ export function StudyCalendar({
 
                       let lastDeltaMins = 0;
                       let currentDayIndex = dayIndex;
+                      let rafId: number | null = null;
+                      let pendingClientX = startX;
+                      let pendingClientY = startY;
 
-                      const updateEventDrag = (
-                        currentClientX: number,
-                        currentClientY: number,
-                      ) => {
-                        const currentScrollY = container
-                          ? container.scrollTop
-                          : 0;
+                      // Cache grid geometry once at drag start to eliminate layout thrashing
+                      const gridContainer = target.parentElement;
+                      let gridRect = gridContainer ? gridContainer.getBoundingClientRect() : null;
+                      let containerRect = container ? container.getBoundingClientRect() : null;
+                      const numVisibleDays = Math.max(1, visibleDays.length);
+                      let colWidth = gridRect ? gridRect.width / numVisibleDays : 100;
+
+                      const renderDragFrame = () => {
+                        rafId = null;
+                        const currentScrollY = container ? container.scrollTop : 0;
                         const scrollDiff = currentScrollY - startScrollY;
-                        const deltaY = currentClientY - startY + scrollDiff;
+                        const deltaY = pendingClientY - startY + scrollDiff;
+
                         if (Math.abs(deltaY) > 3) {
                           hasMoved = true;
                         }
+
                         const rawDeltaMins = deltaY / (80 / 60);
                         const currentStartMins = startHour * 60 + rawDeltaMins;
-                        const snappedStartMins = Math.round(currentStartMins); // Exact minute precision
-                        let newDeltaMins =
-                          snappedStartMins - Math.round(startHour * 60);
+                        const snappedStartMins = Math.round(currentStartMins);
+                        let newDeltaMins = snappedStartMins - Math.round(startHour * 60);
 
                         const origStartMins = startHour * 60;
                         const eventDurMins = duration * 60;
                         const minDeltaMins = -origStartMins;
-                        const maxDeltaMins =
-                          24 * 60 - (origStartMins + eventDurMins);
+                        const maxDeltaMins = 24 * 60 - (origStartMins + eventDurMins);
 
-                        if (newDeltaMins < minDeltaMins)
-                          newDeltaMins = minDeltaMins;
-                        if (newDeltaMins > maxDeltaMins)
-                          newDeltaMins = maxDeltaMins;
+                        if (newDeltaMins < minDeltaMins) newDeltaMins = minDeltaMins;
+                        if (newDeltaMins > maxDeltaMins) newDeltaMins = maxDeltaMins;
 
                         if (newDeltaMins !== 0) {
                           hasMoved = true;
                         }
 
-                        // Track horizontal position to change days
-                        const gridContainer = target.parentElement;
-                        if (gridContainer) {
-                          const rect = gridContainer.getBoundingClientRect();
-                          const relativeX = currentClientX - rect.left;
-                          const colWidth = rect.width / visibleDays.length;
-                          let potentialDayIndex = Math.floor(
-                            relativeX / colWidth,
-                          );
-                          potentialDayIndex = Math.max(
-                            0,
-                            Math.min(visibleDays.length - 1, potentialDayIndex),
-                          );
+                        // Track horizontal position to switch columns smoothly
+                        if (gridRect) {
+                          const relativeX = pendingClientX - gridRect.left;
+                          let potentialDayIndex = Math.floor(relativeX / colWidth);
+                          potentialDayIndex = Math.max(0, Math.min(numVisibleDays - 1, potentialDayIndex));
 
                           if (potentialDayIndex !== currentDayIndex) {
                             currentDayIndex = potentialDayIndex;
                             hasMoved = true;
+                            target.style.left = `calc(${currentDayIndex * (100 / numVisibleDays)}% + 3px)`;
+                            target.style.width = `calc(${100 / numVisibleDays}% - 6px)`;
                           }
-                          target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
-                          target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
                         }
 
                         if (newDeltaMins !== lastDeltaMins || hasMoved) {
                           lastDeltaMins = newDeltaMins;
 
-                          // Direct DOM Manipulation for ultra-smooth rendering
+                          // Hardware-accelerated translate3d with zero transition delay
                           target.style.transform = `translate3d(0, ${newDeltaMins * (80 / 60)}px, 0)`;
 
-                          // Update time text inside the event card on the fly
-                          const timeEl = target.querySelector(
-                            '[data-time-display="true"]',
-                          );
+                          // Update time text inside event card directly for instant visual feedback
+                          const timeEl = target.querySelector('[data-time-display="true"]');
                           if (timeEl) {
-                            const targetMins = Math.round(
-                              startHour * 60 + newDeltaMins,
-                            );
+                            const targetMins = Math.round(startHour * 60 + newDeltaMins);
                             const h = Math.floor(targetMins / 60);
                             const m = targetMins % 60;
-                            const tempStart = new Date(
-                              visibleDays[currentDayIndex],
-                            );
+                            const tempStart = new Date(visibleDays[currentDayIndex]);
                             tempStart.setHours(h, m, 0, 0);
-                            const tempEnd = new Date(
-                              tempStart.getTime() + durationMilli,
-                            );
+                            const tempEnd = new Date(tempStart.getTime() + durationMilli);
                             timeEl.innerHTML = `${format(tempStart, "h:mm a")} <span class="mx-0.5 opacity-60">→</span> ${format(tempEnd, "h:mm a")}`;
                           }
+                        }
+                      };
+
+                      const scheduleUpdate = (clientX: number, clientY: number) => {
+                        pendingClientX = clientX;
+                        pendingClientY = clientY;
+                        if (!rafId) {
+                          rafId = requestAnimationFrame(renderDragFrame);
                         }
                       };
 
@@ -1249,11 +1428,24 @@ export function StudyCalendar({
                         const deltaY = Math.abs(moveEvent.clientY - startY);
 
                         if (!isDragging) {
-                          if (deltaX > 5 || deltaY > 5) {
+                          if (deltaX > 4 || deltaY > 4) {
                             isDragging = true;
-                            setIsDraggingEvent(true);
-                            setDragEventId(ev.id);
                             document.body.classList.add("is-dragging");
+
+                            // Disable CSS transition on target immediately for 120fps direct tracking
+                            target.style.transition = "none";
+                            target.style.willChange = "transform, left";
+                            target.style.zIndex = "60";
+                            target.style.boxShadow = "0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)";
+
+                            if (gridContainer) {
+                              gridRect = gridContainer.getBoundingClientRect();
+                              colWidth = gridRect.width / numVisibleDays;
+                            }
+                            if (container) {
+                              containerRect = container.getBoundingClientRect();
+                            }
+
                             try {
                               if (target.setPointerCapture) {
                                 target.setPointerCapture(e.pointerId);
@@ -1261,18 +1453,14 @@ export function StudyCalendar({
                             } catch (err) {
                               console.debug("Pointer capture on event move failed", err);
                             }
-                            target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
-                            target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
                           } else {
                             return;
                           }
                         }
 
-                        updateEventDrag(moveEvent.clientX, moveEvent.clientY);
+                        scheduleUpdate(moveEvent.clientX, moveEvent.clientY);
 
-                        if (container) {
-                          const containerRect =
-                            container.getBoundingClientRect();
+                        if (container && containerRect) {
                           const topEdge = containerRect.top + 60;
                           const bottomEdge = containerRect.bottom - 60;
 
@@ -1281,10 +1469,7 @@ export function StudyCalendar({
                               scrollInterval = setInterval(() => {
                                 if (container.scrollTop > 0) {
                                   container.scrollTop -= 14;
-                                  updateEventDrag(
-                                    moveEvent.clientX,
-                                    moveEvent.clientY,
-                                  );
+                                  scheduleUpdate(moveEvent.clientX, moveEvent.clientY);
                                 }
                               }, 20);
                             }
@@ -1293,14 +1478,10 @@ export function StudyCalendar({
                               scrollInterval = setInterval(() => {
                                 if (
                                   container.scrollTop <
-                                  container.scrollHeight -
-                                    container.clientHeight
+                                  container.scrollHeight - container.clientHeight
                                 ) {
                                   container.scrollTop += 14;
-                                  updateEventDrag(
-                                    moveEvent.clientX,
-                                    moveEvent.clientY,
-                                  );
+                                  scheduleUpdate(moveEvent.clientX, moveEvent.clientY);
                                 }
                               }, 20);
                             }
@@ -1314,16 +1495,22 @@ export function StudyCalendar({
                       };
 
                       const handlePointerUp = () => {
+                        if (rafId) {
+                          cancelAnimationFrame(rafId);
+                          rafId = null;
+                        }
                         if (scrollInterval) {
                           clearInterval(scrollInterval);
                           scrollInterval = null;
                         }
-                        if (isDragging) {
-                          setIsDraggingEvent(false);
-                          setDragEventId(null);
-                          setUnsyncedChanges(true);
-                          document.body.classList.remove("is-dragging");
-                        }
+
+                        // Restore styles
+                        target.style.transition = "";
+                        target.style.willChange = "";
+                        target.style.zIndex = "";
+                        target.style.boxShadow = "";
+                        document.body.classList.remove("is-dragging");
+
                         try {
                           if (target && target.hasPointerCapture && target.hasPointerCapture(e.pointerId)) {
                             target.releasePointerCapture(e.pointerId);
@@ -1331,6 +1518,7 @@ export function StudyCalendar({
                         } catch (err) {
                           console.debug("Pointer release capture failed", err);
                         }
+
                         window.removeEventListener(
                           "pointermove",
                           handlePointerMove as EventListener,
@@ -1344,15 +1532,14 @@ export function StudyCalendar({
                           handlePointerUp as EventListener,
                         );
 
-                        // Reset transform while keeping target column width/left intact for React
+                        // Reset transform while keeping target column width/left intact
                         target.style.transform = "";
-                        target.style.left = `calc(${currentDayIndex * (100 / visibleDays.length)}% + 3px)`;
-                        target.style.width = `calc(${100 / visibleDays.length}% - 6px)`;
+                        target.style.left = `calc(${currentDayIndex * (100 / numVisibleDays)}% + 3px)`;
+                        target.style.width = `calc(${100 / numVisibleDays}% - 6px)`;
 
-                        if (hasMoved) {
-                          const totalStartMins = Math.round(
-                            startHour * 60 + lastDeltaMins,
-                          );
+                        if (hasMoved && isDragging) {
+                          setUnsyncedChanges(true);
+                          const totalStartMins = Math.round(startHour * 60 + lastDeltaMins);
                           const finalStartMins = totalStartMins;
                           const hours = Math.floor(finalStartMins / 60);
                           const mins = finalStartMins % 60;
@@ -1440,7 +1627,7 @@ export function StudyCalendar({
                     }}
                     data-no-swipe="true"
                     data-calendar-event="true"
-                    className={`absolute rounded-xl px-2.5 py-1.5 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? "opacity-80 shadow-2xl z-50 ring-2 ring-indigo-500" : "z-40 shadow-sm"} ${dragEventId === ev.id || resizingEventId === ev.id ? "" : "transition-all duration-300"} group touch-none select-none no-swipe`}
+                    className={`absolute rounded-xl px-2.5 py-1.5 overflow-hidden cursor-grab active:cursor-grabbing border ${colorClass} ${dragEventId === ev.id ? "opacity-80 shadow-2xl z-50 ring-2 ring-indigo-500" : "z-40 shadow-sm"} group touch-none select-none no-swipe`}
                     style={{
                       left: `calc(${dayIndex * (100 / visibleDays.length)}% + 3px)`,
                       width: `calc(${100 / visibleDays.length}% - 6px)`,
@@ -1673,6 +1860,11 @@ export function StudyCalendar({
                         target.setPointerCapture(e.pointerId);
                         document.body.classList.add("is-dragging");
 
+                        if (eventCard) {
+                          eventCard.style.transition = "none";
+                          eventCard.style.willChange = "height";
+                        }
+
                         const startY = e.clientY;
                         const originalDurationMins = duration * 60;
                         setResizingEventId(ev.id);
@@ -1680,19 +1872,23 @@ export function StudyCalendar({
                         const container = document.getElementById(
                           "calendar-scroll-container",
                         );
+                        let containerRect = container ? container.getBoundingClientRect() : null;
                         const startScrollY = container
                           ? container.scrollTop
                           : 0;
                         let resizeScrollInterval: any = null;
+                        let resizeRafId: number | null = null;
+                        let pendingResizeClientY = startY;
 
                         let lastDurationMins = Math.round(originalDurationMins);
 
-                        const updateResize = (clientY: number) => {
+                        const renderResizeFrame = () => {
+                          resizeRafId = null;
                           const currentScrollY = container
                             ? container.scrollTop
                             : 0;
                           const scrollDiff = currentScrollY - startScrollY;
-                          const deltaY = clientY - startY + scrollDiff;
+                          const deltaY = pendingResizeClientY - startY + scrollDiff;
                           let rawDeltaMins = deltaY / (80 / 60);
                           let newDurationMins =
                             originalDurationMins + rawDeltaMins;
@@ -1749,15 +1945,20 @@ export function StudyCalendar({
                           }
                         };
 
+                        const scheduleResize = (clientY: number) => {
+                          pendingResizeClientY = clientY;
+                          if (!resizeRafId) {
+                            resizeRafId = requestAnimationFrame(renderResizeFrame);
+                          }
+                        };
+
                         const handlePointerMove = (
                           moveEvent: PointerEvent | React.PointerEvent,
                         ) => {
                           moveEvent.preventDefault();
-                          updateResize(moveEvent.clientY);
+                          scheduleResize(moveEvent.clientY);
 
-                          if (container) {
-                            const containerRect =
-                              container.getBoundingClientRect();
+                          if (container && containerRect) {
                             const bottomEdge = containerRect.bottom - 60;
                             if (moveEvent.clientY > bottomEdge) {
                               if (!resizeScrollInterval) {
@@ -1768,7 +1969,7 @@ export function StudyCalendar({
                                       container.clientHeight
                                   ) {
                                     container.scrollTop += 14;
-                                    updateResize(moveEvent.clientY);
+                                    scheduleResize(moveEvent.clientY);
                                   }
                                 }, 20);
                               }
@@ -1784,9 +1985,17 @@ export function StudyCalendar({
                         const handlePointerUp = (
                           upEvent: PointerEvent | React.PointerEvent,
                         ) => {
+                          if (resizeRafId) {
+                            cancelAnimationFrame(resizeRafId);
+                            resizeRafId = null;
+                          }
                           if (resizeScrollInterval) {
                             clearInterval(resizeScrollInterval);
                             resizeScrollInterval = null;
+                          }
+                          if (eventCard) {
+                            eventCard.style.transition = "";
+                            eventCard.style.willChange = "";
                           }
                           setResizingEventId(null);
                           setUnsyncedChanges(true);
@@ -1893,6 +2102,60 @@ export function StudyCalendar({
               })}
           </div>
         </div>
+      </div>
+
+      {/* Floating Quick Jump Scrubber Bar */}
+      <div className="absolute bottom-4 right-6 z-[80] flex items-center gap-1.5 p-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800">
+        <button
+          onClick={() => {
+            const c = document.getElementById("calendar-scroll-container");
+            if (c) {
+              const now = new Date();
+              c.scrollTo({ top: Math.max(0, (now.getHours() - 1) * 80), behavior: "smooth" });
+            }
+          }}
+          className="px-2.5 py-1 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1 transition-all shadow-sm"
+          title="Scroll to current time"
+        >
+          <Clock className="w-3 h-3" />
+          Now
+        </button>
+        <button
+          onClick={() => {
+            const c = document.getElementById("calendar-scroll-container");
+            if (c) c.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className="px-2 py-1 text-[11px] font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
+        >
+          12 AM
+        </button>
+        <button
+          onClick={() => {
+            const c = document.getElementById("calendar-scroll-container");
+            if (c) c.scrollTo({ top: 9 * 80, behavior: "smooth" });
+          }}
+          className="px-2 py-1 text-[11px] font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
+        >
+          9 AM
+        </button>
+        <button
+          onClick={() => {
+            const c = document.getElementById("calendar-scroll-container");
+            if (c) c.scrollTo({ top: 14 * 80, behavior: "smooth" });
+          }}
+          className="px-2 py-1 text-[11px] font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
+        >
+          2 PM
+        </button>
+        <button
+          onClick={() => {
+            const c = document.getElementById("calendar-scroll-container");
+            if (c) c.scrollTo({ top: 19 * 80, behavior: "smooth" });
+          }}
+          className="px-2 py-1 text-[11px] font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
+        >
+          7 PM
+        </button>
       </div>
     </div>
   );

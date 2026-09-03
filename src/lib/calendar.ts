@@ -152,6 +152,28 @@ export async function createCalendarEvent(title: string, durationMinutes: number
   };
 
   try {
+    // Check if an event with the exact same title and time range already exists in primary calendar
+    try {
+      const windowStart = new Date(startTime.getTime() - 5 * 60 * 1000);
+      const windowEnd = new Date(endTime.getTime() + 5 * 60 * 1000);
+      const existingEvents = await fetchGoogleCalendarEvents(windowStart, windowEnd);
+      const duplicate = existingEvents.find((e: any) => {
+        if (!e.start?.dateTime) return false;
+        const eStart = new Date(e.start.dateTime).getTime();
+        const diffMs = Math.abs(eStart - startTime.getTime());
+        return (
+          e.summary?.trim().toLowerCase() === title.trim().toLowerCase() &&
+          diffMs <= 3 * 60 * 1000
+        );
+      });
+      if (duplicate && duplicate.id) {
+        console.log("Reusing existing Google Calendar event to prevent duplicates:", duplicate.id);
+        return { ...duplicate, hasConflict, startTime: startTime.toISOString(), endTime: endTime.toISOString() };
+      }
+    } catch (checkErr) {
+      console.warn("Could not pre-check calendar duplicates, proceeding with creation:", checkErr);
+    }
+
     const res = await fetchGoogleApi('https://www.googleapis.com/calendar/v3/calendars/primary/events', 'POST', event);
     if (!res.ok) {
       const errorText = await res.text();

@@ -784,7 +784,7 @@ export default function BacklogHQ() {
               </div>
 
               {/* Days List */}
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-3 max-h-[540px] overflow-y-auto pr-2 custom-calendar-scrollbar">
                 {(backlogPlan.roadmap || []).map(day => {
                   const dayTasks = day.tasks.filter(t => {
                     if (activeDayFilter === 'all') return true;

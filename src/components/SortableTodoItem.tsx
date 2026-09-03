@@ -26,8 +26,10 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, tog
   } = useSortable({ id: todo.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: CSS.Translate.toString(transform),
+    transition: isDragging ? undefined : transition,
+    willChange: isDragging ? "transform" : undefined,
+    zIndex: isDragging ? 50 : undefined,
   };
 
   const checkboxColor = todo.completed
@@ -43,16 +45,16 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, tog
   const isDifferentDate = Boolean(scheduledDate && scheduledDate !== todayStr);
 
   return (
-    <motion.div
+    <div
       ref={setNodeRef}
       style={style}
-      layout
-      className={`group flex items-center justify-between p-3 md:p-4 rounded-xl border transition-all duration-300 relative overflow-hidden ${
+      className={`group flex items-center justify-between p-3 md:p-4 rounded-xl border relative overflow-hidden ${
         isDragging
-          ? "opacity-50 border-cyan-500 bg-cyan-950/40 z-50 shadow-2xl scale-[1.02]"
-          : todo.completed
-          ? "dark:bg-slate-900 bg-white dark:border-slate-800 border-slate-200/50 opacity-60"
-          : "dark:bg-black bg-slate-50 dark:border-cyan-500/30 border-cyan-300/40 shadow-md hover:border-cyan-400/60 hover:shadow-md hover:bg-cyan-950/20"
+          ? "opacity-60 border-cyan-500 bg-cyan-950/60 shadow-2xl scale-[1.01] cursor-grabbing"
+          : "transition-colors duration-200 " +
+            (todo.completed
+              ? "dark:bg-slate-900 bg-white dark:border-slate-800 border-slate-200/50 opacity-60"
+              : "dark:bg-black bg-slate-50 dark:border-cyan-500/30 border-cyan-300/40 shadow-md hover:border-cyan-400/60 hover:shadow-md hover:bg-cyan-950/20")
       }`}
     >
       {/* Ambient hover glow line */}
@@ -232,6 +234,6 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, tog
           <Trash2 className="w-5 h-5 group-hover/trash:drop-shadow-md" />
         </motion.div>
       </button>
-    </motion.div>
+    </div>
   );
 });

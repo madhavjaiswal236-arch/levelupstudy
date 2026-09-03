@@ -485,11 +485,22 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
       }
     }
 
-    // Replace previous backlog tasks with new ones
+    // Replace previous backlog tasks with new ones while preserving all completed work & preventing duplicates
     let updatedTodos: any[] = [];
     setTodos(prev => {
       const nonBacklog = prev.filter(t => !t.isBacklogTask);
-      updatedTodos = [...nonBacklog, ...newTodos];
+      const completedBacklog = prev.filter(t => t.isBacklogTask && t.completed);
+
+      // Filter out new tasks that were already completed (by subject, chapter, and text)
+      const completedSignatures = new Set(
+        completedBacklog.map(t => `${t.subject || ''}_${t.chapter || ''}_${t.text || ''}`.trim().toLowerCase())
+      );
+
+      const deduplicatedNew = newTodos.filter(
+        t => !completedSignatures.has(`${t.subject || ''}_${t.chapter || ''}_${t.text || ''}`.trim().toLowerCase())
+      );
+
+      updatedTodos = [...nonBacklog, ...completedBacklog, ...deduplicatedNew];
       return updatedTodos;
     });
 
@@ -1374,7 +1385,7 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
           </div>
 
           {/* Day by Day Roadmap Preview Cards */}
-          <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-3 max-h-[520px] overflow-y-auto pr-2 custom-calendar-scrollbar">
             {previewRoadmap.map(day => (
               <div
                 key={day.dayIndex}
