@@ -6,6 +6,7 @@ import {
   triggerStudyBlockNotification,
   triggerStreakProtectionAlert
 } from '../lib/notifications';
+import { getLocalDateString, isCurrentDayTask } from '../lib/utils';
 
 interface UseNotificationSchedulerProps {
   notificationSettings: NotificationSettings;
@@ -58,9 +59,12 @@ export function useNotificationScheduler({
         }
       }
 
-      // 2. Task Reminders
+      // 2. Task Reminders - strictly for today's active tasks
       if (settings.taskReminders) {
-        const pending = currentTodos.filter(t => !t.completed);
+        const todayStr = getLocalDateString();
+        const pending = currentTodos.filter(
+          t => !t.completed && !t.isDeleted && isCurrentDayTask(t, todayStr)
+        );
         const taskReminderIntervalMs = settings.frequency === 'high' ? 20 * 60 * 1000 : 45 * 60 * 1000;
 
         if (pending.length > 0 && now - lastTaskReminderRef.current >= taskReminderIntervalMs) {
@@ -70,12 +74,30 @@ export function useNotificationScheduler({
         }
       }
 
-      // 3. Scheduled Study Block Reminders
+      // 3. Scheduled Study Block Reminders - strictly for today's scheduled blocks
       if (settings.studyBlockReminders) {
-        currentTodos.forEach(task => {
-          if (task.completed || !task.startTime) return;
-          const startMs = new Date(task.startTime).getTime();
-          const endMs = task.endTime ? new Date(task.endTime).getTime() : startMs + 45 * 60 * 1000;
+        const todayStr = getLocalDateString();
+        const todayScheduled = currentTodos.filter(
+          task => !task.completed && !task.isDeleted && isCurrentDayTask(task, todayStr) && task.startTime
+        );
+
+        todayScheduled.forEach(task => {
+          if (!task.startTime) return;
+          let startMs: number;
+          if (task.startTime.includes('T')) {
+            startMs = new Date(task.startTime).getTime();
+          } else {
+            const [hours, minutes] = task.startTime.split(':');
+            const blockDate = new Date();
+            blockDate.setHours(parseInt(hours, 10) || 0, parseInt(minutes, 10) || 0, 0, 0);
+            startMs = blockDate.getTime();
+          }
+
+          if (isNaN(startMs)) return;
+          const duration = task.durationMinutes || 45;
+          const endMs = task.endTime
+            ? (task.endTime.includes('T') ? new Date(task.endTime).getTime() : startMs + duration * 60 * 1000)
+            : startMs + duration * 60 * 1000;
 
           const blockId = `${task.id}_${task.startTime}`;
 

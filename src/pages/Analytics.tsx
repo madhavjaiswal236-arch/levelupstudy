@@ -7,6 +7,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Activity, Brain, TrendingUp, AlertCircle, Target, Zap, Clock, Plus, BookOpen, X } from 'lucide-react';
 import { useAppContext, SyllabusData, getLogicalDate } from '../context/AppContext';
 import { TourStep, useTour } from '../components/TourGuide';
+import { getLocalDateString, isCurrentDayTask, getTaskScheduledDate } from '../lib/utils';
 
 const MISTAKE_TYPES = [
  "Conceptual",
@@ -57,16 +58,21 @@ const Analytics = React.memo(function Analytics() {
  });
  });
 
+ const todayStr = getLocalDateString();
  todos.forEach(t => {
- if(!t.completed && (t.type === 'DPP' || t.type === 'Practice' || t.type === 'Lecture')) {
+ if(!t.completed && !t.isDeleted && (t.type === 'DPP' || t.type === 'Practice' || t.type === 'Lecture')) {
+ const taskDate = getTaskScheduledDate(t);
+ if (taskDate && taskDate < todayStr) {
  backlog++;
+ }
  }
  });
 
+ const todayTodos = todos.filter(t => !t.isDeleted && isCurrentDayTask(t, todayStr));
  let habitsTotal = habits.length;
  let habitsDone = habits.filter(h => h.completedDays.includes(getLogicalDate().getDate())).length;
- let todoTotal = todos.length;
- let todoDone = todos.filter(t => t.completed).length;
+ let todoTotal = todayTodos.length;
+ let todoDone = todayTodos.filter(t => t.completed).length;
 
  let totalTasks = habitsTotal + todoTotal;
  let doneTasks = habitsDone + todoDone;

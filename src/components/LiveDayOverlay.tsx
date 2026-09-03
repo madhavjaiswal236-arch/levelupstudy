@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAppContext } from "@/context/AppContext";
 import { generateDeterministicCoachReport } from "@/lib/coach/engine";
+import { getLocalDateString, isCurrentDayTask } from "@/lib/utils";
 
 interface LiveDayOverlayProps {
   onClose: () => void;
@@ -88,15 +89,19 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
     return events;
   }, [todos, loggedTasksToday]);
 
-  const pendingToday = useMemo(
-    () =>
-      todos.filter(
-        (t) =>
-          !t.completed &&
-          new Date(t.id).toDateString() === new Date().toDateString(),
-      ),
-    [todos],
-  );
+  const todayStr = useMemo(() => getLocalDateString(), []);
+
+  const todayTasks = useMemo(() => {
+    return todos.filter((t) => !t.isDeleted && isCurrentDayTask(t, todayStr));
+  }, [todos, todayStr]);
+
+  const pendingToday = useMemo(() => {
+    return todayTasks.filter((t) => !t.completed);
+  }, [todayTasks]);
+
+  const completedTodayTasks = useMemo(() => {
+    return todayTasks.filter((t) => t.completed);
+  }, [todayTasks]);
 
   // AI Coach Analysis logic (Canonical Engine)
   const todayMetric = lifeMetrics.find(
@@ -106,12 +111,14 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
   const screen = todayMetric.screenTime;
 
   const coachReport = useMemo(() => {
+    const plannedForToday = [...todayTasks, ...(loggedTasksToday || [])];
+    const completedForToday = [...completedTodayTasks, ...(loggedTasksToday || [])];
     return generateDeterministicCoachReport({
       hours: hoursStudiedToday,
       sleep,
       screenTime: screen,
-      completedTasks: todos.filter((t) => t.completed),
-      plannedTasks: todos,
+      completedTasks: completedForToday,
+      plannedTasks: plannedForToday,
       practiceSessions,
       xpEarned: xpGainedToday,
       targetXp: dailyXpRequired,
@@ -126,7 +133,9 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
     hoursStudiedToday,
     sleep,
     screen,
-    todos,
+    todayTasks,
+    completedTodayTasks,
+    loggedTasksToday,
     practiceSessions,
     xpGainedToday,
     dailyXpRequired,
@@ -135,7 +144,6 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
     history,
     syllabus,
     accuracy,
-    loggedTasksToday,
   ]);
 
   const severityScore = coachReport.explanation.severity.overall;

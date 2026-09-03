@@ -41,7 +41,7 @@ import {
 import { useAppContext, SyllabusData } from "@/context/AppContext";
 import TimeBar from "@/components/TimeBar";
 import JeeSessionLogger from "@/components/JeeSessionLogger";
-import { predictNextLecture } from "@/lib/utils";
+import { predictNextLecture, getLocalDateString, isCurrentDayTask, getTaskScheduledDate } from "@/lib/utils";
 import { DeepFocusOverlay } from "@/components/DeepFocusOverlay";
 import { ImmersiveTimer } from "@/components/ImmersiveTimer";
 import AnimatedNumber from "@/components/AnimatedNumber";
@@ -341,16 +341,28 @@ const Dashboard = React.memo(function Dashboard() {
   const [dynamicInsight, setDynamicInsight] = useState<string | null>(null);
   const [showLiveDay, setShowLiveDay] = useState(false);
 
+  const todayStr = useMemo(() => getLocalDateString(), []);
+
+  const todayPendingTodosCount = useMemo(() => {
+    return todos.filter(
+      (t) => !t.completed && !t.isDeleted && isCurrentDayTask(t, todayStr),
+    ).length;
+  }, [todos, todayStr]);
+
   const allBacklogTasks = useMemo(() => {
     const rawBacklogs = [
-      ...pendingTasks.filter((t) => t.subject !== "Personal" && !t.isDeleted),
+      ...pendingTasks.filter((t) => t.subject !== "Personal" && !t.isDeleted && !t.completed),
       ...todos.filter((t) => {
         if (t.completed || t.isDeleted || t.subject === "Personal") return false;
-        if (typeof t.id === "number") {
-          return new Date(t.id).toDateString() !== new Date().toDateString() && t.id < Date.now();
+        const taskDate = getTaskScheduledDate(t);
+        if (taskDate) {
+          return taskDate < todayStr;
         }
-        if (t.startTime) {
-          return new Date(t.startTime) < new Date();
+        if (typeof t.id === "number") {
+          const d = new Date(t.id);
+          if (!isNaN(d.getTime())) {
+            return getLocalDateString(d) < todayStr;
+          }
         }
         return false;
       }),
@@ -358,7 +370,7 @@ const Dashboard = React.memo(function Dashboard() {
     const uniqueMap = new Map();
     rawBacklogs.forEach((t) => uniqueMap.set(t.id, t));
     return Array.from(uniqueMap.values());
-  }, [pendingTasks, todos]);
+  }, [pendingTasks, todos, todayStr]);
 
   const [backlogFilter, setBacklogFilter] = useState<string>("All");
 
@@ -402,7 +414,7 @@ const Dashboard = React.memo(function Dashboard() {
         questionsSolved,
         target: dailyTarget,
         accuracy,
-        pendingTasksCount: pendingTasks.length,
+        pendingTasksCount: todayPendingTodosCount,
         recentTaskTypes: recentTaskTypesStr,
       });
       if (active && insight) {
@@ -422,7 +434,7 @@ const Dashboard = React.memo(function Dashboard() {
     streakDays,
     dailyTarget,
     accuracy,
-    pendingTasks.length,
+    todayPendingTodosCount,
     recentTaskTypesStr,
   ]);
 
@@ -857,6 +869,7 @@ const Dashboard = React.memo(function Dashboard() {
       lectureNumber:
         type === "Lecture" && lecNum ? parseInt(lecNum) : undefined,
       durationMinutes: durationMinutes,
+      dateScheduled: getLocalDateString(),
     };
 
     setTodos((prev) => {
@@ -1335,19 +1348,28 @@ const Dashboard = React.memo(function Dashboard() {
   const formattedBaseHours = baseStudyHours.toFixed(1);
   const formattedOptimizedHours = optimizedStudyHours.toFixed(1);
 
-  const displayedTodos = useMemo(() => {
+  const [studyPlanFilter, setStudyPlanFilter] = useState<"today" | "all">("today");
+
+  const { todayTodos, allTodos } = useMemo(() => {
     let sourceTodos = todos.filter((t) => t.subject !== "Personal" && !t.isDeleted);
     const uniqueMap = new Map();
     sourceTodos.forEach((t) => uniqueMap.set(t.id, t));
-    sourceTodos = Array.from(uniqueMap.values());
+    const deduped = Array.from(uniqueMap.values());
 
-    if (!sortByPriority) return sourceTodos;
+    const todayList = deduped.filter((t) => isCurrentDayTask(t, todayStr));
+    return { todayTodos: todayList, allTodos: deduped };
+  }, [todos, todayStr]);
+
+  const displayedTodos = useMemo(() => {
+    const list = studyPlanFilter === "today" ? todayTodos : allTodos;
+
+    if (!sortByPriority) return list;
     const priorityWeight: Record<string, number> = {
       High: 3,
       Medium: 2,
       Low: 1,
     };
-    return sourceTodos.sort((a, b) => {
+    return [...list].sort((a, b) => {
       // First sort by completion status
       if (a.completed && !b.completed) return 1;
       if (!a.completed && b.completed) return -1;
@@ -1356,7 +1378,7 @@ const Dashboard = React.memo(function Dashboard() {
       const pB = priorityWeight[b.priority || "Medium"];
       return pB - pA;
     });
-  }, [todos, sortByPriority]);
+  }, [studyPlanFilter, todayTodos, allTodos, sortByPriority]);
 
   return (
     <div className="space-y-4 md:space-y-8">
@@ -2856,17 +2878,65 @@ const Dashboard = React.memo(function Dashboard() {
           whileInView="show"
           viewport={{ once: true, margin: "-50px" }}
         >
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold flex items-center gap-2 group/title w-max">
-              <motion.div
-                whileHover={{ scale: 1.3, rotate: -10 }}
-                className="cursor-pointer relative"
-              >
-                <div className="absolute inset-0 bg-cyan-400/30 rounded-full  opacity-0 group-hover/title:opacity-100 transition-opacity" />
-                <CheckSquare className="w-6 h-6 dark:text-cyan-400 text-cyan-700 drop-shadow-md relative z-10" />
-              </motion.div>
-              STUDY PLAN
-            </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-bold flex items-center gap-2 group/title w-max">
+                <motion.div
+                  whileHover={{ scale: 1.3, rotate: -10 }}
+                  className="cursor-pointer relative"
+                >
+                  <div className="absolute inset-0 bg-cyan-400/30 rounded-full  opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                  <CheckSquare className="w-6 h-6 dark:text-cyan-400 text-cyan-700 drop-shadow-md relative z-10" />
+                </motion.div>
+                STUDY PLAN
+              </h2>
+
+              {/* View Selector: Today (Current Day) vs All Tasks */}
+              <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setStudyPlanFilter("today")}
+                  className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                    studyPlanFilter === "today"
+                      ? "bg-cyan-500 text-black font-bold shadow-sm"
+                      : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-medium"
+                  }`}
+                  title="Show only tasks scheduled for today"
+                >
+                  <span>Today</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      studyPlanFilter === "today"
+                        ? "bg-black/20 text-black font-bold"
+                        : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    {todayTodos.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStudyPlanFilter("all")}
+                  className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                    studyPlanFilter === "all"
+                      ? "bg-cyan-500 text-black font-bold shadow-sm"
+                      : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-medium"
+                  }`}
+                  title="Show full study plan roadmap across all days"
+                >
+                  <span>All Tasks</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      studyPlanFilter === "all"
+                        ? "bg-black/20 text-black font-bold"
+                        : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    {allTodos.length}
+                  </span>
+                </button>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -3483,6 +3553,40 @@ const Dashboard = React.memo(function Dashboard() {
                 </div>
               )}
 
+              {/* Contextual Status Banner */}
+              {studyPlanFilter === "today" && allTodos.length > todayTodos.length && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-cyan-500/5 dark:bg-cyan-950/20 border border-cyan-500/20 text-xs text-slate-600 dark:text-slate-400 mb-4">
+                  <span className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>
+                      Showing <strong>Today's Tasks</strong> ({todayTodos.length} {todayTodos.length === 1 ? "task" : "tasks"}). {allTodos.length - todayTodos.length} upcoming tasks scheduled in your full roadmap.
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setStudyPlanFilter("all")}
+                    className="text-cyan-600 dark:text-cyan-400 font-bold hover:underline ml-2 whitespace-nowrap"
+                  >
+                    View All &rarr;
+                  </button>
+                </div>
+              )}
+
+              {studyPlanFilter === "all" && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 text-xs text-slate-600 dark:text-slate-400 mb-4">
+                  <span>
+                    Viewing full roadmap ({allTodos.length} total tasks across all days).
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setStudyPlanFilter("today")}
+                    className="text-amber-600 dark:text-amber-400 font-bold hover:underline ml-2 whitespace-nowrap"
+                  >
+                    Switch to Today Only &rarr;
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <AnimatePresence>
                   {displayedTodos.length === 0 ? (
@@ -3490,9 +3594,24 @@ const Dashboard = React.memo(function Dashboard() {
                       key="empty-todos"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="text-center py-8 dark:text-slate-500 text-slate-600 font-mono text-sm"
+                      className="text-center py-8 dark:text-slate-500 text-slate-600 font-mono text-sm space-y-2"
                     >
-                      NO ACTIVE TASKS. ADD A GOAL TO BEGIN.
+                      <p>
+                        {studyPlanFilter === "today"
+                          ? "NO TASKS SCHEDULED FOR TODAY."
+                          : "NO ACTIVE TASKS IN STUDY PLAN."}
+                      </p>
+                      {studyPlanFilter === "today" && allTodos.length > 0 && (
+                        <p>
+                          <button
+                            type="button"
+                            onClick={() => setStudyPlanFilter("all")}
+                            className="text-xs text-cyan-500 dark:text-cyan-400 hover:underline font-sans font-semibold"
+                          >
+                            You have {allTodos.length} upcoming tasks in your roadmap. Click here to view all &rarr;
+                          </button>
+                        </p>
+                      )}
                     </motion.div>
                   ) : (
                     <DndContext

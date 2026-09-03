@@ -9,6 +9,7 @@ import { useAppContext } from '../context/AppContext';
 import { TourStep, useTour } from '../components/TourGuide';
 
 import { markCalendarEventCompleted, updateGoogleTaskStatus } from '../lib/calendar';
+import { getLocalDateString, isCurrentDayTask } from '../lib/utils';
 
 const Missions = React.memo(function Missions() {
  const { todos, setTodos, pendingTasks, isLoaded } = useAppContext();
@@ -102,14 +103,14 @@ const Missions = React.memo(function Missions() {
  <Target className="w-5 h-5 dark:text-cyan-400 text-cyan-700" />
  TODAY'S TARGETS
  </h2>
- {todos.filter(t => t.subject !== 'Personal').length === 0 ? (
+ {todos.filter(t => t.subject !== 'Personal' && !t.isDeleted && isCurrentDayTask(t, getLocalDateString())).length === 0 ? (
  <Card className="dark:border-white/10 border-black/10 dark:bg-black bg-slate-50">
  <CardContent className="p-8 text-center dark:text-slate-400 text-slate-600">
- No tasks added for today. Add some from the Dashboard!
+ No tasks scheduled for today. Add some from the Dashboard!
  </CardContent>
  </Card>
  ) : (
- todos.filter(t => t.subject !== 'Personal').map((quest) => (
+ todos.filter(t => t.subject !== 'Personal' && !t.isDeleted && isCurrentDayTask(t, getLocalDateString())).map((quest) => (
  <motion.div
  key={`todo-${quest.id}`}
  initial={{ opacity: 0, y: 10 }}

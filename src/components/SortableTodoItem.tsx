@@ -6,6 +6,7 @@ import { GripVertical, Target, Calendar, Trash2, Clock } from "lucide-react";
 import { NeonCheckbox } from "./ui/neon-checkbox";
 import { getLogicalDate } from "../context/AppContext";
 import { isSameDay, format } from "date-fns";
+import { getLocalDateString, getTaskScheduledDate } from "@/lib/utils";
 
 interface SortableTodoItemProps {
   todo: any;
@@ -37,7 +38,9 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, tog
     ? "amber"
     : "cyan";
 
-  const isDifferentDate = todo.startTime && !isSameDay(new Date(todo.startTime), getLogicalDate());
+  const scheduledDate = getTaskScheduledDate(todo);
+  const todayStr = getLocalDateString();
+  const isDifferentDate = Boolean(scheduledDate && scheduledDate !== todayStr);
 
   return (
     <motion.div
@@ -75,17 +78,21 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, tog
       </AnimatePresence>
 
       {/* Different Date Indication */}
-      {isDifferentDate && (
+      {isDifferentDate && scheduledDate && (
         <div 
           className="absolute top-1 right-2 flex items-center gap-1 z-20"
-          title={`Scheduled for ${format(new Date(todo.startTime), 'EEEE, MMMM d, yyyy')}`}
+          title={`Scheduled for ${scheduledDate}`}
         >
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${scheduledDate < todayStr ? 'bg-amber-400' : 'bg-cyan-400'} opacity-75`}></span>
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${scheduledDate < todayStr ? 'bg-amber-500' : 'bg-cyan-500'}`}></span>
           </span>
-          <span className="text-[9px] font-mono font-bold dark:text-rose-400 text-rose-700 bg-rose-500/10 dark:bg-rose-950/40 border border-rose-500/20 px-1 rounded">
-            {format(new Date(todo.startTime), 'MMM d')}
+          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+            scheduledDate < todayStr
+              ? "dark:text-amber-400 text-amber-700 bg-amber-500/10 dark:bg-amber-950/40 border-amber-500/20"
+              : "dark:text-cyan-400 text-cyan-700 bg-cyan-500/10 dark:bg-cyan-950/40 border-cyan-500/20"
+          }`}>
+            {todo.backlogDayIndex ? `Day ${todo.backlogDayIndex}` : scheduledDate}
           </span>
         </div>
       )}

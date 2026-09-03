@@ -33,6 +33,7 @@ import {
   Keyboard,
   X,
   HelpCircle,
+  Layers,
 } from "lucide-react";
 import {
   AppProvider,
@@ -42,7 +43,7 @@ import {
   isSameLogicalDay,
   hasTodayProtocolRecord,
 } from "./context/AppContext";
-import { getXpForLevel } from "./lib/utils";
+import { getXpForLevel, getLocalDateString, isCurrentDayTask } from "./lib/utils";
 import { useHaptic } from "./hooks/useHaptic";
 import { useAuthToken } from "./hooks/useAuthToken";
 import { useCapacitorSetup } from "./hooks/useCapacitorSetup";
@@ -87,6 +88,7 @@ import { PageSkeleton } from "./components/PageSkeleton";
 
 const Protocols = lazy(() => import("./pages/Protocols"));
 const Rivals = lazy(() => import("./pages/Rivals"));
+const BacklogHQ = lazy(() => import("./pages/BacklogHQ"));
 const Profile = lazy(() => import("./pages/Profile"));
 const History = lazy(() => import("./pages/History"));
 
@@ -532,6 +534,7 @@ function AppContent() {
     const yesterdayObj = new Date();
     yesterdayObj.setDate(yesterdayObj.getDate() - 1);
     const yesterdayKey = yesterdayObj.toDateString();
+    const yesterdayDateStr = getLocalDateString(yesterdayObj);
 
     processedHistoryRef.current.delete(yesterdayObj.toISOString());
 
@@ -541,15 +544,22 @@ function AppContent() {
       date: yesterdayObj.toISOString(),
       hoursStudied: hoursStudiedToday || 0,
       xpEarned: xpGainedToday || 0,
-      completedTasks: todos.filter((t) => t.completed),
-      plannedTasks: todos,
+      completedTasks: todos.filter((t) => t.completed && isCurrentDayTask(t, yesterdayDateStr)),
+      plannedTasks: todos.filter((t) => isCurrentDayTask(t, yesterdayDateStr)),
       sleepTime: finalSleep,
       screenTime: finalScreen,
     };
 
     let planned = yesterdayEntry.plannedTasks;
-    if (!planned) {
-      planned = (yesterdayEntry.completedTasks || []).map((t) => ({ ...t }));
+    if (!planned || planned.length === 0) {
+      const filteredTodos = todos.filter((t) => isCurrentDayTask(t, yesterdayDateStr));
+      planned = filteredTodos.length > 0 ? filteredTodos : (yesterdayEntry.completedTasks || []).map((t) => ({ ...t }));
+    } else {
+      // In case historical entry had future roadmap tasks stored, filter down to yesterday's tasks
+      const filteredPlanned = planned.filter((t) => isCurrentDayTask(t, yesterdayDateStr));
+      if (filteredPlanned.length > 0) {
+        planned = filteredPlanned;
+      }
     }
 
     try {
@@ -771,16 +781,18 @@ function AppContent() {
           notified = true;
         }
 
-        // Remind at 21:00 (9 PM) if there are still pending tasks
-        const uncompletedTodos = todos.filter((t) => !t.completed).length;
-        const totalRemaining = pendingTasks.length + uncompletedTodos;
+        // Remind at 21:00 (9 PM) if there are still pending tasks for today
+        const todayStr = getLocalDateString();
+        const uncompletedToday = todos.filter(
+          (t) => !t.completed && !t.isDeleted && isCurrentDayTask(t, todayStr),
+        ).length;
         if (
           hour === 21 &&
-          totalRemaining > 0 &&
+          uncompletedToday > 0 &&
           notificationSettings.motivationalAlerts
         ) {
           sendNotification("Unfinished Business", {
-            body: `You still have ${totalRemaining} tasks remaining today. Don't go to sleep until you finish them.`,
+            body: `You still have ${uncompletedToday} task${uncompletedToday === 1 ? "" : "s"} remaining today. Don't go to sleep until you finish them.`,
             icon: "/icon.png",
             silent: !notificationSettings.soundEnabled,
           });
@@ -810,7 +822,10 @@ function AppContent() {
       ) {
         const { todos, notificationSettings } = stateRef.current;
         const now = new Date();
-        const upcomingTodos = todos.filter((t) => !t.completed && t.startTime);
+        const todayStr = getLocalDateString();
+        const upcomingTodos = todos.filter(
+          (t) => !t.completed && !t.isDeleted && isCurrentDayTask(t, todayStr) && t.startTime,
+        );
 
         upcomingTodos.forEach((task) => {
           if (!task.startTime || notifiedTasksRef.current.has(task.id)) return;
@@ -885,6 +900,8 @@ function AppContent() {
           m: "quests",
           p: "protocols",
           r: "rivals",
+          b: "backlog",
+          t: "backlog",
           i: "profile",
           g: "settings",
         };
@@ -959,7 +976,7 @@ function AppContent() {
     { id: "quests", label: "Missions", icon: Target, requiredLevel: 3 },
     { id: "protocols", label: "Protocols", icon: Shield, requiredLevel: 4 },
     { id: "store", label: "Store", icon: ShoppingBag, requiredLevel: 8 },
-    { id: "rivals", label: "Peers", icon: Swords, requiredLevel: 5 },
+    { id: "backlog", label: "Tracker 360", icon: Layers, requiredLevel: 1 },
     { id: "profile", label: "Profile", icon: User, requiredLevel: 1 },
     { id: "settings", label: "Settings", icon: SettingsIcon, requiredLevel: 1 },
   ];
@@ -1237,8 +1254,10 @@ function AppContent() {
         return <History />;
       case "analytics":
         return <Analytics />;
+      case "backlog":
+        return <BacklogHQ />;
       case "rivals":
-        return <Rivals />;
+        return <BacklogHQ />;
       case "profile":
         return <Profile />;
       default:
@@ -2304,6 +2323,13 @@ function AppContent() {
                           desc: "Social rankings",
                           icon: Swords,
                           req: 5,
+                        },
+                        {
+                          key: "B",
+                          label: "Tracker 360",
+                          desc: "Multi-subject study & rotation",
+                          icon: Layers,
+                          req: 1,
                         },
                         {
                           key: "I",

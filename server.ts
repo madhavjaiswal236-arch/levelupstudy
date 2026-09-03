@@ -127,11 +127,23 @@ app.post('/api/ai-coach', async (req, res) => {
     }
     
     let uncompletedTaskNames = [];
+    let effectivePlannedTasks = plannedTasks || [];
     if (plannedTasks && Array.isArray(plannedTasks)) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      effectivePlannedTasks = plannedTasks.filter((t: any) => {
+        if (!t) return false;
+        const taskDate =
+          t.dateScheduled ||
+          (typeof t.startTime === "string" && t.startTime.length >= 10
+            ? t.startTime.slice(0, 10)
+            : null);
+        if (taskDate && taskDate > todayStr) return false;
+        return true;
+      });
       const completedIds = (completedTasks || []).map((t: any) => t.id);
-      uncompletedTaskNames = plannedTasks
-        .filter(t => !completedIds.includes(t.id))
-        .map(t => sanitizePromptText(t.text))
+      uncompletedTaskNames = effectivePlannedTasks
+        .filter((t) => !completedIds.includes(t.id))
+        .map((t) => sanitizePromptText(t.text))
         .filter(Boolean);
     }
 
@@ -141,15 +153,15 @@ Analyze the data and evaluate them immediately, matching the tone and EXACT stru
 
 Raw Data:
 - Study Hours: ${hours}h
-- Tasks: ${completedTasks?.length || 0} completed out of ${plannedTasks?.length || 0} planned.
-- Uncompleted Tasks: ${uncompletedTaskNames.join(', ') || 'None'}
+- Tasks: ${completedTasks?.length || 0} completed out of ${effectivePlannedTasks.length} planned.
+- Uncompleted Tasks: ${uncompletedTaskNames.join(", ") || "None"}
 - Sleep: ${sleep}h
 - Screen Time: ${screenTime}h
 - Questions Solved: ${questionsSolved}
 
 Structure your response EXACTLY with these sections (no markdown bolding or asterisks):
 
-Yesterday's raw report: Sleep ${sleep}h. Screen ${screenTime}h. You planned ${plannedTasks?.length > 0 ? (uncompletedTaskNames.length > 0 ? uncompletedTaskNames.join(', ') + ' but left it incomplete' : plannedTasks?.length + ' tasks and executed them all') : 'no specific tasks'}. You did ${hours}h of study.
+Yesterday's raw report: Sleep ${sleep}h. Screen ${screenTime}h. You planned ${effectivePlannedTasks.length > 0 ? (uncompletedTaskNames.length > 0 ? uncompletedTaskNames[0] + " but left it incomplete" : effectivePlannedTasks.length + " tasks and executed them all") : "no specific tasks"}. You did ${hours}h of study.
 
 Diagnosis: [Brutal, personalized analysis using the EXACT metrics provided above. If they skipped tasks, mention them by name. If they have a wound/weakest topic, tell them it is bleeding and they avoided it.]
 

@@ -106,3 +106,107 @@ export async function withExponentialBackoff<T>(
     }
   }
 }
+
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function getTaskScheduledDate(task: {
+  dateScheduled?: string;
+  startTime?: string;
+  id?: number | string;
+}): string | null {
+  if (task.dateScheduled) {
+    const trimmed = String(task.dateScheduled).trim();
+    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+    return trimmed;
+  }
+  if (task.startTime) {
+    const trimmed = String(task.startTime).trim();
+    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+    return trimmed.slice(0, 10);
+  }
+  if (typeof task.id === "number") {
+    const d = new Date(task.id);
+    if (!isNaN(d.getTime())) {
+      return getLocalDateString(d);
+    }
+  }
+  return null;
+}
+
+export function isCurrentDayTask(
+  task: {
+    id?: number | string;
+    completed?: boolean;
+    dateScheduled?: string;
+    startTime?: string;
+    isBacklogTask?: boolean;
+    backlogDayIndex?: number;
+    completedDate?: string;
+    completedAt?: number;
+  },
+  todayStr?: string
+): boolean {
+  const currentDay = todayStr || getLocalDateString();
+  const taskDate = getTaskScheduledDate(task);
+
+  if (taskDate) {
+    if (taskDate === currentDay) return true;
+    // An unfinished task from past days rolls over into today's active study plan
+    if (taskDate < currentDay && !task.completed) return true;
+    // Future date task is strictly excluded from today's plan
+    return false;
+  }
+
+  // If it's a backlog task with future backlogDayIndex
+  if (task.isBacklogTask && typeof task.backlogDayIndex === "number" && task.backlogDayIndex > 1) {
+    return false;
+  }
+
+  // If completed on this date
+  if (task.completedDate === currentDay) {
+    return true;
+  }
+
+  // If completed on a different date, exclude from today
+  if (task.completedDate && task.completedDate !== currentDay) {
+    return false;
+  }
+
+  // For untracked/undated items:
+  // If incomplete, it belongs to today's active tasks
+  if (!task.completed) return true;
+
+  // If completed and untracked, check if id was created on this day
+  if (typeof task.id === "number") {
+    const d = new Date(task.id);
+    if (!isNaN(d.getTime())) {
+      return getLocalDateString(d) === currentDay;
+    }
+  }
+
+  return true;
+}
+
+export function filterTodayTasks<T extends {
+  id?: number | string;
+  completed?: boolean;
+  isDeleted?: boolean;
+  dateScheduled?: string;
+  startTime?: string;
+  isBacklogTask?: boolean;
+  backlogDayIndex?: number;
+  completedDate?: string;
+  completedAt?: number;
+}>(
+  tasks: T[],
+  todayStr: string = getLocalDateString()
+): T[] {
+  return tasks.filter((t) => !t.isDeleted && isCurrentDayTask(t, todayStr));
+}

@@ -18,7 +18,9 @@ import React, {
   useCallback,
 } from "react";
 import { initAuth } from "@/lib/firebase";
-import { getLevelFromXp } from "@/lib/utils";
+import { BacklogPlan } from "@/lib/backlog/types";
+import { reconstructPlanFromTodos } from "@/lib/backlog/engine";
+import { getLevelFromXp, getLocalDateString, isCurrentDayTask } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
@@ -148,6 +150,14 @@ export interface Todo {
   durationMinutes?: number;
   isDeleted?: boolean;
   deletedAt?: number;
+  backlogPlanId?: string;
+  backlogChapterId?: string;
+  backlogDayIndex?: number;
+  backlogTaskType?: "lecture" | "practice" | "revision" | "test";
+  isBacklogTask?: boolean;
+  dateScheduled?: string;
+  completedDate?: string;
+  completedAt?: number;
 }
 
 export const generateUniqueTaskId = (prefix = "task"): string => {
@@ -238,6 +248,8 @@ interface AppState {
   notifyCalendarMutation: () => void;
   todos: Todo[];
   setTodos: React.Dispatch<React.SetStateAction<Todo[]>>;
+  backlogPlan: BacklogPlan | null;
+  setBacklogPlan: React.Dispatch<React.SetStateAction<BacklogPlan | null>>;
   updateTask: (id: number | string, updates: Partial<Todo>) => void;
   loggedTasksToday: Todo[];
   setLoggedTasksToday: React.Dispatch<React.SetStateAction<Todo[]>>;
@@ -534,6 +546,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hasSeenReminder, setHasSeenReminder] = useState(false);
   const [hasSeenRules, setHasSeenRules] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
+  const [backlogPlan, setBacklogPlan] = useState<BacklogPlan | null>(null);
   const [loggedTasksToday, setLoggedTasksToday] = useState<Todo[]>([]);
   const [pendingTasks, setPendingTasks] = useState<Todo[]>([]);
   const [history, setHistory] = useState<PlayHistoryEntry[]>([]);
@@ -789,9 +802,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
             loadedEndDate ? parsed.isClass11SetupDone || false : false,
           );
           setBacklogPriorities(parsed.backlogPriorities || {});
-          setHasSeenRules(parsed.hasSeenRules || false);
+
+          let loadedBacklogPlan: BacklogPlan | null = parsed.backlogPlan || null;
+          if (!loadedBacklogPlan && typeof window !== "undefined") {
+            try {
+              const backupPlanStr = localStorage.getItem("jee_tracker_backlog_plan");
+              if (backupPlanStr) {
+                loadedBacklogPlan = JSON.parse(backupPlanStr);
+              }
+            } catch (e) {
+              console.warn("Failed to load backlog plan from backup key:", e);
+            }
+          }
 
           const loadedTodos = parsed.todos || [];
+          if (!loadedBacklogPlan && loadedTodos.length > 0) {
+            loadedBacklogPlan = reconstructPlanFromTodos(loadedTodos);
+          }
+          setBacklogPlan(loadedBacklogPlan);
+          setHasSeenRules(parsed.hasSeenRules || false);
           setTodos(
             Array.from(
               new Map(loadedTodos.map((t: Todo) => [t.id, t])).values(),
@@ -890,6 +919,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       class11EndDate,
       isClass11SetupDone,
       backlogPriorities,
+      backlogPlan,
       todos,
       loggedTasksToday,
       pendingTasks,
@@ -967,6 +997,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     class11EndDate,
     isClass11SetupDone,
     backlogPriorities,
+    backlogPlan,
     todos,
     loggedTasksToday,
     pendingTasks,
@@ -1124,6 +1155,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
         if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
         if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
+        if (mergedState.backlogPlan !== undefined) {
+          setBacklogPlan(mergedState.backlogPlan);
+          if (mergedState.backlogPlan && typeof window !== "undefined") {
+            try {
+              localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(mergedState.backlogPlan));
+            } catch (e) {}
+          }
+        } else {
+          try {
+            const backupPlanStr = typeof window !== "undefined" ? localStorage.getItem("jee_tracker_backlog_plan") : null;
+            if (backupPlanStr) {
+              const parsedPlan = JSON.parse(backupPlanStr);
+              setBacklogPlan(parsedPlan);
+              mergedState.backlogPlan = parsedPlan;
+            } else if (mergedState.todos && mergedState.todos.length > 0) {
+              const recPlan = reconstructPlanFromTodos(mergedState.todos);
+              if (recPlan) {
+                setBacklogPlan(recPlan);
+                mergedState.backlogPlan = recPlan;
+              }
+            }
+          } catch (e) {}
+        }
         if (mergedState.todos !== undefined) setTodos(mergedState.todos);
         if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
         if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
@@ -1217,6 +1271,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (parsed.class11EndDate !== undefined) setClass11EndDate(parsed.class11EndDate);
           if (parsed.isClass11SetupDone !== undefined) setIsClass11SetupDone(parsed.isClass11SetupDone);
           if (parsed.backlogPriorities !== undefined) setBacklogPriorities(parsed.backlogPriorities);
+          if (parsed.backlogPlan !== undefined) setBacklogPlan(parsed.backlogPlan);
           if (parsed.totalXpGoal !== undefined) setTotalXpGoal(parsed.totalXpGoal);
           if (parsed.bossDayTargetXp !== undefined) setBossDayTargetXp(parsed.bossDayTargetXp);
           if (parsed.bossDayCompleted !== undefined) setBossDayCompleted(parsed.bossDayCompleted);
@@ -1259,6 +1314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       class11EndDate,
       isClass11SetupDone,
       backlogPriorities,
+      backlogPlan,
       todos,
       loggedTasksToday,
       pendingTasks,
@@ -1314,6 +1370,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  // Dedicated immediate backup sync for backlogPlan
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (typeof window !== "undefined") {
+      try {
+        if (backlogPlan) {
+          localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(backlogPlan));
+        }
+      } catch (e) {
+        console.warn("Failed to update backlog plan backup:", e);
+      }
+    }
+  }, [backlogPlan, isLoaded]);
+
   const saveStateToCloudNow = useCallback(
     async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
       if (!isLoaded || !isCloudSyncComplete) return false;
@@ -1348,9 +1418,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateTask = useCallback((id: number | string, updates: Partial<Todo>) => {
     let updatedTodosList: Todo[] = [];
     setTodos((prev) => {
-      updatedTodosList = prev.map((t) =>
-        String(t.id) === String(id) ? { ...t, ...updates } : t,
-      );
+      updatedTodosList = prev.map((t) => {
+        if (String(t.id) === String(id)) {
+          const enriched = { ...t, ...updates };
+          if (updates.completed === true && !t.completed) {
+            enriched.completedAt = Date.now();
+            enriched.completedDate = getLocalDateString();
+          } else if (updates.completed === false) {
+            enriched.completedAt = undefined;
+            enriched.completedDate = undefined;
+          }
+          return enriched;
+        }
+        return t;
+      });
       return updatedTodosList;
     });
 
@@ -1432,8 +1513,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       // -- NEW DAILY ROLLOVER LOGIC --
-      const completedTasks = (state.todos || []).filter((t: Todo) => t.completed);
-      const uncompletedTasks = (state.todos || []).filter((t: Todo) => !t.completed);
+      const rolloverDateStr = lastDate ? getLocalDateString(lastDate) : "";
+      const lastDayTodos = (state.todos || []).filter(
+        (t: Todo) => !t.isDeleted && isCurrentDayTask(t, rolloverDateStr),
+      );
+      const completedTasks = lastDayTodos.filter((t: Todo) => t.completed);
+      const uncompletedTasks = lastDayTodos.filter((t: Todo) => !t.completed);
       const curXpGainedToday = state.xpGainedToday || 0;
 
       // Update life metrics if overrides provided
@@ -1477,7 +1562,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             : lifeM.screenTime;
 
         const tasksToLog = [...completedTasks, ...(state.loggedTasksToday || [])];
-        const plannedToLog = [...(state.todos || []), ...(state.loggedTasksToday || [])];
+        const plannedToLog = [...lastDayTodos, ...(state.loggedTasksToday || [])];
 
         if (existingLastDateIndex === -1) {
           updatedHistory.push({
@@ -1689,13 +1774,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
       } else {
         const state = latestStateRef.current;
-        const completedTasks = (state.todos || []).filter((t: Todo) => t.completed);
+        const yesterdayDateStr = getLocalDateString(yesterdayObj);
+        const dayTodos = (state.todos || []).filter(
+          (t: Todo) => !t.isDeleted && isCurrentDayTask(t, yesterdayDateStr),
+        );
+        const completedTasks = dayTodos.filter((t: Todo) => t.completed);
         updated.push({
           date: yesterdayObj.toISOString(),
           hoursStudied: Number((state.hoursStudiedToday || 0).toFixed(1)),
           xpEarned: state.xpGainedToday || 0,
           completedTasks: [...completedTasks, ...(state.loggedTasksToday || [])],
-          plannedTasks: [...(state.todos || []), ...(state.loggedTasksToday || [])],
+          plannedTasks: [...dayTodos, ...(state.loggedTasksToday || [])],
           sleepTime: sleepInput,
           screenTime: screenTimeInput,
         });
@@ -2037,6 +2126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
       if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
       if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
+      if (mergedState.backlogPlan !== undefined) setBacklogPlan(mergedState.backlogPlan);
       if (mergedState.todos !== undefined) setTodos(mergedState.todos);
       if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
       if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
@@ -2143,6 +2233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
       if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
       if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
+      if (mergedState.backlogPlan !== undefined) setBacklogPlan(mergedState.backlogPlan);
       if (mergedState.todos !== undefined) setTodos(mergedState.todos);
       if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
       if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
@@ -2243,6 +2334,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       notifyCalendarMutation,
       todos,
       setTodos,
+      backlogPlan,
+      setBacklogPlan,
       updateTask,
       loggedTasksToday,
       setLoggedTasksToday,
@@ -2350,6 +2443,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHasSeenRules,
       todos,
       setTodos,
+      backlogPlan,
+      setBacklogPlan,
       updateTask,
       loggedTasksToday,
       setLoggedTasksToday,

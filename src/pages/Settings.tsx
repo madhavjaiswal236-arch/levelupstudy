@@ -54,6 +54,8 @@ import {
   getXpForLevel,
   getRankInfo,
   getLevelProgress,
+  getLocalDateString,
+  isCurrentDayTask,
 } from "../lib/utils";
 import {
   requestNotificationPermissions,
@@ -951,10 +953,17 @@ const Settings = React.memo(function Settings() {
                   <button
                     type="button"
                     onClick={() => {
-                      const urgent = todos.find((t) => !t.completed);
+                      const todayStr = getLocalDateString();
+                      const todayPending = todos.filter(
+                        (t) => !t.completed && !t.isDeleted && isCurrentDayTask(t, todayStr),
+                      );
+                      const urgent =
+                        todayPending.find((t) => t.priority === "High") ||
+                        todayPending[0] ||
+                        todos.find((t) => !t.completed);
                       triggerTaskReminder(
                         urgent ? urgent.text : "Solve 10 Physics PYQs",
-                        todos.filter((t) => !t.completed).length || 3,
+                        todayPending.length || 1,
                       );
                     }}
                     className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"

@@ -419,6 +419,15 @@ export function reconcileState(
   const activeBoost = localState.activeBoost || cloudState.activeBoost || null;
   const hasSeenRules = Boolean(localState.hasSeenRules || cloudState.hasSeenRules);
 
+  const backlogPlan = (() => {
+    if (localState.backlogPlan && cloudState.backlogPlan) {
+      const localPlanTs = getTimestampMs(localState.backlogPlan.updatedAt || localState.lastSyncTimestamp);
+      const cloudPlanTs = getTimestampMs(cloudState.backlogPlan.updatedAt || cloudState.lastSyncTimestamp);
+      return localPlanTs >= cloudPlanTs ? localState.backlogPlan : cloudState.backlogPlan;
+    }
+    return localState.backlogPlan || cloudState.backlogPlan || null;
+  })();
+
   const mergedState = {
     ...cloudState,
     ...localState,
@@ -440,6 +449,7 @@ export function reconcileState(
     lastBossDayDate,
     activeBoost,
     hasSeenRules,
+    backlogPlan,
     todos,
     loggedTasksToday,
     pendingTasks,
