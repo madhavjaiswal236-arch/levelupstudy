@@ -76,6 +76,13 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
     existingChapter?.lectureDurationMinutes || 120
   );
 
+  // Range auto-selection anchor and preview states
+  const [lastSelectedLec, setLastSelectedLec] = useState<number | null>(null);
+  const [hoveredLec, setHoveredLec] = useState<number | null>(null);
+  const [autoFillMessage, setAutoFillMessage] = useState<string | null>(null);
+  const [customRangeFrom, setCustomRangeFrom] = useState<number>(1);
+  const [customRangeTo, setCustomRangeTo] = useState<number>(10);
+
   // Practice configuration
   const [practiceEnabled, setPracticeEnabled] = useState<boolean>(
     existingChapter?.practice?.enabled ?? true
@@ -109,6 +116,9 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
     setTotalLecturesCount(total);
     // Pre-select first 4 lectures by default
     setSelectedLectures([1, 2, 3, 4]);
+    setLastSelectedLec(4);
+    setCustomRangeFrom(1);
+    setCustomRangeTo(Math.min(10, total));
     setLectureDurationMinutes(120); // 2 hours default
     setModalStep(2);
   };
@@ -119,34 +129,63 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
     setChapterTier('A');
     setTotalLecturesCount(15);
     setSelectedLectures([1, 2, 3, 4, 5]);
+    setLastSelectedLec(5);
+    setCustomRangeFrom(1);
+    setCustomRangeTo(10);
     setLectureDurationMinutes(120);
     setModalStep(2);
   };
 
   const toggleLecture = (lecNum: number) => {
-    setSelectedLectures(prev => {
-      if (prev.includes(lecNum)) {
-        return prev.filter(n => n !== lecNum);
+    if (selectedLectures.includes(lecNum)) {
+      // Unselect single lecture
+      setSelectedLectures(prev => prev.filter(n => n !== lecNum));
+      setLastSelectedLec(null);
+      setAutoFillMessage(null);
+    } else {
+      // If a previous lecture was already clicked, auto-select all lectures in between (e.g. 6 then 20 -> 6..20)
+      if (lastSelectedLec !== null && lastSelectedLec !== lecNum) {
+        const start = Math.min(lastSelectedLec, lecNum);
+        const end = Math.max(lastSelectedLec, lecNum);
+        const newSet = new Set(selectedLectures);
+        for (let i = start; i <= end; i++) {
+          newSet.add(i);
+        }
+        const updated = Array.from(newSet).sort((a, b) => a - b);
+        setSelectedLectures(updated);
+        setAutoFillMessage(`Auto-selected Lectures ${start} to ${end} (${end - start + 1} lectures)`);
+        setLastSelectedLec(lecNum);
       } else {
-        return [...prev, lecNum].sort((a, b) => a - b);
+        // Single select
+        setSelectedLectures(prev => [...prev, lecNum].sort((a, b) => a - b));
+        setLastSelectedLec(lecNum);
+        setAutoFillMessage(`Selected #${lecNum}. Click another lecture (e.g. #${Math.min(totalLecturesCount, lecNum + 5)}) to auto-fill the range!`);
       }
-    });
+    }
   };
 
   const selectRange = (start: number, end: number) => {
+    const min = Math.max(1, Math.min(start, end));
+    const max = Math.min(totalLecturesCount, Math.max(start, end));
     const newSelection = new Set(selectedLectures);
-    for (let i = start; i <= Math.min(end, totalLecturesCount); i++) {
+    for (let i = min; i <= max; i++) {
       newSelection.add(i);
     }
     setSelectedLectures(Array.from(newSelection).sort((a, b) => a - b));
+    setLastSelectedLec(max);
+    setAutoFillMessage(`Selected range ${min} to ${max} (${max - min + 1} lectures)`);
   };
 
   const handleSelectAll = () => {
     setSelectedLectures(Array.from({ length: totalLecturesCount }, (_, i) => i + 1));
+    setLastSelectedLec(totalLecturesCount);
+    setAutoFillMessage(`Selected all ${totalLecturesCount} lectures`);
   };
 
   const handleClearAll = () => {
     setSelectedLectures([]);
+    setLastSelectedLec(null);
+    setAutoFillMessage(null);
   };
 
   const handleSave = () => {
@@ -378,86 +417,188 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
 
                 {/* Card of Lectures (Ref: Screenshot 2026-09-03 133419.png) */}
                 <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-3.5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
-                      <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wide">
-                        Lectures in this chapter
+                      <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
+                        <span>Lectures in this chapter</span>
+                        {lastSelectedLec !== null && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30 font-mono font-semibold">
+                            Anchor: #{lastSelectedLec}
+                          </span>
+                        )}
                       </h4>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        Click individual lecture cards to name & place them in your plan
+                        Click lecture <strong>#6</strong> then <strong>#20</strong> to auto-select all intermediate lectures (7, 8, 9...)
                       </p>
                     </div>
 
                     {/* Prominent selected counter pill (Yellow/Amber accent) */}
-                    <div className="px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs font-mono shadow-sm flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{selectedLectures.length} Selected</span>
+                    <div className="flex items-center gap-2">
+                      <div className="px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs font-mono shadow-sm flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{selectedLectures.length} Selected</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Grid of individual Lecture Buttons */}
-                  <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2">
-                    {Array.from({ length: totalLecturesCount }, (_, i) => i + 1).map(lecNum => {
-                      const isSelected = selectedLectures.includes(lecNum);
-                      return (
+                  {/* Auto-fill Helper Banner */}
+                  {autoFillMessage && (
+                    <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between text-xs text-amber-300">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>{autoFillMessage}</span>
+                      </div>
+                      {lastSelectedLec !== null && (
                         <button
-                          key={lecNum}
                           type="button"
-                          onClick={() => toggleLecture(lecNum)}
-                          className={`aspect-square rounded-xl font-mono text-sm font-bold flex flex-col items-center justify-center transition-all ${
-                            isSelected
-                              ? 'bg-amber-400 text-slate-950 font-black border-2 border-amber-300 shadow-md scale-105'
-                              : 'bg-slate-900 border border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
-                          }`}
+                          onClick={() => {
+                            setLastSelectedLec(null);
+                            setAutoFillMessage(null);
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-white underline ml-2"
                         >
-                          <span>{lecNum}</span>
+                          Clear anchor
                         </button>
-                      );
-                    })}
-                  </div>
+                      )}
+                    </div>
+                  )}
 
-                  {/* Quick Select Buttons & Total Stepper */}
-                  <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/80 text-xs">
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Explicit Range Selector Bar */}
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2 text-xs text-slate-300">
+                      <span className="font-semibold text-slate-400">Auto-Select Range:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-500">From</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalLecturesCount}
+                          value={customRangeFrom}
+                          onChange={e => setCustomRangeFrom(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-12 px-1.5 py-1 bg-slate-950 border border-slate-700 rounded-md text-center text-xs font-mono font-bold text-white focus:border-amber-400 outline-none"
+                        />
+                        <span className="text-slate-500">to</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalLecturesCount}
+                          value={customRangeTo}
+                          onChange={e => setCustomRangeTo(Math.min(totalLecturesCount, parseInt(e.target.value) || totalLecturesCount))}
+                          className="w-12 px-1.5 py-1 bg-slate-950 border border-slate-700 rounded-md text-center text-xs font-mono font-bold text-white focus:border-amber-400 outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => selectRange(customRangeFrom, customRangeTo)}
+                        className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-md transition shadow-xs"
+                      >
+                        Apply Range
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap text-xs">
                       <button
                         type="button"
                         onClick={handleSelectAll}
-                        className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition"
+                        className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 transition text-[11px] font-semibold"
                       >
-                        Select All
+                        All ({totalLecturesCount})
                       </button>
                       <button
                         type="button"
                         onClick={handleClearAll}
-                        className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 transition"
+                        className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-rose-400 border border-slate-800 transition text-[11px] font-semibold"
                       >
                         Clear
                       </button>
                       <button
                         type="button"
                         onClick={() => selectRange(1, 5)}
-                        className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition"
+                        className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 transition text-[11px] font-mono"
                       >
-                        1 to 5
+                        1..5
                       </button>
                       {totalLecturesCount >= 10 && (
                         <button
                           type="button"
-                          onClick={() => selectRange(6, 10)}
-                          className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition"
+                          onClick={() => selectRange(6, Math.min(10, totalLecturesCount))}
+                          className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 transition text-[11px] font-mono"
                         >
-                          6 to 10
+                          6..10
+                        </button>
+                      )}
+                      {totalLecturesCount >= 20 && (
+                        <button
+                          type="button"
+                          onClick={() => selectRange(6, 20)}
+                          className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/30 transition text-[11px] font-mono font-bold"
+                        >
+                          6..20
                         </button>
                       )}
                     </div>
+                  </div>
 
-                    {/* Total Lectures in Chapter Stepper */}
+                  {/* Grid of individual Lecture Buttons */}
+                  <div
+                    className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2"
+                    onMouseLeave={() => setHoveredLec(null)}
+                  >
+                    {Array.from({ length: totalLecturesCount }, (_, i) => i + 1).map(lecNum => {
+                      const isSelected = selectedLectures.includes(lecNum);
+                      const isAnchor = lastSelectedLec === lecNum;
+                      const isInHoverRange =
+                        lastSelectedLec !== null &&
+                        hoveredLec !== null &&
+                        lastSelectedLec !== hoveredLec &&
+                        lecNum >= Math.min(lastSelectedLec, hoveredLec) &&
+                        lecNum <= Math.max(lastSelectedLec, hoveredLec);
+
+                      return (
+                        <button
+                          key={lecNum}
+                          type="button"
+                          onClick={() => toggleLecture(lecNum)}
+                          onMouseEnter={() => setHoveredLec(lecNum)}
+                          title={
+                            lastSelectedLec !== null && lastSelectedLec !== lecNum
+                              ? `Click to auto-select from #${Math.min(lastSelectedLec, lecNum)} to #${Math.max(lastSelectedLec, lecNum)}`
+                              : isSelected
+                              ? `Lecture #${lecNum} is selected. Click to deselect.`
+                              : `Click to select Lecture #${lecNum}`
+                          }
+                          className={`aspect-square rounded-xl font-mono text-sm font-bold flex flex-col items-center justify-center relative transition-all ${
+                            isSelected
+                              ? 'bg-amber-400 text-slate-950 font-black border-2 border-amber-300 shadow-md scale-105 z-10'
+                              : isInHoverRange
+                              ? 'bg-amber-400/20 text-amber-200 border-2 border-dashed border-amber-400/70 scale-102 z-0'
+                              : 'bg-slate-900 border border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+                          }`}
+                        >
+                          <span>{lecNum}</span>
+                          {isAnchor && (
+                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-slate-950" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Total Lectures in Chapter Stepper */}
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/80 text-xs">
+                    <p className="text-[11px] text-slate-400">
+                      Tip: Need more lecture slots for this chapter? Increase total lectures below.
+                    </p>
                     <div className="flex items-center gap-1.5 text-slate-400">
-                      <span>Total Lecs:</span>
+                      <span>Total Chapter Lectures:</span>
                       <button
                         type="button"
-                        onClick={() => setTotalLecturesCount(c => Math.max(5, c - 1))}
-                        className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center border border-slate-800"
+                        onClick={() => {
+                          const next = Math.max(5, totalLecturesCount - 1);
+                          setTotalLecturesCount(next);
+                          setCustomRangeTo(prev => Math.min(prev, next));
+                        }}
+                        className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center border border-slate-800 font-bold"
                       >
                         -
                       </button>
@@ -466,8 +607,12 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
                       </span>
                       <button
                         type="button"
-                        onClick={() => setTotalLecturesCount(c => Math.min(35, c + 1))}
-                        className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center border border-slate-800"
+                        onClick={() => {
+                          const next = Math.min(60, totalLecturesCount + 1);
+                          setTotalLecturesCount(next);
+                          setCustomRangeTo(next);
+                        }}
+                        className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center border border-slate-800 font-bold"
                       >
                         +
                       </button>

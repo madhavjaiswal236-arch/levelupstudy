@@ -1,8 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sliders, Sparkles, Clock, Calendar, CheckCircle2, AlertCircle, X, ArrowRight } from 'lucide-react';
+import { Sliders, Sparkles, Clock, Calendar, CheckCircle2, AlertCircle, X, ArrowRight, Layers } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
-import { calculateMetrics, generateRoadmap, generateTodosFromRoadmap } from '@/lib/backlog/engine';
+import {
+  calculateMetrics,
+  generateRoadmap,
+  generateTodosFromRoadmap,
+  calculateDateDiffDays,
+  addDaysToDate
+} from '@/lib/backlog/engine';
 import { BacklogPlan, FeasibilityStatus } from '@/lib/backlog/types';
 
 interface BacklogSimulatorProps {
@@ -31,6 +37,110 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
 
   const currentHours = +(backlogPlan.settings.targetDailyMinutes / 60).toFixed(1);
   const hoursDiff = +(simDailyHours - currentHours).toFixed(1);
+
+  const daysDiffFromStart = useMemo(() => {
+    return Math.max(1, calculateDateDiffDays(backlogPlan.settings.startDate, simDeadline));
+  }, [backlogPlan.settings.startDate, simDeadline]);
+
+  // Pace Presets for Simulator (with 10h-13h recommendation for >50 lectures)
+  const pacePresets = useMemo(() => {
+    const totalMinutes =
+      simMetrics.totalLectureMinutes +
+      simMetrics.totalPracticeMinutes +
+      (backlogPlan.settings.revisionEnabled ? Math.round(simMetrics.totalLectures / (backlogPlan.settings.revisionAfterEveryNLectures || 6)) * 45 : 0) +
+      (backlogPlan.settings.testEnabled ? backlogPlan.subjects.reduce((a, s) => a + s.chapters.length, 0) * 90 : 0);
+
+    const isLargeBacklog = simMetrics.totalLectures > 50;
+    const bufferDays = backlogPlan.settings.bufferDays || 0;
+
+    let options: Array<{ days: number; badge: string; desc: string }>;
+
+    if (isLargeBacklog && totalMinutes > 0) {
+      const daysFor12h = Math.max(3, Math.round(totalMinutes / (12 * 60)) + bufferDays);
+      const daysFor10h = Math.max(4, Math.round(totalMinutes / (10.2 * 60)) + bufferDays);
+      const daysFor7h = Math.max(7, Math.round(totalMinutes / (7 * 60)) + bufferDays);
+      const daysFor4h = Math.max(14, Math.round(totalMinutes / (4 * 60)) + bufferDays);
+
+      const dayMap = new Map<number, { badge: string; desc: string }>();
+      dayMap.set(daysFor12h, {
+        badge: '⚡ Fast Sprint (~12h/day)',
+        desc: 'Maximum viable clearance (<13h/day) to complete >50 lectures rapidly.'
+      });
+      dayMap.set(daysFor10h, {
+        badge: '🔥 Power Pace (~10h/day)',
+        desc: '10h+ intensive daily schedule recommended for rapid syllabus clearance.'
+      });
+      dayMap.set(daysFor7h, {
+        badge: 'Moderate Pace (~7h/day)',
+        desc: 'Consistent daily effort spread over multiple weeks.'
+      });
+      dayMap.set(daysFor4h, {
+        badge: 'Extended Pace (~4h/day)',
+        desc: 'Longer duration timeline spread across multiple months.'
+      });
+
+      options = Array.from(dayMap.entries())
+        .map(([days, info]) => ({ days, ...info }))
+        .sort((a, b) => a.days - b.days);
+    } else {
+      options = [
+        { days: 30, badge: 'Blitz Pace', desc: 'Maximum-effort sprint for urgent completion.' },
+        { days: 60, badge: 'Intensive Pace', desc: 'High-focus daily schedule ahead of tests.' },
+        { days: 90, badge: 'Fast Pace', desc: 'Intensive plan for faster completion.' },
+        { days: 120, badge: 'Balanced Pace', desc: 'Manageable daily workload with steady progress.' }
+      ];
+    }
+
+    return options.map(opt => {
+      const studyDays = Math.max(1, opt.days - bufferDays);
+      const dailyReqMins = Math.round(totalMinutes / studyDays);
+      const dailyHrs = Math.floor(dailyReqMins / 60);
+      const dailyRemMins = dailyReqMins % 60;
+      const dailyLecs = +(dailyReqMins / 120).toFixed(1);
+      const totalDailyHoursNum = +(dailyReqMins / 60).toFixed(1);
+
+      const isRecommended = isLargeBacklog
+        ? totalDailyHoursNum >= 10 && totalDailyHoursNum < 13
+        : totalDailyHoursNum >= 3.5 && totalDailyHoursNum <= 6;
+
+      let feasibilityLabel = 'Comfortable';
+      let feasibilityClass = 'text-emerald-400 font-semibold';
+      if (totalDailyHoursNum >= 13) {
+        feasibilityLabel = 'Extreme (>13h)';
+        feasibilityClass = 'text-rose-500 font-bold';
+      } else if (totalDailyHoursNum >= 10) {
+        feasibilityLabel = isLargeBacklog ? '🔥 Recommended (10-13h)' : 'Demanding (10h+)';
+        feasibilityClass = isLargeBacklog ? 'text-amber-300 font-black' : 'text-amber-400 font-semibold';
+      } else if (totalDailyHoursNum >= 7) {
+        feasibilityLabel = 'Demanding';
+        feasibilityClass = 'text-amber-400 font-semibold';
+      } else if (totalDailyHoursNum >= 4) {
+        feasibilityLabel = 'Moderate';
+        feasibilityClass = 'text-sky-400 font-semibold';
+      }
+
+      const isSelected = Math.abs(daysDiffFromStart - opt.days) <= 1;
+
+      return {
+        ...opt,
+        dailyReqMins,
+        dailyHrs,
+        dailyRemMins,
+        dailyLecs,
+        totalDailyHoursNum,
+        feasibilityLabel,
+        feasibilityClass,
+        isRecommended,
+        isSelected
+      };
+    });
+  }, [simMetrics, backlogPlan, daysDiffFromStart]);
+
+  const handleSelectPacePreset = (days: number, dailyReqMins: number) => {
+    const newDeadline = addDaysToDate(backlogPlan.settings.startDate, days);
+    setSimDeadline(newDeadline);
+    setSimDailyHours(+(dailyReqMins / 60).toFixed(1));
+  };
 
   // Calculate day difference between current projected completion and simulated
   const currentProjDate = new Date(backlogPlan.metrics.projectedCompletionDate).getTime();
@@ -133,7 +243,129 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
           </div>
 
           {/* Body */}
-          <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+          <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
+            {/* High Backlog Alert if > 50 Lectures */}
+            {simMetrics.totalLectures > 50 && (
+              <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-amber-300">
+                    High Backlog Volume: {simMetrics.totalLectures} Lectures ({Math.round(simMetrics.totalLectureMinutes / 60)}h)
+                  </p>
+                  <p className="text-slate-300 mt-0.5">
+                    Fast-track <strong>10h to &lt;13h per day</strong> plans are recommended below to ensure you clear the syllabus before mock exams.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* PROMINENT CARD: EXACT DAYS REQUIRED AT SELECTED PACE */}
+            <div className="p-4 sm:p-5 rounded-2xl border-2 border-amber-400/80 bg-gradient-to-br from-amber-500/15 via-slate-950 to-sky-950/40 shadow-lg space-y-3 relative overflow-hidden">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Exact Active Pace</span>
+                </span>
+                <span className="text-xs font-bold text-amber-400 font-mono">
+                  {daysDiffFromStart} Days Total
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Exact Duration:</span>
+                  <span className="text-lg font-black text-white font-mono">{daysDiffFromStart} Days</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Daily Backlog Time:</span>
+                  <span className="text-lg font-black text-amber-400 font-mono">{simDailyHours} hrs/d</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 col-span-2 sm:col-span-1">
+                  <span className="text-[10px] text-slate-400 block">Est. Completion:</span>
+                  <span className="text-xs font-bold text-slate-200 font-mono">
+                    {new Date(simDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-300 leading-snug">
+                {simMetrics.totalLectures > 50 && simDailyHours >= 10 && simDailyHours < 13
+                  ? `⚡ Recommended Fast-Track Pace! At ~${simDailyHours}h/day, you will complete all ${simMetrics.totalLectures} lectures in ${daysDiffFromStart} days.`
+                  : `At ${simDailyHours}h/day, completing ${simMetrics.totalLectures} lectures will require exactly ${daysDiffFromStart} days.`}
+              </p>
+            </div>
+
+            {/* Small Cards Grid: Pace Presets by Days */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Choose Duration Preset</span>
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  Click card to simulate
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {pacePresets.map(preset => (
+                  <div
+                    key={preset.days}
+                    onClick={() => handleSelectPacePreset(preset.days, preset.dailyReqMins)}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                      preset.isSelected
+                        ? 'border-amber-400 bg-amber-500/10 ring-1 ring-amber-400/50 shadow-md'
+                        : preset.isRecommended
+                        ? 'border-amber-500/60 bg-slate-950 hover:border-amber-400 hover:bg-slate-900/80'
+                        : 'border-slate-800/90 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-900/60'
+                    }`}
+                  >
+                    {preset.isRecommended && (
+                      <span className="absolute -top-2 right-2 px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[9px] tracking-wide uppercase">
+                        🔥 Recommended
+                      </span>
+                    )}
+
+                    <div>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-black text-white font-mono">
+                            {preset.days} Days
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${
+                              preset.isSelected
+                                ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
+                                : 'bg-slate-800 text-slate-300 border border-slate-700'
+                            }`}
+                          >
+                            {preset.badge}
+                          </span>
+                        </div>
+
+                        <span className={`text-[11px] ${preset.feasibilityClass}`}>
+                          {preset.feasibilityLabel}
+                        </span>
+                      </div>
+
+                      <p className="text-[10.5px] text-slate-400 mt-1 line-clamp-2 leading-tight">
+                        {preset.desc}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 mt-2 border-t border-slate-800/80 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-200 font-mono">
+                        about {preset.dailyHrs > 0 ? `${preset.dailyHrs}h ` : ''}{preset.dailyRemMins}m a day
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        ~{preset.dailyLecs} lecs/d
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Control 1: Daily Capacity */}
             <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
