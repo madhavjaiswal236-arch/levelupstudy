@@ -137,6 +137,16 @@ export function getTaskScheduledDate(task: {
       return getLocalDateString(d);
     }
   }
+  if (typeof task.id === "string") {
+    const match = task.id.match(/_(\d{10,13})(?:_|$)/);
+    if (match) {
+      const ts = Number(match[1]);
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) {
+        return getLocalDateString(d);
+      }
+    }
+  }
   return null;
 }
 

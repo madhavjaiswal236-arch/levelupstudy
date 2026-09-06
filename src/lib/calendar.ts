@@ -42,6 +42,8 @@ async function fetchGoogleApi(
           token = newToken;
           // Retry immediately with the refreshed token
           continue;
+        } else {
+          await invalidateOAuthToken();
         }
       }
 

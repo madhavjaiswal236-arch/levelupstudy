@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import express from 'express';
 import path from 'path';
+import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { generateDeterministicCoachReport, generateDeterministicDynamicInsight } from './src/lib/coach/engine';
 
@@ -59,8 +60,31 @@ app.use((req, res, next) => {
   next();
 });
 
+// Cache for Google's public x509 certs
+let cachedGoogleCerts: Record<string, string> = {};
+let certsExpiry = 0;
+
+async function getGooglePublicCerts(): Promise<Record<string, string>> {
+  const now = Date.now();
+  if (Object.keys(cachedGoogleCerts).length > 0 && now < certsExpiry) {
+    return cachedGoogleCerts;
+  }
+  try {
+    const res = await fetch("https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com");
+    if (res.ok) {
+      const data = (await res.json()) as Record<string, string>;
+      cachedGoogleCerts = data;
+      certsExpiry = now + 6 * 3600 * 1000;
+      return cachedGoogleCerts;
+    }
+  } catch (e) {
+    console.warn("Failed to fetch Google public certs, falling back to payload validation:", e);
+  }
+  return cachedGoogleCerts;
+}
+
 // Helper to verify Firebase ID tokens cryptographically
-function verifyFirebaseIdToken(authHeader?: string): { valid: boolean; uid?: string } {
+async function verifyFirebaseIdToken(authHeader?: string): Promise<{ valid: boolean; uid?: string }> {
   if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
     return { valid: false };
   }
@@ -96,6 +120,20 @@ function verifyFirebaseIdToken(authHeader?: string): { valid: boolean; uid?: str
 
     // Verify subject / user_id
     if (!payload.sub || typeof payload.sub !== 'string' || payload.sub.length < 1) {
+      return { valid: false };
+    }
+
+    // Cryptographic signature check with Google's public x509 certs
+    const certs = await getGooglePublicCerts();
+    const cert = certs[header.kid];
+    if (cert) {
+      const data = Buffer.from(parts[0] + '.' + parts[1]);
+      const signature = Buffer.from(parts[2], 'base64url');
+      const isSignatureValid = crypto.verify('RSA-SHA256', data, cert, signature);
+      if (!isSignatureValid) {
+        return { valid: false };
+      }
+    } else if (Object.keys(certs).length > 0) {
       return { valid: false };
     }
 
@@ -166,7 +204,7 @@ app.post('/api/ai-coach', async (req, res) => {
 
   // Verify authentication header before invoking paid Gemini API
   const authHeader = req.headers.authorization;
-  const authResult = verifyFirebaseIdToken(authHeader);
+  const authResult = await verifyFirebaseIdToken(authHeader);
 
   if (!authResult.valid || !ai) {
     // Return high-precision deterministic rule response without burning Gemini quota
@@ -282,7 +320,7 @@ app.post("/api/dynamic-insight", async (req, res) => {
 
   // Verify authentication header before invoking paid Gemini API
   const authHeader = req.headers.authorization;
-  const authResult = verifyFirebaseIdToken(authHeader);
+  const authResult = await verifyFirebaseIdToken(authHeader);
 
   if (!authResult.valid || !ai) {
     return res.json({ insight: fallbackInsight });

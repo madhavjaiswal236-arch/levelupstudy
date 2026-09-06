@@ -75,12 +75,16 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
     ? Math.max(100, Math.ceil(totalXpRequired / daysUntilExam))
     : dailyTarget;
 
+  const todayStr = useMemo(() => getLocalDateString(), []);
+
   // Combine all activities of the day
   const timelineEvents = useMemo(() => {
     const events: any[] = [];
 
     // Created tasks today
     todos.forEach((t) => {
+      if (t.isDeleted) return;
+      const isToday = isCurrentDayTask(t, todayStr);
       let taskDate: Date | null = null;
       if (t.startTime) {
         const d = new Date(t.startTime);
@@ -93,7 +97,7 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
       if (!taskDate) {
         taskDate = parseTaskDate(t.id, t.dateScheduled);
       }
-      if (taskDate && taskDate.toDateString() === new Date().toDateString()) {
+      if (isToday || (taskDate && taskDate.toDateString() === new Date().toDateString())) {
         events.push({
           time: taskDate,
           type: "created",
@@ -121,9 +125,7 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
 
     events.sort((a, b) => b.time.getTime() - a.time.getTime()); // newest first
     return events;
-  }, [todos, loggedTasksToday]);
-
-  const todayStr = useMemo(() => getLocalDateString(), []);
+  }, [todos, loggedTasksToday, todayStr]);
 
   const todayTasks = useMemo(() => {
     return todos.filter((t) => !t.isDeleted && isCurrentDayTask(t, todayStr));

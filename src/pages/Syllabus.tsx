@@ -126,7 +126,8 @@ const Syllabus = React.memo(function Syllabus() {
       [
         ...pendingTasks,
         ...todos.filter((t) => {
-          if (t.completed) return false;
+          if (t.completed || t.isDeleted) return false;
+          if (t.isBacklogTask) return true;
           const todayStr = getLocalDateString();
           const scheduled = getTaskScheduledDate(t);
           if (scheduled) {
