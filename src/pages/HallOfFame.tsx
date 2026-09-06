@@ -87,8 +87,16 @@ export default function HallOfFame() {
  `#${user.rank}`}
  </div>
  
- <div className="w-12 h-12 rounded-full dark:bg-slate-800 bg-slate-100 border dark:border-slate-700 border-slate-300 overflow-hidden flex-shrink-0">
- <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.avatar}&backgroundColor=1e293b`} alt={user.name} />
+ <div className={`w-12 h-12 rounded-full border overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-sm select-none shadow-sm ${
+ user.rank === 1
+ ? 'bg-gradient-to-br from-amber-400/20 to-yellow-600/30 border-amber-400/50 text-amber-400'
+ : user.rank === 2
+ ? 'bg-gradient-to-br from-slate-300/20 to-slate-500/30 border-slate-400/50 text-slate-300'
+ : user.rank === 3
+ ? 'bg-gradient-to-br from-amber-600/20 to-orange-700/30 border-amber-600/50 text-amber-500'
+ : 'dark:bg-slate-800 bg-slate-100 dark:border-slate-700 border-slate-300 dark:text-slate-300 text-slate-700'
+ }`}>
+ {user.name ? user.name.split(' ').map((n: string) => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() : 'LU'}
  </div>
 
  <div className="flex-1 min-w-0">
