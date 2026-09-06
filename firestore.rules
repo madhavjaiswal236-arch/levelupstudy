@@ -3,16 +3,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
       allow create, update: if request.auth != null && request.auth.uid == userId
-        && request.resource.size() < 1000000;
-      allow delete: if request.auth != null && request.auth.uid == userId;
+        && request.resource.data.keys().size() <= 100;
 
       // Allow access to user subcollections (e.g. sessions, tasks, metrics)
       match /{allSubcollections=**} {
         allow read, delete: if request.auth != null && request.auth.uid == userId;
         allow create, update: if request.auth != null && request.auth.uid == userId
-          && request.resource.size() < 1000000;
+          && request.resource.data.keys().size() <= 100;
       }
     }
 

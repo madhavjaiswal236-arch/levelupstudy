@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, getDocFromCache, onSnapshot, serverTimestamp, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, getDocFromCache, onSnapshot, serverTimestamp, enableIndexedDbPersistence } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
@@ -527,3 +527,28 @@ export const logout = async () => {
   await auth.signOut();
   await persistOAuthToken(null, 0);
 };
+
+export const deleteUserAccountAndCloudData = async (): Promise<boolean> => {
+  try {
+    const user = auth.currentUser;
+    if (user) {
+      const uid = user.uid;
+      try {
+        await deleteDoc(doc(db, 'users', uid));
+      } catch (err) {
+        console.warn('Could not delete user Firestore document:', err);
+      }
+      try {
+        await user.delete();
+      } catch (err) {
+        console.warn('Could not delete user auth record:', err);
+      }
+    }
+    await logout();
+    return true;
+  } catch (error) {
+    console.error('Error during full account deletion:', error);
+    return false;
+  }
+};
+

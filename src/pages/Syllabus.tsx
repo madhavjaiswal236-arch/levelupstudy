@@ -169,18 +169,6 @@ const Syllabus = React.memo(function Syllabus() {
       ),
     [allChapters],
   );
-  const focusMessage =
-    weakChapters.length > 0
-      ? `Your accuracy in ${weakChapters
-          .slice(0, 2)
-          .map(
-            (c) =>
-              `<strong class="dark:text-white text-slate-900">${c.name}</strong>`,
-          )
-          .join(
-            " and ",
-          )} is currently below 50%. Since these are high-weightage topics, dedicating extra review time here will yield significant improvements in your overall score.`
-      : `You are doing great! Keep practicing high-weightage topics to maintain your momentum.`;
 
   const filteredBacklogs = useMemo(() => {
     return allBacklogs.filter((task) => {
@@ -245,10 +233,22 @@ const Syllabus = React.memo(function Syllabus() {
                 <h3 className="text-lg font-bold dark:text-amber-400 text-amber-700 uppercase tracking-wider">
                   Priority Focus Areas
                 </h3>
-                <p
-                  className="dark:text-slate-300 text-slate-600 mt-1"
-                  dangerouslySetInnerHTML={{ __html: focusMessage }}
-                />
+                <p className="dark:text-slate-300 text-slate-600 mt-1">
+                  {weakChapters.length > 0 ? (
+                    <>
+                      Your accuracy in{" "}
+                      {weakChapters.slice(0, 2).map((c, i) => (
+                        <span key={c.id || c.name || i}>
+                          {i > 0 && " and "}
+                          <strong className="dark:text-white text-slate-900">{c.name}</strong>
+                        </span>
+                      ))}
+                      {" "}is currently below 50%. Since these are high-weightage topics, dedicating extra review time here will yield significant improvements in your overall score.
+                    </>
+                  ) : (
+                    "You are doing great! Keep practicing high-weightage topics to maintain your momentum."
+                  )}
+                </p>
               </div>
             </CardContent>
           </Card>

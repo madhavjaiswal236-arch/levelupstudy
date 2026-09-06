@@ -645,7 +645,7 @@ const Dashboard = React.memo(function Dashboard() {
 
   const handleStartStudyClick = () => {
     vibrate(HAPTIC_PATTERNS.HEARTBEAT);
-    window.open("https://pw.live", "_blank");
+    window.open("https://pw.live", "_blank", "noopener,noreferrer");
     setIsSessionActive(true);
     setSessionStartTime(Date.now());
     setLogSessionDeepFocus(false);

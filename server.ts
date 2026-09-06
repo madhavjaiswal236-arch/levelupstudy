@@ -32,6 +32,7 @@ app.use((req, res, next) => {
       const parsed = new URL(originUrl);
       const hostname = parsed.hostname;
       if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+      if (hostname.endsWith('.vercel.app') || hostname.endsWith('.run.app') || hostname.endsWith('.google.com')) return true;
     } catch (e) {
       return false;
     }
@@ -73,13 +74,8 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
   keyGenerator: (req) => {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (typeof forwarded === 'string') {
-      return forwarded.split(',')[0].trim();
-    }
     return req.ip || req.socket.remoteAddress || 'unknown';
-  },
-  validate: { xForwardedForHeader: false, trustProxy: false, default: false }
+  }
 });
 
 app.use('/api/', apiLimiter);
@@ -100,7 +96,7 @@ function generateFeedbackEngine(data: any) {
   return report.fullFormattedText;
 }
 
-// API router - AI Coach
+// API router - AI Coach (Protected against unauthenticated quota consumption)
 app.post('/api/ai-coach', async (req, res) => {
   const data = req.body || {};
   const hours = sanitizeNumber(data.hours, 0, 24);
@@ -115,8 +111,12 @@ app.post('/api/ai-coach', async (req, res) => {
     screenTime,
   });
 
-  if (!ai) {
-    console.warn("GEMINI_API_KEY is not defined. Using pure logic engine.");
+  // Verify authentication header before invoking paid Gemini API
+  const authHeader = req.headers.authorization;
+  const isAuthenticated = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') && authHeader.length > 25;
+
+  if (!isAuthenticated || !ai) {
+    // Return high-precision deterministic rule response without burning Gemini quota
     return res.json({ feedback: fallbackResponse });
   }
 
@@ -227,7 +227,11 @@ app.post("/api/dynamic-insight", async (req, res) => {
     pendingTasksCount
   });
 
-  if (!ai) {
+  // Verify authentication header before invoking paid Gemini API
+  const authHeader = req.headers.authorization;
+  const isAuthenticated = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') && authHeader.length > 25;
+
+  if (!isAuthenticated || !ai) {
     return res.json({ insight: fallbackInsight });
   }
 

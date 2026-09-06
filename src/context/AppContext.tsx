@@ -4,6 +4,7 @@ import {
   subscribeToCloudUserData,
   loadUserDataFromCloud,
   fetchUserDataDirectlyFromFirestore,
+  deleteUserAccountAndCloudData,
   auth,
 } from "@/lib/firebase";
 import { reconcileState } from "@/lib/sync/reconciliation";
@@ -2021,19 +2022,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const resetApp = useCallback(async () => {
     try {
-      await logout();
+      await deleteUserAccountAndCloudData();
     } catch (e) {
-      console.error("Error during logout:", e);
+      console.error("Error during cloud deletion / logout:", e);
+      try {
+        await logout();
+      } catch (err) {}
     }
-    if (Capacitor.isNativePlatform()) {
-      await Preferences.clear();
-    } else {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      localStorage.removeItem("visited_tabs");
-      localStorage.removeItem("app_tour_completed");
-      localStorage.removeItem("store_items_state");
-    }
-    sessionStorage.clear();
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.clear();
+      }
+    } catch (e) {}
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
     window.location.reload();
   }, []);
 
