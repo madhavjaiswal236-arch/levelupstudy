@@ -4,19 +4,18 @@ import { getFirestore, doc, setDoc, getDoc, deleteDoc, getDocFromCache, onSnapsh
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import firebaseConfig from '../../firebase-applet-config.json';
 
 const metaEnv = (import.meta as any).env || {};
 
 const mergedFirebaseConfig = {
-  apiKey: metaEnv.VITE_FIREBASE_API_KEY || (firebaseConfig as any).apiKey || "",
-  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || (firebaseConfig as any).authDomain || "",
-  databaseURL: metaEnv.VITE_FIREBASE_DATABASE_URL || (firebaseConfig as any).databaseURL || "",
-  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || (firebaseConfig as any).projectId || "",
-  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || (firebaseConfig as any).storageBucket || "",
-  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || (firebaseConfig as any).messagingSenderId || "",
-  appId: metaEnv.VITE_FIREBASE_APP_ID || (firebaseConfig as any).appId || "",
-  measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID || (firebaseConfig as any).measurementId || "",
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY || "",
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || "",
+  databaseURL: metaEnv.VITE_FIREBASE_DATABASE_URL || "",
+  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: metaEnv.VITE_FIREBASE_APP_ID || "",
+  measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID || "",
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(mergedFirebaseConfig);
@@ -324,6 +323,13 @@ const persistOAuthToken = async (token: string | null, expiresAt: number) => {
   } catch (e) {
     console.warn('Preferences token persistence error:', e);
   }
+};
+
+export const invalidateOAuthToken = async () => {
+  await persistOAuthToken(null, 0);
+  try {
+    sessionStorage.removeItem('google_access_token');
+  } catch (e) {}
 };
 
 const hydratePersistedToken = async (): Promise<string | null> => {

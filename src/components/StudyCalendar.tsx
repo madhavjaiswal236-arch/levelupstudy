@@ -240,10 +240,15 @@ export function StudyCalendar({
     };
 
     sync();
-    const interval = setInterval(sync, 15000); // Poll every 15 seconds while calendar is open
+    const interval = setInterval(sync, 60000); // Poll every 60 seconds while calendar is open
+    const handleFocus = () => {
+      sync();
+    };
+    window.addEventListener("focus", handleFocus);
     return () => {
       isMounted = false;
       clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [setTodos]);
 

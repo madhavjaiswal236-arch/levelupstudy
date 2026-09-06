@@ -16,6 +16,28 @@ import { useAppContext } from "@/context/AppContext";
 import { generateDeterministicCoachReport } from "@/lib/coach/engine";
 import { getLocalDateString, isCurrentDayTask } from "@/lib/utils";
 
+function parseTaskDate(id: string | number, fallbackDate?: string): Date {
+  if (typeof id === 'number') {
+    const d = new Date(id);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (typeof id === 'string') {
+    const match = id.match(/_(\d{10,13})(?:_|$)/);
+    if (match) {
+      const ts = Number(match[1]);
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) return d;
+    }
+    const d = new Date(id);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (fallbackDate) {
+    const d = new Date(fallbackDate);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return new Date();
+}
+
 interface LiveDayOverlayProps {
   onClose: () => void;
 }
@@ -59,8 +81,19 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
 
     // Created tasks today
     todos.forEach((t) => {
-      const taskDate = new Date(t.id);
-      if (taskDate.toDateString() === new Date().toDateString()) {
+      let taskDate: Date | null = null;
+      if (t.startTime) {
+        const d = new Date(t.startTime);
+        if (!isNaN(d.getTime())) taskDate = d;
+      }
+      if (!taskDate && t.completedAt) {
+        const d = new Date(t.completedAt);
+        if (!isNaN(d.getTime())) taskDate = d;
+      }
+      if (!taskDate) {
+        taskDate = parseTaskDate(t.id, t.dateScheduled);
+      }
+      if (taskDate && taskDate.toDateString() === new Date().toDateString()) {
         events.push({
           time: taskDate,
           type: "created",
@@ -74,8 +107,9 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
 
     // Logged sessions today
     loggedTasksToday.forEach((log) => {
+      const logDate = parseTaskDate(log.id, (log as any).timestamp || (log as any).date);
       events.push({
-        time: new Date(log.id),
+        time: logDate,
         type: "completed",
         title: log.text || `${log.subject} - ${log.chapter} (${log.type})`,
         subject: log.subject,

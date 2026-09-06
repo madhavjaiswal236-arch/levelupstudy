@@ -10,8 +10,8 @@ import { getLocalDateString, getTaskScheduledDate } from "@/lib/utils";
 
 interface SortableTodoItemProps {
   todo: any;
-  toggleTodo: (id: number) => void;
-  deleteTodo: (id: number) => any;
+  toggleTodo: (id: number | string) => void;
+  deleteTodo: (id: number | string) => any;
   key?: any;
 }
 

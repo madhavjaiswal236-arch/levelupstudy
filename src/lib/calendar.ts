@@ -1,4 +1,4 @@
-import { getAccessToken, refreshGoogleToken } from './firebase';
+import { getAccessToken, refreshGoogleToken, invalidateOAuthToken } from './firebase';
 
 /**
  * Fetch wrapper for Google APIs with full Exponential Backoff and Jitter.
@@ -178,7 +178,7 @@ export async function createCalendarEvent(title: string, durationMinutes: number
     if (!res.ok) {
       const errorText = await res.text();
       if (res.status === 401) {
-        sessionStorage.removeItem('google_access_token');
+        await invalidateOAuthToken();
         throw new Error('Google Calendar access token expired.');
       }
       throw new Error(`Google Calendar API error: ${res.status} ${errorText}`);
@@ -235,7 +235,7 @@ export async function deleteCalendarEvent(eventId: string) {
 
  if (!res.ok && res.status !== 410) { // 410 Gone is fine, it means already deleted
  if (res.status === 401) {
- sessionStorage.removeItem('google_access_token');
+ await invalidateOAuthToken();
  }
  return false;
  }
@@ -270,7 +270,7 @@ export async function rescheduleCalendarEvents(eventsToReschedule: { eventId: st
  const res = await fetchGoogleApi(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${evt.eventId}`, 'PATCH', patchBody);
 
  if (!res.ok && res.status === 401) {
- sessionStorage.removeItem('google_access_token');
+ await invalidateOAuthToken();
  throw new Error('Google Calendar access token expired.');
  }
  }

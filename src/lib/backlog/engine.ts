@@ -511,7 +511,9 @@ export function reconstructPlanFromTodos(todos: Todo[]): BacklogPlan | null {
         chapEntry.lectureDurations.push(t.durationMinutes);
       }
     } else if (t.backlogTaskType === 'practice') {
-      chapEntry.practiceCount += 25;
+      const qMatch = t.text ? t.text.match(/\((\d+)\s*Questions?\)/i) : null;
+      const count = qMatch ? parseInt(qMatch[1], 10) : (t.durationMinutes ? Math.round(t.durationMinutes * 0.8) : 25);
+      chapEntry.practiceCount += count;
     } else if (t.backlogTaskType === 'revision') {
       chapEntry.hasRevision = true;
     } else if (t.backlogTaskType === 'test') {

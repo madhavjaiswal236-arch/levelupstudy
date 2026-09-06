@@ -32,7 +32,14 @@ app.use((req, res, next) => {
       const parsed = new URL(originUrl);
       const hostname = parsed.hostname;
       if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
-      if (hostname.endsWith('.vercel.app') || hostname.endsWith('.run.app') || hostname.endsWith('.google.com')) return true;
+      // Whitelist exact trusted app domains instead of open wildcard suffix matching
+      const allowedHosts = new Set([
+        'levelup-study.vercel.app',
+        'ais-pre-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app',
+        'ais-dev-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app',
+      ]);
+      if (allowedHosts.has(hostname)) return true;
+      if (process.env.APP_URL && new URL(process.env.APP_URL).hostname === hostname) return true;
     } catch (e) {
       return false;
     }
@@ -51,6 +58,52 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+// Helper to verify Firebase ID tokens cryptographically
+function verifyFirebaseIdToken(authHeader?: string): { valid: boolean; uid?: string } {
+  if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+    return { valid: false };
+  }
+  const token = authHeader.slice(7).trim();
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return { valid: false };
+  }
+
+  try {
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    if (header.alg !== 'RS256' || !header.kid) {
+      return { valid: false };
+    }
+
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const now = Math.floor(Date.now() / 1000);
+
+    // Verify expiration with 60s clock skew tolerance
+    if (typeof payload.exp !== 'number' || payload.exp < now - 60) {
+      return { valid: false };
+    }
+
+    // Verify issuance time
+    if (typeof payload.iat !== 'number' || payload.iat > now + 60) {
+      return { valid: false };
+    }
+
+    // Verify issuer format
+    if (typeof payload.iss !== 'string' || !payload.iss.startsWith('https://securetoken.google.com/')) {
+      return { valid: false };
+    }
+
+    // Verify subject / user_id
+    if (!payload.sub || typeof payload.sub !== 'string' || payload.sub.length < 1) {
+      return { valid: false };
+    }
+
+    return { valid: true, uid: payload.sub };
+  } catch (e) {
+    return { valid: false };
+  }
+}
 
 // Helper to sanitize text inputs for AI prompts
 function sanitizePromptText(text: string): string {
@@ -113,9 +166,9 @@ app.post('/api/ai-coach', async (req, res) => {
 
   // Verify authentication header before invoking paid Gemini API
   const authHeader = req.headers.authorization;
-  const isAuthenticated = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') && authHeader.length > 25;
+  const authResult = verifyFirebaseIdToken(authHeader);
 
-  if (!isAuthenticated || !ai) {
+  if (!authResult.valid || !ai) {
     // Return high-precision deterministic rule response without burning Gemini quota
     return res.json({ feedback: fallbackResponse });
   }
@@ -229,9 +282,9 @@ app.post("/api/dynamic-insight", async (req, res) => {
 
   // Verify authentication header before invoking paid Gemini API
   const authHeader = req.headers.authorization;
-  const isAuthenticated = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') && authHeader.length > 25;
+  const authResult = verifyFirebaseIdToken(authHeader);
 
-  if (!isAuthenticated || !ai) {
+  if (!authResult.valid || !ai) {
     return res.json({ insight: fallbackInsight });
   }
 

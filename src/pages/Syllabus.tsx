@@ -14,6 +14,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 import { useAppContext } from "@/context/AppContext";
+import { getLocalDateString, getTaskScheduledDate } from "@/lib/utils";
 import { TourStep, useTour } from "@/components/TourGuide";
 import {
   LineChart,
@@ -124,11 +125,18 @@ const Syllabus = React.memo(function Syllabus() {
     () =>
       [
         ...pendingTasks,
-        ...todos.filter(
-          (t) =>
-            !t.completed &&
-            new Date(t.id).getTime() < new Date().setHours(0, 0, 0, 0),
-        ),
+        ...todos.filter((t) => {
+          if (t.completed) return false;
+          const todayStr = getLocalDateString();
+          const scheduled = getTaskScheduledDate(t);
+          if (scheduled) {
+            return scheduled < todayStr;
+          }
+          if (typeof t.id === "number") {
+            return t.id < new Date().setHours(0, 0, 0, 0);
+          }
+          return false;
+        }),
       ].sort((a, b) => {
         const aPriority = backlogPriorities[a.id] === "Must-Do" ? 1 : 0;
         const bPriority = backlogPriorities[b.id] === "Must-Do" ? 1 : 0;
