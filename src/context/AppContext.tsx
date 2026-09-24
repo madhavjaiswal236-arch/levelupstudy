@@ -122,6 +122,7 @@ export interface LifeMetric {
   day: number;
   sleep: number;
   screenTime: number;
+  date?: string;
 }
 
 export interface MonthlyGoal {
@@ -648,6 +649,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const lastCalendarMutationTimeRef = useRef<number>(0);
   const hasUnsavedLocalChangesRef = useRef<boolean>(false);
 
+  const applyStateSnapshot = useCallback((mergedState: any) => {
+    if (!mergedState || typeof mergedState !== "object") return;
+    if (mergedState.xp !== undefined) setXp(mergedState.xp);
+    if (mergedState.xpGainedToday !== undefined) setXpGainedToday(mergedState.xpGainedToday);
+    if (mergedState.spentXpToday !== undefined) setSpentXpToday(mergedState.spentXpToday);
+    if (mergedState.totalSpentXp !== undefined) setTotalSpentXp(mergedState.totalSpentXp);
+    if (mergedState.hoursStudiedToday !== undefined) setHoursStudiedToday(mergedState.hoursStudiedToday);
+    if (mergedState.level !== undefined) setLevel(mergedState.level);
+    if (mergedState.questionsSolved !== undefined) setQuestionsSolved(mergedState.questionsSolved);
+    if (mergedState.streakDays !== undefined) setStreakDays(mergedState.streakDays);
+    if (mergedState.dailyTarget !== undefined) setDailyTarget(mergedState.dailyTarget);
+    if (mergedState.accuracy !== undefined) setAccuracy(mergedState.accuracy);
+    if (mergedState.speedScore !== undefined) setSpeedScore(mergedState.speedScore);
+    if (mergedState.lastStudyDate !== undefined) setLastStudyDate(mergedState.lastStudyDate);
+    if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
+    if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
+    if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
+    if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
+    if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
+    if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
+    if (mergedState.backlogPlan !== undefined) {
+      setBacklogPlan(mergedState.backlogPlan);
+      if (mergedState.backlogPlan && typeof window !== "undefined") {
+        try {
+          localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(mergedState.backlogPlan));
+        } catch (e) {}
+      }
+    } else {
+      try {
+        const backupPlanStr = typeof window !== "undefined" ? localStorage.getItem("jee_tracker_backlog_plan") : null;
+        if (backupPlanStr) {
+          const parsedPlan = JSON.parse(backupPlanStr);
+          setBacklogPlan(parsedPlan);
+          mergedState.backlogPlan = parsedPlan;
+        } else if (mergedState.todos && mergedState.todos.length > 0) {
+          const recPlan = reconstructPlanFromTodos(mergedState.todos);
+          if (recPlan) {
+            setBacklogPlan(recPlan);
+            mergedState.backlogPlan = recPlan;
+          }
+        }
+      } catch (e) {}
+    }
+    if (mergedState.todos !== undefined) setTodos(mergedState.todos);
+    if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
+    if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
+    if (mergedState.history !== undefined) setHistory(mergedState.history);
+    if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
+    if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
+    if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);
+    if (mergedState.habits !== undefined) setHabits(mergedState.habits);
+    if (mergedState.lifeMetrics !== undefined) setLifeMetrics(mergedState.lifeMetrics);
+    if (mergedState.monthlyGoals !== undefined) setMonthlyGoals(mergedState.monthlyGoals);
+    if (mergedState.lastBossDayDate !== undefined) setLastBossDayDate(mergedState.lastBossDayDate);
+    if (mergedState.bossDayTargetXp !== undefined) setBossDayTargetXp(mergedState.bossDayTargetXp);
+    if (mergedState.bossDayCompleted !== undefined) setBossDayCompleted(mergedState.bossDayCompleted);
+    if (mergedState.equippedTitle !== undefined) setEquippedTitle(mergedState.equippedTitle);
+    if (mergedState.equippedAura !== undefined) setEquippedAura(mergedState.equippedAura);
+    if (mergedState.unlockedItems !== undefined) setUnlockedItems(mergedState.unlockedItems);
+    if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
+    if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
+    if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
+  }, []);
+
   const notifyCalendarMutation = useCallback(() => {
     lastCalendarMutationTimeRef.current = Date.now();
     lastLocalMutationTimeRef.current = Date.now();
@@ -1137,67 +1202,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { mergedState, needsCloudUpload } = reconcileState(currentLocal, cloudData);
 
         isRemoteSyncingRef.current = true;
-
-        if (mergedState.xp !== undefined) setXp(mergedState.xp);
-        if (mergedState.xpGainedToday !== undefined) setXpGainedToday(mergedState.xpGainedToday);
-        if (mergedState.spentXpToday !== undefined) setSpentXpToday(mergedState.spentXpToday);
-        if (mergedState.totalSpentXp !== undefined) setTotalSpentXp(mergedState.totalSpentXp);
-        if (mergedState.hoursStudiedToday !== undefined) setHoursStudiedToday(mergedState.hoursStudiedToday);
-        if (mergedState.level !== undefined) setLevel(mergedState.level);
-        if (mergedState.questionsSolved !== undefined) setQuestionsSolved(mergedState.questionsSolved);
-        if (mergedState.streakDays !== undefined) setStreakDays(mergedState.streakDays);
-        if (mergedState.dailyTarget !== undefined) setDailyTarget(mergedState.dailyTarget);
-        if (mergedState.accuracy !== undefined) setAccuracy(mergedState.accuracy);
-        if (mergedState.speedScore !== undefined) setSpeedScore(mergedState.speedScore);
-        if (mergedState.lastStudyDate !== undefined) setLastStudyDate(mergedState.lastStudyDate);
-        if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
-        if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
-        if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
-        if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
-        if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
-        if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
-        if (mergedState.backlogPlan !== undefined) {
-          setBacklogPlan(mergedState.backlogPlan);
-          if (mergedState.backlogPlan && typeof window !== "undefined") {
-            try {
-              localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(mergedState.backlogPlan));
-            } catch (e) {}
-          }
-        } else {
-          try {
-            const backupPlanStr = typeof window !== "undefined" ? localStorage.getItem("jee_tracker_backlog_plan") : null;
-            if (backupPlanStr) {
-              const parsedPlan = JSON.parse(backupPlanStr);
-              setBacklogPlan(parsedPlan);
-              mergedState.backlogPlan = parsedPlan;
-            } else if (mergedState.todos && mergedState.todos.length > 0) {
-              const recPlan = reconstructPlanFromTodos(mergedState.todos);
-              if (recPlan) {
-                setBacklogPlan(recPlan);
-                mergedState.backlogPlan = recPlan;
-              }
-            }
-          } catch (e) {}
-        }
-        if (mergedState.todos !== undefined) setTodos(mergedState.todos);
-        if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
-        if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
-        if (mergedState.history !== undefined) setHistory(mergedState.history);
-        if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
-        if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
-        if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);
-        if (mergedState.habits !== undefined) setHabits(mergedState.habits);
-        if (mergedState.lifeMetrics !== undefined) setLifeMetrics(mergedState.lifeMetrics);
-        if (mergedState.monthlyGoals !== undefined) setMonthlyGoals(mergedState.monthlyGoals);
-        if (mergedState.lastBossDayDate !== undefined) setLastBossDayDate(mergedState.lastBossDayDate);
-        if (mergedState.bossDayTargetXp !== undefined) setBossDayTargetXp(mergedState.bossDayTargetXp);
-        if (mergedState.bossDayCompleted !== undefined) setBossDayCompleted(mergedState.bossDayCompleted);
-        if (mergedState.equippedTitle !== undefined) setEquippedTitle(mergedState.equippedTitle);
-        if (mergedState.equippedAura !== undefined) setEquippedAura(mergedState.equippedAura);
-        if (mergedState.unlockedItems !== undefined) setUnlockedItems(mergedState.unlockedItems);
-        if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
-        if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
-        if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
+        applyStateSnapshot(mergedState);
+        isRemoteSyncingRef.current = false;
 
         if (mergedState.lastSyncTimestamp) {
           setLastSyncTimestamp(mergedState.lastSyncTimestamp);
@@ -1212,10 +1218,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           await saveUserDataToCloud(firebaseUser.uid, mergedState, true);
         }
 
-        setTimeout(() => {
-          isRemoteSyncingRef.current = false;
-          setIsCloudSyncComplete(true);
-        }, 300);
+        setIsCloudSyncComplete(true);
       } catch (err) {
         console.error("Cloud login sync error:", err);
         setIsCloudSyncComplete(true);
@@ -1791,6 +1794,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const yesterdayObj = getLogicalDate();
     yesterdayObj.setDate(yesterdayObj.getDate() - 1);
     const yesterdayStr = yesterdayObj.toDateString();
+    const yesterdayDateKey = getStandardDateKey(yesterdayObj);
 
     setLifeMetrics((prev) => {
       const dayNum = yesterdayObj.getDate();
@@ -1798,11 +1802,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (exists) {
         return prev.map((m) =>
           m.day === dayNum
-            ? { ...m, sleep: sleepInput, screenTime: screenTimeInput }
+            ? { ...m, sleep: sleepInput, screenTime: screenTimeInput, date: yesterdayDateKey }
             : m,
         );
       }
-      return [...prev, { day: dayNum, sleep: sleepInput, screenTime: screenTimeInput }];
+      return [...prev, { day: dayNum, sleep: sleepInput, screenTime: screenTimeInput, date: yesterdayDateKey }];
     });
 
     setHistory((prevHistory) => {
@@ -2155,45 +2159,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { mergedState } = reconcileState(currentLocal, cloudData);
 
       isRemoteSyncingRef.current = true;
-
-      if (mergedState.xp !== undefined) setXp(mergedState.xp);
-      if (mergedState.xpGainedToday !== undefined) setXpGainedToday(mergedState.xpGainedToday);
-      if (mergedState.spentXpToday !== undefined) setSpentXpToday(mergedState.spentXpToday);
-      if (mergedState.totalSpentXp !== undefined) setTotalSpentXp(mergedState.totalSpentXp);
-      if (mergedState.hoursStudiedToday !== undefined) setHoursStudiedToday(mergedState.hoursStudiedToday);
-      if (mergedState.level !== undefined) setLevel(mergedState.level);
-      if (mergedState.questionsSolved !== undefined) setQuestionsSolved(mergedState.questionsSolved);
-      if (mergedState.streakDays !== undefined) setStreakDays(mergedState.streakDays);
-      if (mergedState.dailyTarget !== undefined) setDailyTarget(mergedState.dailyTarget);
-      if (mergedState.accuracy !== undefined) setAccuracy(mergedState.accuracy);
-      if (mergedState.speedScore !== undefined) setSpeedScore(mergedState.speedScore);
-      if (mergedState.lastStudyDate !== undefined) setLastStudyDate(mergedState.lastStudyDate);
-      if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
-      if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
-      if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
-      if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
-      if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
-      if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
-      if (mergedState.backlogPlan !== undefined) setBacklogPlan(mergedState.backlogPlan);
-      if (mergedState.todos !== undefined) setTodos(mergedState.todos);
-      if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
-      if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
-      if (mergedState.history !== undefined) setHistory(mergedState.history);
-      if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
-      if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
-      if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);
-      if (mergedState.habits !== undefined) setHabits(mergedState.habits);
-      if (mergedState.lifeMetrics !== undefined) setLifeMetrics(mergedState.lifeMetrics);
-      if (mergedState.monthlyGoals !== undefined) setMonthlyGoals(mergedState.monthlyGoals);
-      if (mergedState.lastBossDayDate !== undefined) setLastBossDayDate(mergedState.lastBossDayDate);
-      if (mergedState.bossDayTargetXp !== undefined) setBossDayTargetXp(mergedState.bossDayTargetXp);
-      if (mergedState.bossDayCompleted !== undefined) setBossDayCompleted(mergedState.bossDayCompleted);
-      if (mergedState.equippedTitle !== undefined) setEquippedTitle(mergedState.equippedTitle);
-      if (mergedState.equippedAura !== undefined) setEquippedAura(mergedState.equippedAura);
-      if (mergedState.unlockedItems !== undefined) setUnlockedItems(mergedState.unlockedItems);
-      if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
-      if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
-      if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
+      applyStateSnapshot(mergedState);
+      isRemoteSyncingRef.current = false;
 
       latestStateRef.current = mergedState;
       const jsonString = JSON.stringify(mergedState);
@@ -2205,11 +2172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       lastSavedCloudJsonRef.current = jsonString;
       hasUnsavedLocalChangesRef.current = false;
-
-      setTimeout(() => {
-        isRemoteSyncingRef.current = false;
-        setIsCloudSyncComplete(true);
-      }, 300);
+      setIsCloudSyncComplete(true);
 
       const tasksCount = (mergedState.todos || []).length;
       const historyDays = (mergedState.history || []).length;
@@ -2231,7 +2194,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         message: `Restore failed: ${err?.message || String(err)}`,
       };
     }
-  }, [firebaseUser]);
+  }, [firebaseUser, applyStateSnapshot]);
 
   const exportLocalBackup = useCallback(() => {
     try {
@@ -2255,52 +2218,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const importLocalBackup = useCallback((jsonContent: string): { success: boolean; message: string } => {
     try {
       const parsed = JSON.parse(jsonContent);
-      if (!parsed || typeof parsed !== "object") {
-        return { success: false, message: "Invalid backup JSON file format." };
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { success: false, message: "Invalid backup format: root must be a valid JSON object." };
       }
+
+      // Schema validation & sanity checks against corrupted or malicious backups
+      if (parsed.xp !== undefined && (typeof parsed.xp !== "number" || isNaN(parsed.xp) || parsed.xp < 0)) {
+        return { success: false, message: "Corrupted backup: XP must be a non-negative number." };
+      }
+      if (parsed.level !== undefined && (typeof parsed.level !== "number" || isNaN(parsed.level) || parsed.level < 1)) {
+        return { success: false, message: "Corrupted backup: Level must be a positive integer." };
+      }
+      if (parsed.todos !== undefined && !Array.isArray(parsed.todos)) {
+        return { success: false, message: "Corrupted backup: 'todos' must be an array." };
+      }
+      if (parsed.history !== undefined && !Array.isArray(parsed.history)) {
+        return { success: false, message: "Corrupted backup: 'history' must be an array." };
+      }
+      if (parsed.syllabus !== undefined && (typeof parsed.syllabus !== "object" || Array.isArray(parsed.syllabus))) {
+        return { success: false, message: "Corrupted backup: 'syllabus' must be a valid object." };
+      }
+
       const currentLocal = latestStateRef.current;
       const { mergedState } = reconcileState(currentLocal, parsed);
 
       isRemoteSyncingRef.current = true;
-
-      if (mergedState.xp !== undefined) setXp(mergedState.xp);
-      if (mergedState.xpGainedToday !== undefined) setXpGainedToday(mergedState.xpGainedToday);
-      if (mergedState.spentXpToday !== undefined) setSpentXpToday(mergedState.spentXpToday);
-      if (mergedState.totalSpentXp !== undefined) setTotalSpentXp(mergedState.totalSpentXp);
-      if (mergedState.hoursStudiedToday !== undefined) setHoursStudiedToday(mergedState.hoursStudiedToday);
-      if (mergedState.level !== undefined) setLevel(mergedState.level);
-      if (mergedState.questionsSolved !== undefined) setQuestionsSolved(mergedState.questionsSolved);
-      if (mergedState.streakDays !== undefined) setStreakDays(mergedState.streakDays);
-      if (mergedState.dailyTarget !== undefined) setDailyTarget(mergedState.dailyTarget);
-      if (mergedState.accuracy !== undefined) setAccuracy(mergedState.accuracy);
-      if (mergedState.speedScore !== undefined) setSpeedScore(mergedState.speedScore);
-      if (mergedState.lastStudyDate !== undefined) setLastStudyDate(mergedState.lastStudyDate);
-      if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
-      if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
-      if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
-      if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
-      if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
-      if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
-      if (mergedState.backlogPlan !== undefined) setBacklogPlan(mergedState.backlogPlan);
-      if (mergedState.todos !== undefined) setTodos(mergedState.todos);
-      if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
-      if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
-      if (mergedState.history !== undefined) setHistory(mergedState.history);
-      if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
-      if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
-      if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);
-      if (mergedState.habits !== undefined) setHabits(mergedState.habits);
-      if (mergedState.lifeMetrics !== undefined) setLifeMetrics(mergedState.lifeMetrics);
-      if (mergedState.monthlyGoals !== undefined) setMonthlyGoals(mergedState.monthlyGoals);
-      if (mergedState.lastBossDayDate !== undefined) setLastBossDayDate(mergedState.lastBossDayDate);
-      if (mergedState.bossDayTargetXp !== undefined) setBossDayTargetXp(mergedState.bossDayTargetXp);
-      if (mergedState.bossDayCompleted !== undefined) setBossDayCompleted(mergedState.bossDayCompleted);
-      if (mergedState.equippedTitle !== undefined) setEquippedTitle(mergedState.equippedTitle);
-      if (mergedState.equippedAura !== undefined) setEquippedAura(mergedState.equippedAura);
-      if (mergedState.unlockedItems !== undefined) setUnlockedItems(mergedState.unlockedItems);
-      if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
-      if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
-      if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
+      applyStateSnapshot(mergedState);
+      isRemoteSyncingRef.current = false;
 
       latestStateRef.current = mergedState;
       const jsonString = JSON.stringify(mergedState);
@@ -2310,15 +2254,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
       }
 
-      setTimeout(() => {
-        isRemoteSyncingRef.current = false;
-      }, 300);
-
       return { success: true, message: `Backup restored successfully (${mergedState.xp || 0} XP, ${(mergedState.todos || []).length} tasks)!` };
     } catch (e: any) {
       return { success: false, message: `Failed to parse backup file: ${e?.message || String(e)}` };
     }
-  }, []);
+  }, [applyStateSnapshot]);
 
   const scheduleBacklogTask = useCallback(
     async (task: Todo): Promise<void> => {

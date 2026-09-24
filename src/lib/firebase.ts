@@ -1,6 +1,18 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, getDocFromCache, onSnapshot, serverTimestamp, enableIndexedDbPersistence } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  doc, 
+  setDoc, 
+  getDoc, 
+  deleteDoc, 
+  getDocFromCache, 
+  onSnapshot, 
+  serverTimestamp 
+} from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
@@ -20,17 +32,23 @@ const mergedFirebaseConfig = {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(mergedFirebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 
+// Modern Firebase 12 multi-tab persistent IndexedDB cache initialization
+let dbInstance;
 if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Firestore persistence failed-precondition: multiple tabs open.');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Firestore persistence unimplemented in this browser environment.');
-    }
-  });
+  try {
+    dbInstance = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch (e) {
+    dbInstance = getFirestore(app);
+  }
+} else {
+  dbInstance = getFirestore(app);
 }
+export const db = dbInstance;
 
 // Save user data to Firestore
 export enum OperationType {

@@ -251,6 +251,7 @@ export function mergeLifeMetrics(
       if (existing) {
         map.set(m.day, {
           day: m.day,
+          date: (m as any).date || (existing as any).date,
           sleep: m.sleep > 0 ? m.sleep : existing.sleep || 0,
           screenTime: m.screenTime > 0 ? m.screenTime : existing.screenTime || 0,
         });

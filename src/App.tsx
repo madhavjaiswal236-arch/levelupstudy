@@ -245,28 +245,6 @@ function AppContent() {
       }
     }
 
-    // Preload next tabs in background idle time for 0ms transition latency
-    const preloadTabs = () => {
-      import("./pages/Syllabus");
-      import("./pages/BacklogHQ");
-      import("./pages/Missions");
-      import("./pages/Protocols");
-      import("./pages/History");
-      import("./pages/Analytics");
-      import("./pages/Store");
-      import("./pages/Profile");
-      import("./pages/Settings");
-      import("./pages/Rivals");
-    };
-
-    if (typeof window !== "undefined") {
-      if ("requestIdleCallback" in window) {
-        (window as any).requestIdleCallback(preloadTabs, { timeout: 2500 });
-      } else {
-        setTimeout(preloadTabs, 1500);
-      }
-    }
-
     return () => clearTimeout(timer);
   }, []);
 
@@ -759,32 +737,30 @@ function AppContent() {
     streakDays,
   ]);
 
+  const notifiedTasksRef = React.useRef<Set<string | number>>(new Set());
+
   useEffect(() => {
     if (!isLoaded) return;
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
 
-    const interval = setInterval(() => {
-      if ("Notification" in window && Notification.permission === "granted") {
-        const { xpGainedToday, pendingTasks, todos, notificationSettings } =
-          stateRef.current;
-        const hour = new Date().getHours();
+    // Heartbeat for motivational alerts and upcoming task notifications
+    const heartbeatInterval = setInterval(() => {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
 
-        // Prevent duplicate notifications in the same hour
-        if (lastHourNotified.current === hour) return;
+      const { xpGainedToday, todos, notificationSettings } = stateRef.current;
+      const now = new Date();
+      const hour = now.getHours();
 
-        const isFocusMode = localStorage.getItem("focusModeActive") === "true";
-        if (isFocusMode) return; // Don't interrupt focus sessions with general alerts
+      const isFocusMode = typeof localStorage !== "undefined" && localStorage.getItem("focusModeActive") === "true";
 
+      // 1. General Motivational Alerts (once per hour)
+      if (!isFocusMode && lastHourNotified.current !== hour && notificationSettings.motivationalAlerts) {
         let notified = false;
 
         // At 18:00 (6 PM) if XP is very low
-        if (
-          hour === 18 &&
-          xpGainedToday < 100 &&
-          notificationSettings.motivationalAlerts
-        ) {
+        if (hour === 18 && xpGainedToday < 100) {
           sendNotification("Wake up. Time is ticking.", {
             body: "You've barely earned any XP today. Get a task done right now. Stay hard.",
             icon: "/icon.png",
@@ -794,7 +770,7 @@ function AppContent() {
         }
 
         // Motivation at 14:00 (2 PM)
-        if (hour === 14 && notificationSettings.motivationalAlerts) {
+        if (hour === 14) {
           sendNotification("Midday Checkpoint", {
             body: "Don't let the day slip away. You're competing against millions. Put the work in.",
             icon: "/icon.png",
@@ -808,11 +784,7 @@ function AppContent() {
         const uncompletedToday = todos.filter(
           (t) => !t.completed && !t.isDeleted && isCurrentDayTask(t, todayStr),
         ).length;
-        if (
-          hour === 21 &&
-          uncompletedToday > 0 &&
-          notificationSettings.motivationalAlerts
-        ) {
+        if (hour === 21 && uncompletedToday > 0) {
           sendNotification("Unfinished Business", {
             body: `You still have ${uncompletedToday} task${uncompletedToday === 1 ? "" : "s"} remaining today. Don't go to sleep until you finish them.`,
             icon: "/icon.png",
@@ -825,25 +797,9 @@ function AppContent() {
           lastHourNotified.current = hour;
         }
       }
-    }, 1000 * 60); // Check every minute
 
-    return () => clearInterval(interval);
-  }, [isLoaded]);
-
-  // Upcoming Task Notifications logic
-  const notifiedTasksRef = React.useRef<Set<string | number>>(new Set());
-
-  useEffect(() => {
-    if (!isLoaded) return;
-
-    const taskInterval = setInterval(() => {
-      if (
-        "Notification" in window &&
-        Notification.permission === "granted" &&
-        stateRef.current.notificationSettings.taskReminders
-      ) {
-        const { todos, notificationSettings } = stateRef.current;
-        const now = new Date();
+      // 2. Upcoming Task Reminders
+      if (notificationSettings.taskReminders) {
         const todayStr = getLocalDateString();
         const upcomingTodos = todos.filter(
           (t) => !t.completed && !t.isDeleted && isCurrentDayTask(t, todayStr) && t.startTime,
@@ -880,9 +836,9 @@ function AppContent() {
           }
         });
       }
-    }, 1000 * 60); // Check every minute
+    }, 1000 * 60);
 
-    return () => clearInterval(taskInterval);
+    return () => clearInterval(heartbeatInterval);
   }, [isLoaded]);
 
   useEffect(() => {

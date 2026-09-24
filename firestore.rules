@@ -5,7 +5,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, delete: if request.auth != null && request.auth.uid == userId;
       allow create, update: if request.auth != null && request.auth.uid == userId
-        && request.resource.data.keys().size() <= 100;
+        && request.resource.data.keys().size() <= 100
+        && (!('xp' in request.resource.data) || (request.resource.data.xp is number && request.resource.data.xp >= 0))
+        && (!('level' in request.resource.data) || (request.resource.data.level is number && request.resource.data.level >= 1))
+        && (!('streakDays' in request.resource.data) || (request.resource.data.streakDays is number && request.resource.data.streakDays >= 0));
 
       // Allow access to user subcollections (e.g. sessions, tasks, metrics)
       match /{allSubcollections=**} {
