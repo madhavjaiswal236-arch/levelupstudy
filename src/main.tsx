@@ -7,16 +7,20 @@ import App from './App.tsx';
 import './index.css';
 
 // Register Service Worker for robust offline caching in web/PWA mode
-if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
-  registerSW({
-    immediate: true,
-    onNeedRefresh() {
-      console.log('LevelUp PWA update available');
-    },
-    onOfflineReady() {
-      console.log('LevelUp PWA cached for complete offline support');
-    },
-  });
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
+  try {
+    registerSW({
+      immediate: true,
+      onNeedRefresh() {
+        console.log('LevelUp PWA update available');
+      },
+      onOfflineReady() {
+        console.log('LevelUp PWA cached for complete offline support');
+      },
+    });
+  } catch (e) {
+    // Service worker registration skipped in dev preview
+  }
 }
 
 async function initStorage() {

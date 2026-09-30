@@ -73,8 +73,7 @@ export default defineConfig(({ mode }) => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module'
+          enabled: false,
         }
       })
     ],
@@ -104,9 +103,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     server: {
-      hmr: {
-        overlay: false
-      },
+      hmr: false,
     },
   };
 });
