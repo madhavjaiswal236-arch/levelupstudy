@@ -41,6 +41,7 @@ import {
   generateRoadmap,
   generateTodosFromRoadmap
 } from '@/lib/backlog/engine';
+import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
 import { getLocalDateString } from '@/lib/utils';
 
 export default function BacklogHQ() {
@@ -218,13 +219,14 @@ export default function BacklogHQ() {
     setTodos(prev => {
       const nonBacklog = prev.filter(t => !t.isBacklogTask);
       const completedBacklog = prev.filter(t => t.isBacklogTask && t.completed);
-      const completedSignatures = new Set(
-        completedBacklog.map(t => `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`)
-      );
+      const completedSignatures = new Set<string>();
+      completedBacklog.forEach(t => {
+        getTaskSignaturesWithLegacy(t).forEach(sig => completedSignatures.add(sig));
+      });
 
       const freshTasks = newTodos.filter(t => {
-        const sig = `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`;
-        return !completedSignatures.has(sig);
+        const sigs = getTaskSignaturesWithLegacy(t);
+        return !sigs.some(s => completedSignatures.has(s));
       });
       nextTodos = [...nonBacklog, ...completedBacklog, ...freshTasks];
       return nextTodos;

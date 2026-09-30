@@ -31,6 +31,10 @@ export interface BacklogPlanSettings {
   capacityMode: "hours" | "lectures";
   targetDailyMinutes: number;
   targetDailyLectures: number;
+  weekdayDailyMinutes?: number;
+  weekendDailyMinutes?: number;
+  maxDailySurgeMinutes?: number;
+  recoveryStrategy?: "SMOOTH" | "WEEKEND_CATCHUP" | "EXTEND_DEADLINE";
   revisionEnabled: boolean;
   revisionAfterEveryNLectures: number;
   revisionDurationMinutes: number;
@@ -91,6 +95,7 @@ export interface BacklogPlan {
   createdAt: string;
   updatedAt: string;
   subjects: BacklogSubject[];
+  originalSubjects?: BacklogSubject[];
   settings: BacklogPlanSettings;
   metrics: BacklogPlanMetrics;
   roadmap?: RoadmapDay[];
@@ -104,4 +109,9 @@ export interface RecalculationDiff {
   newProjectedCompletion: string;
   deadlinePreserved: boolean;
   feasibilityStatus: FeasibilityStatus;
+  currentAvgDailyMinutes?: number;
+  newAvgDailyMinutes?: number;
+  dailySurgeMinutes?: number;
+  recommendedStrategy?: "SMOOTH" | "WEEKEND_CATCHUP" | "EXTEND_DEADLINE";
+  overflowWarning?: string;
 }

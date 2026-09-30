@@ -61,6 +61,7 @@ import { sendNotification } from "./lib/notifications";
 import { runSyncSimulations } from "./lib/sync/syncTestRunner";
 import { useNotificationScheduler } from "./hooks/useNotificationScheduler";
 import { NotificationToastContainer } from "./components/NotificationToastContainer";
+import { OfflineIndicator } from "./components/OfflineIndicator";
 import { googleSignIn } from "./lib/firebase";
 
 const LunarGravityCanvas = lazy(() =>
@@ -2471,6 +2472,7 @@ function AppContent() {
         </AnimatePresence>,
         document.body,
       )}
+      <OfflineIndicator />
     </div>
   );
 }

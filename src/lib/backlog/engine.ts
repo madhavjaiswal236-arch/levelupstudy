@@ -9,6 +9,8 @@ import {
   RoadmapTask
 } from './types';
 import { Todo, generateUniqueTaskId } from '@/context/AppContext';
+import { getLocalDateString } from '@/lib/utils';
+export { getTaskSignature, getTaskSignaturesWithLegacy } from './signature';
 
 export function calculateDateDiffDays(startDateStr: string, endDateStr: string): number {
   const [sy, sm, sd] = startDateStr.split('-').map(Number);
@@ -73,10 +75,29 @@ export function calculateMetrics(
   const buffer = Math.max(0, settings.bufferDays || 0);
   const availableStudyDays = Math.max(1, calendarDays - buffer);
 
+  // Compute effective daily capacity accounting for weekday vs weekend distribution
+  let effectiveTargetDailyMinutes = Math.max(30, settings.targetDailyMinutes || 240);
+  if (settings.weekdayDailyMinutes && settings.weekendDailyMinutes) {
+    let weekdayCount = 0;
+    let weekendCount = 0;
+    for (let i = 0; i < calendarDays; i++) {
+      const dStr = addDaysToDate(settings.startDate, i);
+      const [y, m, d] = dStr.split('-').map(Number);
+      const dayOfWeek = new Date(y, m - 1, d).getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        weekendCount++;
+      } else {
+        weekdayCount++;
+      }
+    }
+    const totalCapacity = (weekdayCount * settings.weekdayDailyMinutes) + (weekendCount * settings.weekendDailyMinutes);
+    effectiveTargetDailyMinutes = Math.max(30, Math.round(totalCapacity / Math.max(1, calendarDays)));
+  }
+
   const requiredDailyMinutes = Math.round(totalWorkloadMinutes / availableStudyDays);
   const requiredDailyLectures = +(totalLectures / availableStudyDays).toFixed(1);
 
-  const targetMins = Math.max(30, settings.targetDailyMinutes || 240);
+  const targetMins = effectiveTargetDailyMinutes;
   const ratio = requiredDailyMinutes / targetMins;
 
   let feasibilityStatus: FeasibilityStatus = 'ON_TRACK';
@@ -99,8 +120,21 @@ export function calculateMetrics(
     healthScore = 20;
   }
 
-  // Projected completion date
-  const neededDays = Math.ceil(totalWorkloadMinutes / targetMins);
+  // Realistic projected completion date using day-by-day capacity
+  let simulatedMins = 0;
+  let simulatedDayIndex = 0;
+  while (simulatedMins < totalWorkloadMinutes && simulatedDayIndex < 730) {
+    const curDateStr = addDaysToDate(settings.startDate, simulatedDayIndex);
+    const [y, m, d] = curDateStr.split('-').map(Number);
+    const dayOfWeek = new Date(y, m - 1, d).getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const dayCap = isWeekend
+      ? (settings.weekendDailyMinutes || targetMins)
+      : (settings.weekdayDailyMinutes || targetMins);
+    simulatedMins += dayCap;
+    simulatedDayIndex++;
+  }
+  const neededDays = Math.max(1, simulatedDayIndex);
   const projectedCompletionDate = addDaysToDate(settings.startDate, neededDays - 1);
   const bufferDaysRemaining = Math.max(0, calendarDays - neededDays);
 
@@ -259,14 +293,34 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
 
   const roadmap: RoadmapDay[] = [];
   let currentDayIndex = 1;
-  const startDateStr = settings.startDate || new Date().toISOString().split('T')[0];
+  const startDateStr = settings.startDate || getLocalDateString();
   let subjectRotationIndex = 0;
 
   // Distribute tasks across days with round-robin subject rotation
   while (subjectQueues.some(q => q.tasks.length > 0)) {
     const dayDate = addDaysToDate(startDateStr, currentDayIndex - 1);
     const dayTasks: RoadmapTask[] = [];
-    let dayRemainingMins = targetDailyMinutes;
+
+    // Weekday vs Weekend capacity
+    const [y, m, d] = dayDate.split('-').map(Number);
+    const dayOfWeek = new Date(y, m - 1, d).getDay(); // 0 = Sun, 6 = Sat
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+    const baseDayCapacity = isWeekend
+      ? (settings.weekendDailyMinutes || targetDailyMinutes)
+      : (settings.weekdayDailyMinutes || targetDailyMinutes);
+
+    // Enforce anti-burnout surge cap: max 15% surge or max 60 mins extra per day
+    const surgeLimit = settings.maxDailySurgeMinutes || Math.min(60, Math.round(baseDayCapacity * 0.15));
+    let dayCapacity = baseDayCapacity;
+
+    if (settings.recoveryStrategy === 'WEEKEND_CATCHUP') {
+      dayCapacity = isWeekend ? baseDayCapacity + surgeLimit : baseDayCapacity;
+    } else {
+      dayCapacity = baseDayCapacity + Math.round(surgeLimit * 0.6);
+    }
+
+    let dayRemainingMins = dayCapacity;
 
     // Check if we should make this day a lighter test/revision day
     let hasTest = false;
@@ -280,7 +334,7 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
       let chosenTaskIndex = -1;
 
       // Subject Rotation: Attempt round-robin selection starting at subjectRotationIndex
-      const overflowAllowance = targetDailyMinutes * 0.15;
+      const overflowAllowance = Math.min(30, Math.round(dayCapacity * 0.15));
       for (let offset = 0; offset < numTotalQueues; offset++) {
         const qIdx = (subjectRotationIndex + offset) % numTotalQueues;
         const q = subjectQueues[qIdx];
@@ -372,7 +426,7 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
       dayType = 'LIGHT';
     }
 
-    const todayDateStr = new Date().toISOString().split('T')[0];
+    const todayDateStr = getLocalDateString();
     roadmap.push({
       dayIndex: currentDayIndex,
       date: dayDate,

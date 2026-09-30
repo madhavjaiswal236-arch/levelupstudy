@@ -1,17 +1,25 @@
 {
+  "id": "/",
   "name": "LevelUp Study",
   "short_name": "LevelUp",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "description": "A gamified, AI-powered productivity ecosystem for high-performance students.",
+  "description": "A gamified, high-performance study tracker and adaptive backlog productivity ecosystem.",
   "icons": [
     {
       "src": "/favicon.svg",
-      "sizes": "192x192 512x512 any",
+      "sizes": "192x192 512x512",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }

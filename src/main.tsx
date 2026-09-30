@@ -2,8 +2,22 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
+
+// Register Service Worker for robust offline caching in web/PWA mode
+if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
+  registerSW({
+    immediate: true,
+    onNeedRefresh() {
+      console.log('LevelUp PWA update available');
+    },
+    onOfflineReady() {
+      console.log('LevelUp PWA cached for complete offline support');
+    },
+  });
+}
 
 async function initStorage() {
   if (Capacitor.isNativePlatform()) {

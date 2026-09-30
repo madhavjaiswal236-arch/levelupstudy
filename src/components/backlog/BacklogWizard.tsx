@@ -36,6 +36,8 @@ import {
   addDaysToDate
 } from '@/lib/backlog/engine';
 import { ChapterLectureModal } from './ChapterLectureModal';
+import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
+import { getLocalDateString } from '@/lib/utils';
 
 interface BacklogWizardProps {
   onComplete: () => void;
@@ -195,11 +197,11 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
   };
 
   // Settings State
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => getLocalDateString(), []);
   const defaultDeadline = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   }, []);
 
   const [startDate, setStartDate] = useState<string>(
@@ -464,6 +466,7 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       subjects,
+      originalSubjects: [...subjects],
       settings: currentSettings,
       metrics
     };
@@ -491,14 +494,16 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
       const nonBacklog = prev.filter(t => !t.isBacklogTask);
       const completedBacklog = prev.filter(t => t.isBacklogTask && t.completed);
 
-      // Filter out new tasks that were already completed (by subject, chapter, and text)
-      const completedSignatures = new Set(
-        completedBacklog.map(t => `${t.subject || ''}_${t.chapter || ''}_${t.text || ''}`.trim().toLowerCase())
-      );
+      // Filter out new tasks that were already completed using canonical signature generator
+      const completedSignatures = new Set<string>();
+      completedBacklog.forEach(t => {
+        getTaskSignaturesWithLegacy(t).forEach(sig => completedSignatures.add(sig));
+      });
 
-      const deduplicatedNew = newTodos.filter(
-        t => !completedSignatures.has(`${t.subject || ''}_${t.chapter || ''}_${t.text || ''}`.trim().toLowerCase())
-      );
+      const deduplicatedNew = newTodos.filter(t => {
+        const sigs = getTaskSignaturesWithLegacy(t);
+        return !sigs.some(s => completedSignatures.has(s));
+      });
 
       updatedTodos = [...nonBacklog, ...completedBacklog, ...deduplicatedNew];
       return updatedTodos;

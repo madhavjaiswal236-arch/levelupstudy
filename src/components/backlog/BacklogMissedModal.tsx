@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertTriangle, CheckCircle2, RefreshCw, Calendar, Clock, ArrowRight, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw, Calendar, Clock, ArrowRight, ShieldCheck, X, Sparkles, Sliders } from 'lucide-react';
 import { Todo, useAppContext } from '@/context/AppContext';
 import { recalculateRoadmap } from '@/lib/backlog/adaptive';
 import { RecalculationDiff } from '@/lib/backlog/types';
+import { getLocalDateString } from '@/lib/utils';
 
 interface BacklogMissedModalProps {
   missedTasks: Todo[];
@@ -13,6 +14,7 @@ interface BacklogMissedModalProps {
 export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTasks, onClose }) => {
   const { backlogPlan, setBacklogPlan, todos, setTodos, updateTask, addXp, saveStateToCloudNow } = useAppContext();
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
+  const [selectedStrategy, setSelectedStrategy] = useState<'SMOOTH' | 'WEEKEND_CATCHUP' | 'EXTEND_DEADLINE'>('SMOOTH');
   const [diffPreview, setDiffPreview] = useState<RecalculationDiff | null>(null);
   const [isApplying, setIsApplying] = useState(false);
 
@@ -45,18 +47,19 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
     onClose();
   };
 
-  const handlePreviewRecalculate = () => {
+  const handlePreviewRecalculate = (strategyToPreview?: 'SMOOTH' | 'WEEKEND_CATCHUP' | 'EXTEND_DEADLINE') => {
     if (!backlogPlan) return;
-    const todayStr = new Date().toISOString().split('T')[0];
-    const { diff } = recalculateRoadmap(backlogPlan, todos, todayStr);
+    const strat = strategyToPreview || selectedStrategy;
+    const todayStr = getLocalDateString();
+    const { diff } = recalculateRoadmap(backlogPlan, todos, todayStr, strat);
     setDiffPreview(diff);
   };
 
   const handleConfirmRecalculate = () => {
     if (!backlogPlan) return;
     setIsApplying(true);
-    const todayStr = new Date().toISOString().split('T')[0];
-    const { updatedPlan, newTodos } = recalculateRoadmap(backlogPlan, todos, todayStr);
+    const todayStr = getLocalDateString();
+    const { updatedPlan, newTodos } = recalculateRoadmap(backlogPlan, todos, todayStr, selectedStrategy);
 
     setBacklogPlan(updatedPlan);
     if (typeof window !== "undefined") {
@@ -128,7 +131,7 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
                     </button>
                   </div>
 
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {missedTasks.map(task => {
                       const isSelected = selectedIds.has(task.id);
                       return (
@@ -165,7 +168,70 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Strategy Selection */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                    Select Recovery Strategy
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStrategy('SMOOTH')}
+                      className={`p-3 rounded-xl border text-left transition ${
+                        selectedStrategy === 'SMOOTH'
+                          ? 'bg-cyan-950/40 border-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.25)]'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        Smooth Spread
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-tight">
+                        Spread across upcoming days with a strict 15% daily surge cap.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStrategy('WEEKEND_CATCHUP')}
+                      className={`p-3 rounded-xl border text-left transition ${
+                        selectedStrategy === 'WEEKEND_CATCHUP'
+                          ? 'bg-purple-950/40 border-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.25)]'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                        Weekend Focus
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-tight">
+                        Keep weekdays calm; catch up during high-energy weekend slots.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStrategy('EXTEND_DEADLINE')}
+                      className={`p-3 rounded-xl border text-left transition ${
+                        selectedStrategy === 'EXTEND_DEADLINE'
+                          ? 'bg-emerald-950/40 border-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.25)]'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                        Buffer Shift
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-tight">
+                        Shift deadline cleanly by missed days without adding daily stress.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <button
                     onClick={handleMarkSelectedCompleted}
                     disabled={selectedIds.size === 0}
@@ -177,26 +243,26 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
                   >
                     <CheckCircle2 className="w-5 h-5" />
                     <span className="text-sm font-bold">Mark {selectedIds.size} Done Offline</span>
-                    <span className="text-xs opacity-80">Already studied offline; keep plan unchanged</span>
+                    <span className="text-xs opacity-80">Studied offline; keep plan unchanged</span>
                   </button>
 
                   <button
-                    onClick={handlePreviewRecalculate}
+                    onClick={() => handlePreviewRecalculate()}
                     className="p-3.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 border border-cyan-400/30 text-white flex flex-col items-center text-center gap-1.5 shadow-[0_0_20px_rgba(6,182,212,0.3)] transition"
                   >
                     <RefreshCw className="w-5 h-5" />
-                    <span className="text-sm font-bold">Redistribute Future Work</span>
-                    <span className="text-xs text-cyan-200">Anti-overload: spread smoothly to deadline</span>
+                    <span className="text-sm font-bold">Preview Redistribution</span>
+                    <span className="text-xs text-cyan-200">Inspect anti-burnout schedule diff</span>
                   </button>
                 </div>
               </>
             ) : (
-              /* Minimal-Diff Preview */
+              /* Enhanced Diff Preview */
               <div className="space-y-4">
                 <div className="p-4 rounded-xl bg-slate-950/80 border border-cyan-500/30">
                   <div className="flex items-center gap-2 text-cyan-400 font-semibold mb-2">
                     <ShieldCheck className="w-5 h-5" />
-                    <span>Plan Recalculation Diff</span>
+                    <span>Plan Recalculation Impact</span>
                   </div>
                   <ul className="space-y-2 text-sm text-slate-300">
                     {diffPreview.changesSummary.map((item, idx) => (
@@ -208,9 +274,30 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
                   </ul>
                 </div>
 
+                {/* Daily Workload Comparison Card */}
+                {diffPreview.currentAvgDailyMinutes !== undefined && diffPreview.newAvgDailyMinutes !== undefined && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                      <p className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Previous Pace</p>
+                      <p className="text-lg font-bold text-slate-200 mt-1">
+                        {Math.floor(diffPreview.currentAvgDailyMinutes / 60)}h {diffPreview.currentAvgDailyMinutes % 60}m<span className="text-xs font-normal text-slate-400">/day</span>
+                      </p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-900/60 border border-cyan-500/40">
+                      <p className="text-[11px] text-cyan-400 uppercase tracking-wider font-semibold">Adjusted Pace</p>
+                      <p className="text-lg font-bold text-white mt-1">
+                        {Math.floor(diffPreview.newAvgDailyMinutes / 60)}h {diffPreview.newAvgDailyMinutes % 60}m<span className="text-xs font-normal text-slate-400">/day</span>
+                        {diffPreview.dailySurgeMinutes && diffPreview.dailySurgeMinutes > 0 ? (
+                          <span className="text-xs text-amber-400 ml-1.5 font-medium">(+{diffPreview.dailySurgeMinutes}m)</span>
+                        ) : null}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">New Completion Projection</p>
+                    <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Projected Target Completion</p>
                     <p className="text-base font-bold text-white mt-0.5">{diffPreview.newProjectedCompletion}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
@@ -227,14 +314,14 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
                     onClick={() => setDiffPreview(null)}
                     className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition"
                   >
-                    Back
+                    Adjust Strategy
                   </button>
                   <button
                     onClick={handleConfirmRecalculate}
                     disabled={isApplying}
                     className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-[0_0_20px_rgba(6,182,212,0.4)] transition"
                   >
-                    {isApplying ? 'Applying Update...' : 'Apply New Roadmap'}
+                    {isApplying ? 'Applying Update...' : 'Confirm & Apply Schedule'}
                   </button>
                 </div>
               </div>
