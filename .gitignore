@@ -11,5 +11,4 @@ coverage/
 *.cjs
 *.py
 android/app/google-services.json
-firebase-applet-config.json
 

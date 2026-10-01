@@ -8,19 +8,118 @@
     <meta property="og:description" content="A gamified, AI-powered productivity ecosystem for high-performance students." />
     <title>LevelUp Study</title>
     <script>
-      // Filter Vite HMR WebSocket connection errors in dev preview iframe (HMR is disabled in this environment)
+      // Support seamless preview in AI Studio iframe environment (HMR & WebSocket disabled)
       (function() {
+        // 1. Intercept Vite HMR / ping WebSockets so they never fail or log errors
+        var NativeWebSocket = window.WebSocket;
+        if (typeof NativeWebSocket !== 'undefined') {
+          function MockViteSocket(url, protocols) {
+            var listeners = {};
+            var self = {
+              url: url,
+              protocols: protocols,
+              readyState: 0, // CONNECTING
+              CONNECTING: 0,
+              OPEN: 1,
+              CLOSING: 2,
+              CLOSED: 3,
+              onopen: null,
+              onclose: null,
+              onmessage: null,
+              onerror: null,
+              addEventListener: function(type, fn) {
+                listeners[type] = listeners[type] || [];
+                listeners[type].push(fn);
+              },
+              removeEventListener: function(type, fn) {
+                if (listeners[type]) {
+                  listeners[type] = listeners[type].filter(function(cb) { return cb !== fn; });
+                }
+              },
+              dispatchEvent: function(event) {
+                if (self['on' + event.type]) {
+                  try { self['on' + event.type](event); } catch(e) {}
+                }
+                if (listeners[event.type]) {
+                  listeners[event.type].forEach(function(fn) {
+                    try { fn(event); } catch(e) {}
+                  });
+                }
+                return true;
+              },
+              send: function() {},
+              close: function() {
+                self.readyState = 3;
+                var ev = { type: 'close', wasClean: true, code: 1000, reason: '' };
+                self.dispatchEvent(ev);
+              }
+            };
+
+            setTimeout(function() {
+              self.readyState = 1; // OPEN
+              self.dispatchEvent({ type: 'open' });
+            }, 5);
+
+            return self;
+          }
+
+          MockViteSocket.CONNECTING = 0;
+          MockViteSocket.OPEN = 1;
+          MockViteSocket.CLOSING = 2;
+          MockViteSocket.CLOSED = 3;
+          MockViteSocket.prototype = NativeWebSocket.prototype;
+
+          window.WebSocket = function(url, protocols) {
+            var urlStr = String(url || '');
+            var protoStr = String(protocols || '');
+            if (protoStr.indexOf('vite-hmr') !== -1 || protoStr.indexOf('vite-ping') !== -1 || urlStr.indexOf('token=') !== -1 || urlStr.indexOf('vite-ping') !== -1) {
+              return MockViteSocket(url, protocols);
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+        }
+
+        // 2. Filter Vite logs and WebSocket error logs from console
         var origConsoleError = console.error;
         console.error = function() {
           var firstArg = arguments[0];
-          if (firstArg && typeof firstArg === 'string' && (firstArg.includes('[vite] failed to connect to websocket') || firstArg === '[vite]')) {
+          if (firstArg && typeof firstArg === 'string' && (firstArg.indexOf('[vite]') !== -1 || firstArg.indexOf('vite-hmr') !== -1 || firstArg.indexOf('vite-pwa-plugin') !== -1)) {
             return;
           }
-          if (firstArg === '[vite]' && arguments[1] && (String(arguments[1]).includes('websocket') || String(arguments[1]).includes('WebSocket') || String(arguments[1]).includes('failed to connect'))) {
-            return;
+          if (arguments.length > 1) {
+            for (var i = 0; i < arguments.length; i++) {
+              var str = String(arguments[i]);
+              if (str.indexOf('[vite]') !== -1 || str.indexOf('vite-hmr') !== -1 || str.indexOf('vite-pwa-plugin') !== -1) {
+                return;
+              }
+            }
           }
           return origConsoleError.apply(console, arguments);
         };
+
+        // 3. Prevent unhandled rejections or window errors from [vite] WebSocket
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason;
+          var msg = reason && (reason.message || String(reason));
+          if (msg && typeof msg === 'string' && (msg.indexOf('[vite]') !== -1 || msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite-pwa-plugin') !== -1)) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+          }
+        });
+
+        window.addEventListener('error', function(event) {
+          var msg = event && (event.message || String(event.error));
+          if (msg && typeof msg === 'string' && (msg.indexOf('[vite]') !== -1 || msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite-pwa-plugin') !== -1)) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+          }
+        });
       })();
     </script>
     <script>

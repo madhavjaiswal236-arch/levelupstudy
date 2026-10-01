@@ -6,8 +6,8 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 
-// Register Service Worker for robust offline caching in web/PWA mode
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
+// Register Service Worker for robust offline caching in web/PWA mode (production only)
+if (import.meta.env.PROD && typeof window !== 'undefined' && 'serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
   try {
     registerSW({
       immediate: true,

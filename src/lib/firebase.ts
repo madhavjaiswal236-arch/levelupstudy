@@ -17,7 +17,7 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import firebaseAppletConfig from '../../firebase-applet-config.json';
+import { firebaseAppletConfig } from './firebaseConfig';
 
 const metaEnv = (import.meta as any).env || {};
 
