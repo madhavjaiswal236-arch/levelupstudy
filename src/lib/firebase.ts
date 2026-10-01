@@ -10,30 +10,37 @@ import {
   getDoc, 
   deleteDoc, 
   getDocFromCache, 
+  getDocFromServer,
   onSnapshot, 
   serverTimestamp 
 } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+import firebaseAppletConfig from '../../firebase-applet-config.json';
 
 const metaEnv = (import.meta as any).env || {};
 
 const mergedFirebaseConfig = {
-  apiKey: metaEnv.VITE_FIREBASE_API_KEY || "",
-  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || "",
-  databaseURL: metaEnv.VITE_FIREBASE_DATABASE_URL || "",
-  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: metaEnv.VITE_FIREBASE_APP_ID || "",
-  measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID || "",
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY || firebaseAppletConfig.apiKey || "",
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain || "",
+  databaseURL: metaEnv.VITE_FIREBASE_DATABASE_URL || (firebaseAppletConfig.projectId ? `https://${firebaseAppletConfig.projectId}-default-rtdb.firebaseio.com` : ""),
+  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId || "",
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig.storageBucket || "",
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig.messagingSenderId || "",
+  appId: metaEnv.VITE_FIREBASE_APP_ID || firebaseAppletConfig.appId || "",
+  measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID || firebaseAppletConfig.measurementId || "",
 };
+
+export const firestoreDatabaseId: string =
+  metaEnv.VITE_FIREBASE_DATABASE_ID ||
+  firebaseAppletConfig.firestoreDatabaseId ||
+  "(default)";
 
 const app = getApps().length > 0 ? getApp() : initializeApp(mergedFirebaseConfig);
 export const auth = getAuth(app);
 
-// Modern Firebase 12 multi-tab persistent IndexedDB cache initialization
+// Modern Firebase multi-tab persistent IndexedDB cache initialization with target database ID
 let dbInstance;
 if (typeof window !== 'undefined') {
   try {
@@ -41,14 +48,32 @@ if (typeof window !== 'undefined') {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
-    });
+    }, firestoreDatabaseId);
   } catch (e) {
-    dbInstance = getFirestore(app);
+    dbInstance = getFirestore(app, firestoreDatabaseId);
   }
 } else {
-  dbInstance = getFirestore(app);
+  dbInstance = getFirestore(app, firestoreDatabaseId);
 }
 export const db = dbInstance;
+
+// Test connection to Firestore on initialization
+export async function testFirestoreConnection(): Promise<boolean> {
+  if (typeof window === 'undefined') return true;
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log('[Firestore] Connected successfully to database:', firestoreDatabaseId);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("[Firestore] Client is offline or waiting for network connection.");
+    } else {
+      console.log('[Firestore] Connection verification completed.');
+    }
+    return false;
+  }
+}
+testFirestoreConnection();
 
 // Save user data to Firestore
 export enum OperationType {
@@ -99,8 +124,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export function sanitizeForFirestore(val: any): any {
-  if (val === undefined) {
+  if (val === undefined || typeof val === 'function' || typeof val === 'symbol') {
     return null;
+  }
+  if (typeof val === 'number') {
+    return isNaN(val) ? 0 : val;
   }
   if (val === null || typeof val !== 'object') {
     return val;
@@ -117,8 +145,16 @@ export function sanitizeForFirestore(val: any): any {
 
   const cleaned: Record<string, any> = {};
   for (const [key, value] of Object.entries(val)) {
-    if (value !== undefined) {
-      cleaned[key] = sanitizeForFirestore(value);
+    if (value !== undefined && typeof value !== 'function' && typeof value !== 'symbol') {
+      if (key === 'xp') {
+        cleaned[key] = Math.max(0, Number(value) || 0);
+      } else if (key === 'level') {
+        cleaned[key] = Math.max(1, Number(value) || 1);
+      } else if (key === 'streakDays') {
+        cleaned[key] = Math.max(0, Number(value) || 0);
+      } else {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
     }
   }
   return cleaned;
@@ -144,8 +180,8 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
       }
 
       const failures = consecutiveFailuresMap.get(userId) || 0;
-      // Exponential backoff base: 1.5s, 3s, 6s up to 15s if stream exhausted/backed off
-      const baseDelay = failures > 0 ? Math.min(15000, 1500 * Math.pow(2, failures - 1)) : 1000;
+      // Exponential backoff only if previous failures occurred
+      const baseDelay = failures > 0 ? Math.min(10000, 1000 * Math.pow(2, failures - 1)) : 0;
 
       const lastWrite = lastWriteTimestampMap.get(userId) || 0;
       const timeSinceLastWrite = Date.now() - lastWrite;
@@ -169,6 +205,7 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
 
         lastWriteTimestampMap.set(userId, Date.now());
         consecutiveFailuresMap.set(userId, 0); // reset backoff on success
+        console.log(`[Firestore] Successfully saved user data to users/${userId}`);
       } catch (err: any) {
         success = false;
         const failureCount = (consecutiveFailuresMap.get(userId) || 0) + 1;
@@ -180,10 +217,8 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
         }
 
         const isOfflineOrThrottled =
-          err?.code === 'permission-denied' ||
           err?.code === 'resource-exhausted' ||
           err?.code === 'unavailable' ||
-          err?.message?.includes('permission') ||
           err?.message?.includes('exhausted') ||
           err?.message?.includes('offline') ||
           err?.message?.includes('backend') ||

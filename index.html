@@ -3,8 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="LevelUp Study - A gamified study tracker and productivity tool." />
+    <meta name="description" content="A gamified, AI-powered productivity ecosystem for high-performance students." />
+    <meta property="og:title" content="LevelUp Study" />
+    <meta property="og:description" content="A gamified, AI-powered productivity ecosystem for high-performance students." />
     <title>LevelUp Study</title>
+    <script>
+      // Filter Vite HMR WebSocket connection errors in dev preview iframe (HMR is disabled in this environment)
+      (function() {
+        var origConsoleError = console.error;
+        console.error = function() {
+          var firstArg = arguments[0];
+          if (firstArg && typeof firstArg === 'string' && (firstArg.includes('[vite] failed to connect to websocket') || firstArg === '[vite]')) {
+            return;
+          }
+          if (firstArg === '[vite]' && arguments[1] && (String(arguments[1]).includes('websocket') || String(arguments[1]).includes('WebSocket') || String(arguments[1]).includes('failed to connect'))) {
+            return;
+          }
+          return origConsoleError.apply(console, arguments);
+        };
+      })();
+    </script>
     <script>
       (function() {
         try {

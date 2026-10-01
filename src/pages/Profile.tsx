@@ -45,6 +45,7 @@ const Profile = React.memo(function Profile() {
   const [tempName, setTempName] = useState(playerName || "Player");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRestoringData, setIsRestoringData] = useState(false);
+  const [isPushingData, setIsPushingData] = useState(false);
   const [currentTimeDate, setCurrentTimeDate] = useState(new Date());
 
   const auraStyles: Record<string, string> = {
@@ -654,7 +655,37 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
 
        <div className="flex items-center gap-3 w-full sm:w-auto">
          {firebaseUser ? (
-           <div className="flex items-center gap-2">
+           <div className="flex flex-wrap items-center gap-2">
+             <Button
+               variant="outline"
+               disabled={isPushingData}
+               onClick={async () => {
+                 setIsPushingData(true);
+                 try {
+                   const ok = await saveStateToCloudNow();
+                   if (ok) {
+                     setToastType('success');
+                     setToastMessage("Data successfully pushed to Firestore!");
+                   } else {
+                     setToastType('error');
+                     setToastMessage("Could not push data to Firestore. Check connection.");
+                   }
+                 } catch (e: any) {
+                   setToastType('error');
+                   setToastMessage(e?.message || 'Sync error');
+                 } finally {
+                   setIsPushingData(false);
+                 }
+               }}
+               className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-bold font-mono"
+             >
+               {isPushingData ? (
+                 <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+               ) : (
+                 <CloudUpload className="w-4 h-4 mr-1.5" />
+               )}
+               {isPushingData ? "Pushing..." : "Push to Cloud"}
+             </Button>
              <Button
                variant="outline"
                disabled={isRestoringData}
