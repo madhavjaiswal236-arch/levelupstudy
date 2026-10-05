@@ -185,14 +185,14 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
   const severityScore = coachReport.explanation.severity.overall;
   let mentorHeading = "";
   if (severityScore <= 2)
-    mentorHeading = "DOMINATION. BUT THE WAR ISN'T OVER.";
+    mentorHeading = "EXEMPLARY MOMENTUM. MAINTAIN DISCIPLINE.";
   else if (severityScore <= 4)
-    mentorHeading = "STEADY. DON'T CONFUSE MOTION WITH PROGRESS.";
+    mentorHeading = "STEADY PROGRESS. CALIBRATE YOUR NEXT BLOCK.";
   else if (severityScore <= 6)
-    mentorHeading = "YOU'RE BLEEDING THE DAY. WAKE UP.";
+    mentorHeading = "ENERGY DIP DETECTED. LET'S DIAGNOSE & RECOVER.";
   else if (severityScore <= 8)
-    mentorHeading = "SELF-SABOTAGE IN PROGRESS.";
-  else mentorHeading = "YOU SURRENDERED. PROVE YOU'RE NOT DONE.";
+    mentorHeading = "FRICTION POINT DETECTED. REDUCE LOAD AND EXECUTE.";
+  else mentorHeading = "MOMENTUM STALLED. RESET WITH A 30-MIN LOW-RESISTANCE BLOCK.";
 
   if (typeof document === "undefined") return null;
 

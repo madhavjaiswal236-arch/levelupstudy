@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  useCallback,
   Suspense,
   lazy,
   useRef,
@@ -42,6 +43,7 @@ import {
   getStandardDateKey,
   isSameLogicalDay,
   hasTodayProtocolRecord,
+  calculateAbsenceGap,
 } from "./context/AppContext";
 import { getXpForLevel, getLocalDateString, isCurrentDayTask } from "./lib/utils";
 import { useHaptic } from "./hooks/useHaptic";
@@ -49,6 +51,7 @@ import { useAuthToken } from "./hooks/useAuthToken";
 import { useCapacitorSetup } from "./hooks/useCapacitorSetup";
 import { getAICoachFeedback } from "./lib/gemini";
 import confetti from "canvas-confetti";
+import { Tracker360GoalBox } from "./components/backlog/Tracker360GoalBox";
 
 import Dashboard from "./pages/Dashboard";
 const Missions = lazy(() => import("./pages/Missions"));
@@ -135,6 +138,7 @@ function AppContent() {
     lifeMetrics,
     setHistory,
     pendingMissedDays,
+    setPendingMissedDays,
     submitMissedDayReasons,
     lastStudyDate,
     practiceSessions,
@@ -152,6 +156,7 @@ function AppContent() {
     loggedTasksToday,
     showWelcomeHero,
     dismissWelcomeHero,
+    backlogPlan,
   } = useAppContext();
 
   useNotificationScheduler({
@@ -290,31 +295,43 @@ function AppContent() {
     }
   };
 
-  // Periodic Rollover Check past 3:00 AM
+  // Rollover & Missed Days Check past 3:00 AM (Immediate on enter + periodic)
   useEffect(() => {
-    if (!isLoaded || !lastStudyDate) return;
+    if (!isLoaded) return;
     if (firebaseUser && !isCloudSyncComplete) return;
 
-    const interval = setInterval(
-      () => {
-        const currentLogicalDate = getLogicalDate();
-        const isToday = isSameLogicalDay(lastStudyDate, currentLogicalDate);
-        const protocolExists = hasTodayProtocolRecord(history, lifeMetrics, currentLogicalDate);
+    const checkRollover = () => {
+      const currentLogicalDate = getLogicalDate();
+      const effectiveLastDate = lastStudyDate || (history && history.length > 0 ? getStandardDateKey(history[history.length - 1].date) : null);
+      if (!effectiveLastDate) return;
 
-        console.log(
-          `[Rollover Monitor] lastStudyDate: "${lastStudyDate}", logicalToday: "${getStandardDateKey(currentLogicalDate)}", isToday: ${isToday}, protocolExists: ${protocolExists}, needsRollover: ${needsRollover}`
-        );
+      const isToday = isSameLogicalDay(effectiveLastDate, currentLogicalDate);
+      const protocolExists = hasTodayProtocolRecord(history, lifeMetrics, currentLogicalDate);
 
-        if (!isToday && !protocolExists && !needsRollover) {
-          console.log(`[Rollover Monitor] New day boundary detected! Setting needsRollover = true`);
-          setNeedsRollover(true, "Periodic monitor detected day boundary shift");
-        } else if ((isToday || protocolExists) && needsRollover) {
-          console.log(`[Rollover Monitor] Today protocol already present or matched. Clearing needsRollover.`);
-          setNeedsRollover(false, "Periodic monitor cleared needsRollover because today is completed");
+      console.log(
+        `[Rollover Monitor] effectiveLastDate: "${effectiveLastDate}", logicalToday: "${getStandardDateKey(currentLogicalDate)}", isToday: ${isToday}, protocolExists: ${protocolExists}, needsRollover: ${needsRollover}`
+      );
+
+      if (!isToday && !protocolExists && !needsRollover) {
+        console.log(`[Rollover Monitor] Day boundary shift detected! Triggering rollover ASAP.`);
+        setNeedsRollover(true, "Monitor detected day boundary shift");
+        const gaps = calculateAbsenceGap(effectiveLastDate, currentLogicalDate);
+        if (gaps.length > 0) {
+          setPendingMissedDays(gaps);
         }
-      },
+      } else if ((isToday || protocolExists) && needsRollover) {
+        console.log(`[Rollover Monitor] Today protocol already completed. Clearing needsRollover.`);
+        setNeedsRollover(false, "Today protocol already completed");
+      }
+    };
+
+    // Run immediately when user enters the app!
+    checkRollover();
+
+    const interval = setInterval(
+      checkRollover,
       isPowerSaver ? 300000 : 60000,
-    ); // Check every minute
+    ); // Check every minute or 5 minutes in power saver
 
     return () => clearInterval(interval);
   }, [
@@ -322,6 +339,7 @@ function AppContent() {
     lastStudyDate,
     needsRollover,
     setNeedsRollover,
+    setPendingMissedDays,
     isPowerSaver,
     firebaseUser,
     isCloudSyncComplete,
@@ -367,6 +385,47 @@ function AppContent() {
     title: string;
     message: string;
   } | null>(null);
+
+  // Tracker 360 Goal Box state and auto-open logic
+  const [showTracker360GoalBox, setShowTracker360GoalBox] = useState<boolean>(false);
+  const todayDateStr = useMemo(() => getLocalDateString(), []);
+  const todayBacklogTasks = useMemo(() => {
+    return todos.filter(
+      (t) => t.isBacklogTask && !t.isDeleted && isCurrentDayTask(t, todayDateStr)
+    );
+  }, [todos, todayDateStr]);
+
+  // Saved for future activation: automatic pop-up on app entry is disabled for now
+  // To activate manually or via button, dispatch 'open-tracker360-goalbox' event
+  /*
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (needsRollover || showNameModal || pendingMissedDays.length > 0) return;
+    if (todayBacklogTasks.length === 0) return;
+
+    const todayKey = getStandardDateKey(getLogicalDate());
+    try {
+      const alreadySeen = sessionStorage.getItem(`tracker360_briefing_seen_${todayKey}`);
+      if (!alreadySeen) {
+        setShowTracker360GoalBox(true);
+      }
+    } catch {}
+  }, [isLoaded, needsRollover, showNameModal, pendingMissedDays.length, todayBacklogTasks.length]);
+  */
+
+  useEffect(() => {
+    const handleOpen = () => setShowTracker360GoalBox(true);
+    window.addEventListener("open-tracker360-goalbox", handleOpen);
+    return () => window.removeEventListener("open-tracker360-goalbox", handleOpen);
+  }, []);
+
+  const handleDismissTracker360GoalBox = useCallback(() => {
+    setShowTracker360GoalBox(false);
+    try {
+      const todayKey = getStandardDateKey(getLogicalDate());
+      sessionStorage.setItem(`tracker360_briefing_seen_${todayKey}`, "true");
+    } catch {}
+  }, []);
 
   const { hapticLevelUp, hapticSuccess } = useHaptic();
 
@@ -529,18 +588,15 @@ function AppContent() {
       (parsedScreenHrs + parsedScreenMins / 60).toFixed(2),
     );
 
-    completeRollover(finalSleep, finalScreen);
-    setRolloverStep(2);
-
-    const yesterdayObj = new Date();
+    const yesterdayObj = getLogicalDate();
     yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-    const yesterdayKey = yesterdayObj.toDateString();
+    const yesterdayKey = getStandardDateKey(yesterdayObj);
     const yesterdayDateStr = getLocalDateString(yesterdayObj);
 
     processedHistoryRef.current.delete(yesterdayObj.toISOString());
 
     const yesterdayEntry = history.find(
-      (h) => new Date(h.date).toDateString() === yesterdayKey,
+      (h) => isSameLogicalDay(h.date, yesterdayKey) || new Date(h.date).toDateString() === yesterdayObj.toDateString(),
     ) || {
       date: yesterdayObj.toISOString(),
       hoursStudied: hoursStudiedToday || 0,
@@ -556,15 +612,15 @@ function AppContent() {
       const filteredTodos = todos.filter((t) => isCurrentDayTask(t, yesterdayDateStr));
       planned = filteredTodos.length > 0 ? filteredTodos : (yesterdayEntry.completedTasks || []).map((t) => ({ ...t }));
     } else {
-      // In case historical entry had future roadmap tasks stored, filter down to yesterday's tasks
       const filteredPlanned = planned.filter((t) => isCurrentDayTask(t, yesterdayDateStr));
       if (filteredPlanned.length > 0) {
         planned = filteredPlanned;
       }
     }
 
+    let feedback = "";
     try {
-      const feedback = await getAICoachFeedback({
+      feedback = await getAICoachFeedback({
         hours: yesterdayEntry.hoursStudied || 0,
         sleep: finalSleep,
         screenTime: finalScreen,
@@ -580,32 +636,12 @@ function AppContent() {
         accuracy,
         loggedTasksToday,
       });
-
-      setHistory((prev) => {
-        const next = [...prev];
-        const idx = next.findIndex(
-          (h) => new Date(h.date).toDateString() === yesterdayKey,
-        );
-        if (idx >= 0) {
-          next[idx] = {
-            ...next[idx],
-            sleepTime: finalSleep,
-            screenTime: finalScreen,
-            aiFeedback: feedback,
-          };
-        } else {
-          next.push({
-            ...yesterdayEntry,
-            sleepTime: finalSleep,
-            screenTime: finalScreen,
-            aiFeedback: feedback,
-          });
-        }
-        return next;
-      });
     } catch (err) {
       console.error("Error generating AI Coach feedback on rollover submit:", err);
     }
+
+    completeRollover(finalSleep, finalScreen, feedback);
+    setRolloverStep(2);
   };
 
   const closeRollover = () => {
@@ -1660,13 +1696,12 @@ function AppContent() {
 
                   <h2 className="text-2xl font-black dark:text-rose-400 text-rose-700 mb-2 uppercase tracking-widest flex items-center justify-center gap-3">
                     <AlertCircle className="w-8 h-8 dark:text-rose-400 text-rose-700 animate-pulse" />{" "}
-                    ACCOUNTABILITY AUTOPSY
+                    MISSION DEBRIEF & RECOVERY
                   </h2>
                   <p className="dark:text-slate-400 text-slate-600 mb-6 font-mono text-sm leading-relaxed">
-                    You either missed or severely underperformed on the
-                    following training days. The exam doesn't care about your
-                    excuses, but this system does. State exactly why you failed
-                    to execute. Be brutally honest.
+                    Identify friction points or obstacles for these unrecorded
+                    days so Tracker 360 can calibrate your pace and adapt your
+                    roadmap without guilt. Consistency is built on fast recovery.
                   </p>
 
                   <form
@@ -1755,6 +1790,14 @@ function AppContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Tracker 360 Daily Goal Box Briefing Modal */}
+      <Tracker360GoalBox
+        isOpen={showTracker360GoalBox}
+        onClose={handleDismissTracker360GoalBox}
+        tasks={todayBacklogTasks}
+        backlogPlan={backlogPlan}
+      />
 
       {/* Top Navigation */}
       <nav

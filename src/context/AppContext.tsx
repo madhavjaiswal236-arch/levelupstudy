@@ -20,6 +20,7 @@ import React, {
 } from "react";
 import { initAuth } from "@/lib/firebase";
 import { BacklogPlan } from "@/lib/backlog/types";
+export type { BacklogPlan };
 import { reconstructPlanFromTodos } from "@/lib/backlog/engine";
 import { getLevelFromXp, getLocalDateString, isCurrentDayTask } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
@@ -274,7 +275,7 @@ interface AppState {
   setLastSyncTimestamp: React.Dispatch<React.SetStateAction<number>>;
   consistencyBroken: boolean;
   setConsistencyBroken: (val: boolean) => void;
-  completeRollover: (sleep: number, screenTime: number) => void;
+  completeRollover: (sleep: number, screenTime: number, feedback?: string) => void;
   pendingMissedDays: string[];
   setPendingMissedDays: React.Dispatch<React.SetStateAction<string[]>>;
   submitMissedDayReasons: (reasons: { date: string; reason: string }[]) => void;
@@ -442,33 +443,66 @@ export const hasTodayProtocolRecord = (
   const todayKey = getStandardDateKey(todayLogicalDate);
   if (!todayKey) return false;
 
-  const inHistory = history.some((entry) => isSameLogicalDay(entry.date, todayLogicalDate));
-  if (inHistory) return true;
-
-  const inMetrics = lifeMetrics.some((metric) => {
-    if ((metric as any).date) {
-      return isSameLogicalDay((metric as any).date, todayLogicalDate) && (metric.sleep > 0 || metric.screenTime > 0);
-    }
-    const metricKey = getStandardDateKey((metric as any).createdAt);
-    if (metricKey) {
-      return metricKey === todayKey && (metric.sleep > 0 || metric.screenTime > 0);
-    }
-    const now = getLogicalDate();
-    return (
-      metric.day === todayLogicalDate.getDate() &&
-      now.getMonth() === todayLogicalDate.getMonth() &&
-      now.getFullYear() === todayLogicalDate.getFullYear() &&
-      (metric.sleep > 0 || metric.screenTime > 0)
-    );
-  });
-  if (inMetrics) return true;
-
+  // 1. Explicit rollover completion flag for today
   if (typeof sessionStorage !== "undefined") {
     const sessionCompleted = sessionStorage.getItem(`rollover_completed_${todayKey}`);
     if (sessionCompleted === "true") return true;
   }
+  if (typeof localStorage !== "undefined") {
+    const localCompleted = localStorage.getItem(`rollover_completed_${todayKey}`);
+    if (localCompleted === "true") return true;
+  }
+
+  // 2. Check if yesterday's recovery stats have already been recorded in history
+  const yesterdayObj = new Date(todayLogicalDate);
+  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+  const yesterdayKey = getStandardDateKey(yesterdayObj);
+
+  const yesterdayEntry = history.find((entry) => isSameLogicalDay(entry.date, yesterdayKey));
+  if (yesterdayEntry && yesterdayEntry.sleepTime && yesterdayEntry.sleepTime > 0) {
+    return true;
+  }
+
+  // 3. Check if yesterday's sleep was recorded in lifeMetrics
+  const yesterdayMetric = lifeMetrics.find(
+    (m) => isSameLogicalDay((m as any).date, yesterdayKey) || (m.day === yesterdayObj.getDate() && m.sleep > 0)
+  );
+  if (yesterdayMetric && yesterdayMetric.sleep > 0) {
+    return true;
+  }
 
   return false;
+};
+
+export const calculateAbsenceGap = (
+  lastStudyDateStr: string | null,
+  logicalToday: Date
+): string[] => {
+  if (!lastStudyDateStr) return [];
+  const lastDateKey = getStandardDateKey(lastStudyDateStr);
+  const todayKey = getStandardDateKey(logicalToday);
+  if (!lastDateKey || lastDateKey === todayKey) return [];
+
+  const lastDate = new Date(lastDateKey);
+  if (isNaN(lastDate.getTime())) return [];
+
+  const missingDates: string[] = [];
+  const tempDate = new Date(lastDate);
+  tempDate.setDate(tempDate.getDate() + 1);
+
+  let safetyCounter = 0;
+  while (
+    !isNaN(tempDate.getTime()) &&
+    getStandardDateKey(tempDate) !== todayKey &&
+    tempDate < logicalToday &&
+    safetyCounter < 60
+  ) {
+    missingDates.push(getStandardDateKey(tempDate));
+    tempDate.setDate(tempDate.getDate() + 1);
+    safetyCounter++;
+  }
+
+  return missingDates;
 };
 
 const LOCAL_STORAGE_KEY = "jee_tracker_state";
@@ -765,69 +799,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setLastStudyDate(parsed.lastStudyDate || null);
 
           const today = getLogicalDate();
-          const todayDateString = today.toDateString();
-          const isToday = isSameLogicalDay(parsed.lastStudyDate, today);
+          const effectiveLastStudyDate = parsed.lastStudyDate || (parsed.history && parsed.history.length > 0 ? getStandardDateKey(parsed.history[parsed.history.length - 1].date) : null);
+          const isToday = isSameLogicalDay(effectiveLastStudyDate, today);
           const protocolRecordExists = hasTodayProtocolRecord(parsed.history || [], parsed.lifeMetrics || [], today);
 
-          console.log(`[Local Storage Load] lastStudyDate: "${parsed.lastStudyDate}", TodayKey: "${getStandardDateKey(today)}", isToday: ${isToday}, protocolRecordExists: ${protocolRecordExists}`);
+          console.log(`[Local Storage Load] effectiveLastStudyDate: "${effectiveLastStudyDate}", TodayKey: "${getStandardDateKey(today)}", isToday: ${isToday}, protocolRecordExists: ${protocolRecordExists}`);
 
           if (isToday || protocolRecordExists) {
             setNeedsRollover(false, "Local storage load: today is already completed or matches lastStudyDate");
             setLastStudyDate(getStandardDateKey(today));
-          } else if (parsed.lastStudyDate) {
+          } else if (effectiveLastStudyDate) {
             setNeedsRollover(true, "Local storage load: lastStudyDate is from a previous day");
 
-            // Check for missed days or underperformance
-            const lastDate = new Date(parsed.lastStudyDate);
-            const missingDates = [];
-
-            // Calculate historical average XP (removed)
-
-            if (!isNaN(lastDate.getTime())) {
-              const lastSessionXp = parsed.xpGainedToday || 0;
-              let dailyRequiredForCalc = parsed.dailyTarget || 100;
-              if (parsed.class11EndDate) {
-                const class11EndTimestamp = new Date(
-                  parsed.class11EndDate,
-                ).getTime();
-                const daysUntilExam = Math.max(
-                  1,
-                  Math.ceil(
-                    (class11EndTimestamp - Date.now()) / (1000 * 3600 * 24),
-                  ),
-                );
-                const totalXpRequired = Math.max(
-                  0,
-                  (parsed.totalXpGoal || 800000) - (parsed.xp || 0),
-                );
-                dailyRequiredForCalc = Math.max(
-                  100,
-                  Math.ceil(totalXpRequired / daysUntilExam),
-                );
-              }
-
-              if (lastSessionXp < dailyRequiredForCalc * 0.4) {
-                missingDates.push(lastDate.toISOString());
-              }
-
-              const tempDate = new Date(lastDate);
-              tempDate.setDate(tempDate.getDate() + 1);
-
-              let safetyCounter = 0;
-              while (
-                !isNaN(tempDate.getTime()) &&
-                tempDate.toDateString() !== todayDateString &&
-                tempDate < today &&
-                safetyCounter < 60
-              ) {
-                missingDates.push(tempDate.toISOString());
-                tempDate.setDate(tempDate.getDate() + 1);
-                safetyCounter++;
-              }
-
-              if (missingDates.length > 0) {
-                setPendingMissedDays(missingDates);
-              }
+            // Check for genuine missed days
+            const missingDates = calculateAbsenceGap(effectiveLastStudyDate, today);
+            if (missingDates.length > 0) {
+              setPendingMissedDays(missingDates);
             }
           }
           setXpGainedToday(parsed.xpGainedToday || 0);
@@ -1176,11 +1163,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const syncCloudOnLogin = async () => {
       try {
-        const cloudData = await loadUserDataFromCloud(firebaseUser.uid);
+        const cloudDataPromise = loadUserDataFromCloud(firebaseUser.uid);
+        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 2500));
+        const cloudData = await Promise.race([cloudDataPromise, timeoutPromise]);
         if (cancelled) return;
 
         if (!cloudData) {
-          // Network error or offline: keep local state safe, do NOT overwrite cloud with empty state!
+          // Network error or timeout/offline: keep local state safe, do NOT overwrite cloud with empty state!
           setIsCloudSyncComplete(true);
           return;
         }
@@ -1216,6 +1205,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (needsCloudUpload && firebaseUser?.uid) {
           await saveUserDataToCloud(firebaseUser.uid, mergedState, true);
+        }
+
+        // Evaluate day boundary and absence gaps on reconciled cloud state
+        const logicalToday = getLogicalDate();
+        const effectiveLastDate = mergedState.lastStudyDate || (mergedState.history && mergedState.history.length > 0 ? getStandardDateKey(mergedState.history[mergedState.history.length - 1].date) : null);
+        const isToday = isSameLogicalDay(effectiveLastDate, logicalToday);
+        const protocolRecordExists = hasTodayProtocolRecord(
+          mergedState.history || [],
+          mergedState.lifeMetrics || [],
+          logicalToday
+        );
+
+        if (isToday || protocolRecordExists) {
+          setNeedsRollover(false, "Cloud sync: today is completed or matches lastStudyDate");
+          setLastStudyDate(getStandardDateKey(logicalToday));
+        } else if (effectiveLastDate) {
+          setNeedsRollover(true, "Cloud sync: lastStudyDate is from a previous day");
+          const gaps = calculateAbsenceGap(effectiveLastDate, logicalToday);
+          if (gaps.length > 0) {
+            setPendingMissedDays(gaps);
+          }
         }
 
         setIsCloudSyncComplete(true);
@@ -1788,7 +1798,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const completeRollover = useCallback((sleepInput: number, screenTimeInput: number) => {
+  const completeRollover = useCallback((sleepInput: number, screenTimeInput: number, feedback?: string) => {
     updateStreak(sleepInput, screenTimeInput);
 
     const yesterdayObj = getLogicalDate();
@@ -1798,10 +1808,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setLifeMetrics((prev) => {
       const dayNum = yesterdayObj.getDate();
-      const exists = prev.some((m) => m.day === dayNum);
+      const exists = prev.some((m) => m.day === dayNum || (m.date && m.date === yesterdayDateKey));
       if (exists) {
         return prev.map((m) =>
-          m.day === dayNum
+          (m.day === dayNum || m.date === yesterdayDateKey)
             ? { ...m, sleep: sleepInput, screenTime: screenTimeInput, date: yesterdayDateKey }
             : m,
         );
@@ -1812,14 +1822,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHistory((prevHistory) => {
       let updated = [...prevHistory];
       const idx = updated.findIndex(
-        (h) => new Date(h.date).toDateString() === yesterdayStr,
+        (h) => isSameLogicalDay(h.date, yesterdayDateKey) || new Date(h.date).toDateString() === yesterdayStr,
       );
       if (idx >= 0) {
         updated[idx] = {
           ...updated[idx],
           sleepTime: sleepInput,
           screenTime: screenTimeInput,
-          aiFeedback: updated[idx].aiFeedback ?? undefined,
+          aiFeedback: feedback || updated[idx].aiFeedback || undefined,
         };
       } else {
         const state = latestStateRef.current;
@@ -1836,6 +1846,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           plannedTasks: [...dayTodos, ...(state.loggedTasksToday || [])],
           sleepTime: sleepInput,
           screenTime: screenTimeInput,
+          aiFeedback: feedback,
         });
       }
       return updated;
@@ -1844,6 +1855,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const todayKey = getStandardDateKey(getLogicalDate());
     if (typeof sessionStorage !== "undefined") {
       sessionStorage.setItem(`rollover_completed_${todayKey}`, "true");
+    }
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(`rollover_completed_${todayKey}`, "true");
     }
     const now = Date.now();
     setLastSyncTimestamp(now);
@@ -2051,9 +2065,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHistory((prev) => {
       const updated = [...prev];
       reasons.forEach((r) => {
+        const rDateKey = getStandardDateKey(r.date);
         const rDateStr = new Date(r.date).toDateString();
         const existingIdx = updated.findIndex(
-          (h) => new Date(h.date).toDateString() === rDateStr,
+          (h) => isSameLogicalDay(h.date, rDateKey) || new Date(h.date).toDateString() === rDateStr,
         );
         if (existingIdx >= 0) {
           updated[existingIdx] = {
@@ -2063,10 +2078,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
         } else {
           updated.push({
-            date: r.date,
+            date: r.date.includes("T") ? r.date : new Date(r.date).toISOString(),
             hoursStudied: 0,
             xpEarned: 0,
             completedTasks: [],
+            plannedTasks: [],
             screenTime: 0,
             sleepTime: 0,
             isMissed: true,

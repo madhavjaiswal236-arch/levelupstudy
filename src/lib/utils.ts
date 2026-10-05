@@ -107,10 +107,23 @@ export async function withExponentialBackoff<T>(
   }
 }
 
-export function getLocalDateString(d: Date = new Date()): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+export function getLogicalDate(offsetHours: number = 3): Date {
+  const now = new Date();
+  now.setHours(now.getHours() - offsetHours);
+  return now;
+}
+
+export function getLogicalYesterdayDate(offsetHours: number = 3): Date {
+  const d = getLogicalDate(offsetHours);
+  d.setDate(d.getDate() - 1);
+  return d;
+}
+
+export function getLocalDateString(d?: Date): string {
+  const dateObj = d || getLogicalDate();
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const day = String(dateObj.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -134,6 +147,7 @@ export function getTaskScheduledDate(task: {
   if (typeof task.id === "number") {
     const d = new Date(task.id);
     if (!isNaN(d.getTime())) {
+      d.setHours(d.getHours() - 3);
       return getLocalDateString(d);
     }
   }
@@ -143,6 +157,7 @@ export function getTaskScheduledDate(task: {
       const ts = Number(match[1]);
       const d = new Date(ts);
       if (!isNaN(d.getTime())) {
+        d.setHours(d.getHours() - 3);
         return getLocalDateString(d);
       }
     }

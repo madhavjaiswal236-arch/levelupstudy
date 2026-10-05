@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { TiltWrapper } from '../components/TiltWrapper';
-import { useAppContext, PlayHistoryEntry, Todo } from '../context/AppContext';
+import { useAppContext, PlayHistoryEntry, Todo, getLogicalDate, getStandardDateKey, isSameLogicalDay } from '../context/AppContext';
 import { getXpForLevel, getLevelProgress } from '@/lib/utils';
 import { Calendar, Clock, Target, Zap, CheckCircle2, ChevronRight, Monitor, Activity, TrendingUp, Cpu, Award, ShieldAlert, Sparkles, Flame, Loader2, BrainCircuit } from 'lucide-react';
 import { TourStep, useTour } from '../components/TourGuide';
@@ -16,7 +16,7 @@ const getDailyRating = (hoursStudied: number) => {
 };
 
 const History = React.memo(function History() {
- const { history, xp, level, streakDays, isLoaded, hoursStudiedToday, loggedTasksToday, practiceSessions, totalXpGoal = 800000 } = useAppContext();
+ const { history, xp, level, streakDays, isLoaded, hoursStudiedToday, loggedTasksToday, practiceSessions, lifeMetrics = [], totalXpGoal = 800000 } = useAppContext();
  const { activeStep, setActiveStep, hasCompleted } = useTour();
  
  const [selectedTask, setSelectedTask] = useState<Todo | null>(null);
@@ -29,32 +29,43 @@ const History = React.memo(function History() {
  }, [isLoaded, hasCompleted, activeStep, setActiveStep]);
 
  const reversedHistory = [...history].reverse();
- 
- const today = new Date();
- const todayStr = today.toDateString();
- 
+
+ const getEntrySleep = (entry: PlayHistoryEntry) => {
+ if (entry.sleepTime && entry.sleepTime > 0) return entry.sleepTime;
+ const match = lifeMetrics.find(m => isSameLogicalDay(m.date, entry.date) || (m.day === new Date(entry.date).getDate() && m.sleep > 0));
+ return match?.sleep || 0;
+ };
+
+ const getEntryScreen = (entry: PlayHistoryEntry) => {
+ if (entry.screenTime && entry.screenTime > 0) return entry.screenTime;
+ const match = lifeMetrics.find(m => isSameLogicalDay(m.date, entry.date) || (m.day === new Date(entry.date).getDate() && m.screenTime > 0));
+ return match?.screenTime || 0;
+ };
+
+ const today = getLogicalDate();
+ const todayKey = getStandardDateKey(today);
+
  const yesterday = new Date(today);
  yesterday.setDate(yesterday.getDate() - 1);
- const yesterdayStr = yesterday.toDateString();
+ const yesterdayKey = getStandardDateKey(yesterday);
 
  const dayBefore = new Date(today);
  dayBefore.setDate(dayBefore.getDate() - 2);
- const dayBeforeStr = dayBefore.toDateString();
+ const dayBeforeKey = getStandardDateKey(dayBefore);
 
- const recentHistory = reversedHistory.filter(entry => {
- const entryDateStr = new Date(entry.date).toDateString();
- return entryDateStr === todayStr || entryDateStr === yesterdayStr || entryDateStr === dayBeforeStr;
- });
+ const isRecentEntry = (entry: PlayHistoryEntry) => {
+ return isSameLogicalDay(entry.date, todayKey) ||
+ isSameLogicalDay(entry.date, yesterdayKey) ||
+ isSameLogicalDay(entry.date, dayBeforeKey);
+ };
 
- const archivedHistory = reversedHistory.filter(entry => {
- const entryDateStr = new Date(entry.date).toDateString();
- return entryDateStr !== todayStr && entryDateStr !== yesterdayStr && entryDateStr !== dayBeforeStr;
- });
+ const recentHistory = reversedHistory.filter(isRecentEntry);
+ const archivedHistory = reversedHistory.filter(entry => !isRecentEntry(entry));
 
-  const latestEntry = reversedHistory[0] || null;
-  const latestWithFeedback = latestEntry;
+ const latestEntry = reversedHistory[0] || null;
+ const latestWithFeedback = latestEntry;
 
- const yesterdayEntry = reversedHistory.find(entry => new Date(entry.date).toDateString() === yesterdayStr) || null;
+ const yesterdayEntry = reversedHistory.find(entry => isSameLogicalDay(entry.date, yesterdayKey)) || null;
 
  const toggleArchive = (dateStr: string) => {
  setExpandedArchiveDates(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
@@ -447,11 +458,11 @@ const History = React.memo(function History() {
  </div>
  <div className="dark:bg-slate-900/50 bg-white p-2 rounded border dark:border-slate-800 border-slate-200">
  <span className="text-xs dark:text-slate-400 text-slate-600 block uppercase font-mono">Sleep</span>
- <span className="text-lg font-bold dark:text-blue-400 text-blue-700">{entry.sleepTime || 0} h</span>
+ <span className="text-lg font-bold dark:text-blue-400 text-blue-700">{getEntrySleep(entry)} h</span>
  </div>
  <div className="dark:bg-slate-900/50 bg-white p-2 rounded border dark:border-slate-800 border-slate-200">
  <span className="text-xs dark:text-slate-400 text-slate-600 block uppercase font-mono">Screen</span>
- <span className="text-lg font-bold dark:text-orange-400 text-orange-600">{entry.screenTime || 0} h</span>
+ <span className="text-lg font-bold dark:text-orange-400 text-orange-600">{getEntryScreen(entry)} h</span>
  </div>
  </div>
  <div>
@@ -641,11 +652,11 @@ const History = React.memo(function History() {
  </div>
  <div className="dark:bg-slate-900/50 bg-white p-2 rounded border dark:border-slate-800 border-slate-200">
  <span className="text-[10px] text-slate-500 block uppercase font-mono">Sleep</span>
- <span className="text-sm font-bold dark:text-blue-400 text-blue-700">{entry.sleepTime || 0}h</span>
+ <span className="text-sm font-bold dark:text-blue-400 text-blue-700">{getEntrySleep(entry)}h</span>
  </div>
  <div className="dark:bg-slate-900/50 bg-white p-2 rounded border dark:border-slate-800 border-slate-200">
  <span className="text-[10px] text-slate-500 block uppercase font-mono">Screen</span>
- <span className="text-sm font-bold dark:text-orange-400 text-orange-600">{entry.screenTime || 0}h</span>
+ <span className="text-sm font-bold dark:text-orange-400 text-orange-600">{getEntryScreen(entry)}h</span>
  </div>
  </div>
  <div>

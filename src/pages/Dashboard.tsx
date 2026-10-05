@@ -37,6 +37,7 @@ import {
   MousePointerClick,
   Lock as LockIcon,
   AlertCircle,
+  Layers,
 } from "lucide-react";
 import { useAppContext, SyllabusData } from "@/context/AppContext";
 import TimeBar from "@/components/TimeBar";
@@ -257,6 +258,7 @@ const Dashboard = React.memo(function Dashboard() {
     getCurrentChapterForSubject,
     scheduleBacklogTask,
     saveStateToCloudNow,
+    backlogPlan,
   } = useAppContext();
 
   const { activeStep, setActiveStep, hasCompleted } = useTour();
@@ -2741,6 +2743,22 @@ const Dashboard = React.memo(function Dashboard() {
                       </span>
                     </div>
                   </div>
+
+                  {backlogPlan && (
+                    <div className="mt-4 pt-3 border-t dark:border-blue-900/40 border-blue-200/50 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent("open-tracker360-goalbox"));
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-xs font-mono font-bold hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
+                      >
+                        <Layers className="w-4 h-4 text-amber-500 animate-pulse" />
+                        <span>View Tracker 360 Daily Roadmap</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

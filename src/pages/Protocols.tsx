@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { CheckSquare, Activity, Target, Plus, Trash2, Shield, Moon, Smartphone, Clock, Sparkles } from 'lucide-react';
-import { useAppContext, MonthlyGoal, Habit } from '../context/AppContext';
+import { useAppContext, MonthlyGoal, Habit, getLogicalDate, getStandardDateKey, isSameLogicalDay } from '../context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -12,6 +12,7 @@ const Protocols = React.memo(function Protocols() {
  monthlyGoals, setMonthlyGoals, 
  habits, setHabits, 
  lifeMetrics, setLifeMetrics,
+ setHistory,
  class11EndDate,
  totalXpGoal,
  xp,
@@ -114,13 +115,51 @@ const Protocols = React.memo(function Protocols() {
  };
 
  // --- Life Metrics Handlers ---
- const updateMetric = (day: number, field: 'sleep' | 'screenTime', value: number) => {
- setLifeMetrics(lifeMetrics.map(m => 
- m.day === day ? { ...m, [field]: value } : m
- ));
- };
+ const currentLogicalDate = useMemo(() => getLogicalDate(), []);
+ const todayDateKey = useMemo(() => getStandardDateKey(currentLogicalDate), [currentLogicalDate]);
+ const currentDay = currentLogicalDate.getDate();
 
- const currentDay = new Date().getDate(); // Assuming current month for simplicity
+ const todayMetric = useMemo(() => {
+ return lifeMetrics.find(m => isSameLogicalDay(m.date, todayDateKey) || m.day === currentDay);
+ }, [lifeMetrics, todayDateKey, currentDay]);
+
+ const [sleepInputVal, setSleepInputVal] = useState<string>('');
+ const [screenInputVal, setScreenInputVal] = useState<string>('');
+
+ useEffect(() => {
+ const s = todayMetric?.sleep;
+ setSleepInputVal(s && s > 0 ? String(s) : '');
+ const sc = todayMetric?.screenTime;
+ setScreenInputVal(sc && sc > 0 ? String(sc) : '');
+ }, [todayMetric?.sleep, todayMetric?.screenTime]);
+
+ const updateMetric = (day: number, field: 'sleep' | 'screenTime', value: number) => {
+ setLifeMetrics(prev => {
+ const exists = prev.some(m => isSameLogicalDay(m.date, todayDateKey) || m.day === day);
+ if (exists) {
+ return prev.map(m => 
+ (isSameLogicalDay(m.date, todayDateKey) || m.day === day)
+ ? { ...m, [field]: value, date: m.date || todayDateKey }
+ : m
+ );
+ }
+ return [...prev, { day, sleep: field === 'sleep' ? value : 0, screenTime: field === 'screenTime' ? value : 0, date: todayDateKey }];
+ });
+
+ // Also update history for today so History page matches perfectly!
+ setHistory(prevHistory => {
+ const idx = prevHistory.findIndex(h => isSameLogicalDay(h.date, todayDateKey));
+ if (idx >= 0) {
+ const next = [...prevHistory];
+ next[idx] = {
+ ...next[idx],
+ [field === 'sleep' ? 'sleepTime' : 'screenTime']: value,
+ };
+ return next;
+ }
+ return prevHistory;
+ });
+ };
 
  return (
  <div className="space-y-8 pb-12">
@@ -330,7 +369,7 @@ const Protocols = React.memo(function Protocols() {
  {/* Daily Input Area */}
  <div className="dark:bg-slate-900/50 bg-white border dark:border-slate-800 border-slate-200 rounded-xl p-4 mb-8 flex flex-col sm:flex-row items-center gap-6">
  <div className="dark:text-slate-300 text-slate-600 font-medium whitespace-nowrap">
- Log Today (Day {currentDay}):
+ Log Today ({todayDateKey}):
  </div>
  <div className="flex items-center gap-3">
  <Moon className="w-5 h-5 dark:text-purple-400 text-purple-700" />
@@ -338,9 +377,14 @@ const Protocols = React.memo(function Protocols() {
  type="number" 
  min="0" max="24" step="0.5"
  placeholder="Sleep (hrs)"
- value={lifeMetrics[currentDay - 1]?.sleep ?? ''}
- onChange={(e) => updateMetric(currentDay, 'sleep', parseFloat(e.target.value) || 0)}
- className="w-24 dark:bg-black bg-slate-50 border dark:border-slate-700 border-slate-300 rounded-lg px-3 py-2 dark:text-white text-slate-900 focus:border-purple-500 outline-none"
+ value={sleepInputVal}
+ onChange={(e) => {
+   const val = e.target.value;
+   setSleepInputVal(val);
+   const parsed = parseFloat(val) || 0;
+   updateMetric(currentDay, 'sleep', parsed);
+ }}
+ className="w-28 dark:bg-black bg-slate-50 border dark:border-slate-700 border-slate-300 rounded-lg px-3 py-2 dark:text-white text-slate-900 focus:border-purple-500 outline-none"
  />
  </div>
  <div className="flex items-center gap-3">
@@ -349,9 +393,14 @@ const Protocols = React.memo(function Protocols() {
  type="number" 
  min="0" max="24" step="0.5"
  placeholder="Screen (hrs)"
- value={lifeMetrics[currentDay - 1]?.screenTime ?? ''}
- onChange={(e) => updateMetric(currentDay, 'screenTime', parseFloat(e.target.value) || 0)}
- className="w-24 dark:bg-black bg-slate-50 border dark:border-slate-700 border-slate-300 rounded-lg px-3 py-2 dark:text-white text-slate-900 focus:border-orange-500 outline-none"
+ value={screenInputVal}
+ onChange={(e) => {
+   const val = e.target.value;
+   setScreenInputVal(val);
+   const parsed = parseFloat(val) || 0;
+   updateMetric(currentDay, 'screenTime', parsed);
+ }}
+ className="w-28 dark:bg-black bg-slate-50 border dark:border-slate-700 border-slate-300 rounded-lg px-3 py-2 dark:text-white text-slate-900 focus:border-orange-500 outline-none"
  />
  </div>
  </div>

@@ -27,7 +27,18 @@ export function TourProvider({ children }: { children: ReactNode }) {
  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem('app_tour_completed');
-      return saved ? JSON.parse(saved) : {};
+      if (saved) return JSON.parse(saved);
+      const allStepsComplete = {
+        'dashboard-log': true,
+        'dashboard-player': true,
+        'dashboard-tasks': true,
+        'syllabus-tracker': true,
+        'protocols-intro': true,
+        'missions-intro': true,
+        'store-intro': true,
+        'history-intro': true,
+      };
+      return allStepsComplete;
     } catch {
       return {};
     }
