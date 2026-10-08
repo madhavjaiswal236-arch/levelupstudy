@@ -107,14 +107,62 @@ export async function withExponentialBackoff<T>(
   }
 }
 
-export function getLogicalDate(offsetHours: number = 3): Date {
-  const now = new Date();
-  now.setHours(now.getHours() - offsetHours);
-  return now;
+let cachedRolloverTime: string | null = null;
+let isRolloverCacheInitialized = false;
+
+export const setCachedRolloverTime = (time: string | null) => {
+  cachedRolloverTime = time;
+  isRolloverCacheInitialized = true;
+};
+
+export function getLogicalDate(customRolloverTime?: string | number): Date {
+  const d = new Date();
+  let offset = 3;
+
+  if (typeof customRolloverTime === "number") {
+    offset = customRolloverTime;
+  } else {
+    let timeStr = customRolloverTime;
+    if (!timeStr) {
+      if (isRolloverCacheInitialized) {
+        timeStr = cachedRolloverTime || undefined;
+      } else {
+        try {
+          if (typeof window !== "undefined" && window.localStorage) {
+            const saved = localStorage.getItem("app_settings_extended");
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed && typeof parsed.rolloverTime === "string") {
+                timeStr = parsed.rolloverTime;
+                cachedRolloverTime = timeStr;
+              }
+            }
+          }
+        } catch {
+          // ignore storage read issues
+        } finally {
+          isRolloverCacheInitialized = true;
+        }
+      }
+    }
+
+    if (timeStr) {
+      const [hours] = timeStr.split(":");
+      if (hours !== undefined) {
+        const parsedHours = parseInt(hours, 10);
+        if (!isNaN(parsedHours)) {
+          offset = parsedHours;
+        }
+      }
+    }
+  }
+
+  d.setHours(d.getHours() - offset);
+  return d;
 }
 
-export function getLogicalYesterdayDate(offsetHours: number = 3): Date {
-  const d = getLogicalDate(offsetHours);
+export function getLogicalYesterdayDate(customRolloverTime?: string | number): Date {
+  const d = getLogicalDate(customRolloverTime);
   d.setDate(d.getDate() - 1);
   return d;
 }

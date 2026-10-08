@@ -22,7 +22,8 @@ import { initAuth } from "@/lib/firebase";
 import { BacklogPlan } from "@/lib/backlog/types";
 export type { BacklogPlan };
 import { reconstructPlanFromTodos } from "@/lib/backlog/engine";
-import { getLevelFromXp, getLocalDateString, isCurrentDayTask } from "@/lib/utils";
+import { getLevelFromXp, getLocalDateString, isCurrentDayTask, getLogicalDate, setCachedRolloverTime } from "@/lib/utils";
+export { getLogicalDate, setCachedRolloverTime };
 import { Preferences } from "@capacitor/preferences";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
@@ -339,53 +340,6 @@ interface AppState {
 
 const AppContext = createContext<AppState | undefined>(undefined);
 
-let cachedRolloverTime: string | null = null;
-let isRolloverCacheInitialized = false;
-
-export const setCachedRolloverTime = (time: string | null) => {
-  cachedRolloverTime = time;
-  isRolloverCacheInitialized = true;
-};
-
-export const getLogicalDate = (customRolloverTime?: string) => {
-  const d = new Date();
-  let offset = 3;
-  let timeStr = customRolloverTime;
-  if (!timeStr) {
-    if (isRolloverCacheInitialized) {
-      timeStr = cachedRolloverTime || undefined;
-    } else {
-      try {
-        if (typeof window !== "undefined" && window.localStorage) {
-          const saved = localStorage.getItem("app_settings_extended");
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed && typeof parsed.rolloverTime === "string") {
-              timeStr = parsed.rolloverTime;
-              cachedRolloverTime = timeStr;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[AppContext] Failed to read cached rollover time from storage:", e);
-      } finally {
-        isRolloverCacheInitialized = true;
-      }
-    }
-  }
-  if (timeStr) {
-    const [hours] = timeStr.split(":");
-    if (hours !== undefined) {
-      const parsedHours = parseInt(hours, 10);
-      if (!isNaN(parsedHours)) {
-        offset = parsedHours;
-      }
-    }
-  }
-  d.setHours(d.getHours() - offset);
-  return d;
-};
-
 export const getStandardDateKey = (dateInput?: string | Date | number | null): string => {
   if (!dateInput) return "";
   if (typeof dateInput === "object" && dateInput instanceof Date) {
@@ -486,6 +440,14 @@ export const calculateAbsenceGap = (
   const lastDate = new Date(lastDateKey);
   if (isNaN(lastDate.getTime())) return [];
 
+  // Yesterday is handled exclusively by the Daily Rollover modal.
+  // Missed days autopsy only applies to unaccounted absence days PRIOR to yesterday.
+  const yesterday = new Date(logicalToday);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = getStandardDateKey(yesterday);
+
+  if (lastDateKey >= yesterdayKey) return [];
+
   const missingDates: string[] = [];
   const tempDate = new Date(lastDate);
   tempDate.setDate(tempDate.getDate() + 1);
@@ -493,8 +455,7 @@ export const calculateAbsenceGap = (
   let safetyCounter = 0;
   while (
     !isNaN(tempDate.getTime()) &&
-    getStandardDateKey(tempDate) !== todayKey &&
-    tempDate < logicalToday &&
+    getStandardDateKey(tempDate) < yesterdayKey &&
     safetyCounter < 60
   ) {
     missingDates.push(getStandardDateKey(tempDate));
@@ -1162,14 +1123,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     const syncCloudOnLogin = async () => {
+      // Unblock UI after at most 2.5s so the user can interact immediately on slow/spotty networks
+      const timeoutId = setTimeout(() => {
+        if (!cancelled) {
+          setIsCloudSyncComplete(true);
+        }
+      }, 2500);
+
       try {
-        const cloudDataPromise = loadUserDataFromCloud(firebaseUser.uid);
-        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 2500));
-        const cloudData = await Promise.race([cloudDataPromise, timeoutPromise]);
+        const cloudData = await loadUserDataFromCloud(firebaseUser.uid);
+        clearTimeout(timeoutId);
         if (cancelled) return;
 
         if (!cloudData) {
-          // Network error or timeout/offline: keep local state safe, do NOT overwrite cloud with empty state!
+          // Network error or offline: keep local state safe, do NOT overwrite cloud with empty state!
           setIsCloudSyncComplete(true);
           return;
         }

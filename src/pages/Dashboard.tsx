@@ -585,6 +585,27 @@ const Dashboard = React.memo(function Dashboard() {
   // Remove duplicate backlogFilter state
 
   useEffect(() => {
+    const handleStartFocusTask = (e: any) => {
+      const task = e.detail?.task;
+      if (task) {
+        setTimerTaskId(task.id);
+        const durationMins = task.durationMinutes || 25;
+        if (durationMins >= 60) {
+          setTimerMode("deepwork");
+          setImmersiveInitialSeconds(durationMins * 60);
+        } else {
+          setTimerMode("pomodoro");
+          setImmersiveInitialSeconds(durationMins * 60);
+        }
+        setIsImmersiveTimerActive(true);
+        setShowConfigTimer(false);
+      }
+    };
+    window.addEventListener("start-focus-task", handleStartFocusTask);
+    return () => window.removeEventListener("start-focus-task", handleStartFocusTask);
+  }, []);
+
+  useEffect(() => {
     const handlePomodoroShortcut = () => {
       setTimerMode("pomodoro");
       setImmersiveInitialSeconds(25 * 60);

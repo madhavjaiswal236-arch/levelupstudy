@@ -44,6 +44,7 @@ import {
   isSameLogicalDay,
   hasTodayProtocolRecord,
   calculateAbsenceGap,
+  Todo,
 } from "./context/AppContext";
 import { getXpForLevel, getLocalDateString, isCurrentDayTask } from "./lib/utils";
 import { useHaptic } from "./hooks/useHaptic";
@@ -388,19 +389,34 @@ function AppContent() {
 
   // Tracker 360 Goal Box state and auto-open logic
   const [showTracker360GoalBox, setShowTracker360GoalBox] = useState<boolean>(false);
-  const todayDateStr = useMemo(() => getLocalDateString(), []);
+  const [todayDateStr, setTodayDateStr] = useState<string>(() => getLocalDateString());
+
+  useEffect(() => {
+    const updateDate = () => {
+      const fresh = getLocalDateString();
+      setTodayDateStr((prev) => (prev !== fresh ? fresh : prev));
+    };
+    const interval = setInterval(updateDate, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const todayBacklogTasks = useMemo(() => {
     return todos.filter(
       (t) => t.isBacklogTask && !t.isDeleted && isCurrentDayTask(t, todayDateStr)
     );
   }, [todos, todayDateStr]);
 
-  // Saved for future activation: automatic pop-up on app entry is disabled for now
-  // To activate manually or via button, dispatch 'open-tracker360-goalbox' event
-  /*
+  // Orchestrated single-active-modal flow:
+  // Priority 1: Name Setup
+  // Priority 2: Daily Rollover
+  // Priority 3: Missed Days
+  // Priority 4: Tracker 360 Daily Goal Box Briefing
   useEffect(() => {
     if (!isLoaded) return;
-    if (needsRollover || showNameModal || pendingMissedDays.length > 0) return;
+    if (firebaseUser && !isCloudSyncComplete) return;
+    if (showNameModal) return;
+    if (needsRollover) return;
+    if (pendingMissedDays.length > 0) return;
     if (todayBacklogTasks.length === 0) return;
 
     const todayKey = getStandardDateKey(getLogicalDate());
@@ -410,8 +426,7 @@ function AppContent() {
         setShowTracker360GoalBox(true);
       }
     } catch {}
-  }, [isLoaded, needsRollover, showNameModal, pendingMissedDays.length, todayBacklogTasks.length]);
-  */
+  }, [isLoaded, firebaseUser, isCloudSyncComplete, needsRollover, showNameModal, pendingMissedDays.length, todayBacklogTasks.length]);
 
   useEffect(() => {
     const handleOpen = () => setShowTracker360GoalBox(true);
@@ -425,6 +440,18 @@ function AppContent() {
       const todayKey = getStandardDateKey(getLogicalDate());
       sessionStorage.setItem(`tracker360_briefing_seen_${todayKey}`, "true");
     } catch {}
+  }, []);
+
+  const handleStartTask = useCallback((task: Todo) => {
+    setShowTracker360GoalBox(false);
+    try {
+      const todayKey = getStandardDateKey(getLogicalDate());
+      sessionStorage.setItem(`tracker360_briefing_seen_${todayKey}`, "true");
+    } catch {}
+    setActiveTab("dashboard");
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("start-focus-task", { detail: { task } }));
+    }, 150);
   }, []);
 
   const { hapticLevelUp, hapticSuccess } = useHaptic();
@@ -518,6 +545,34 @@ function AppContent() {
     () => sessionStorage.getItem("rollover_screenMinsInput") || "",
   );
   const [rolloverStep, setRolloverStep] = useState<number>(1);
+
+  // Pre-fill rollover inputs with metrics previously logged in Protocols for yesterday
+  useEffect(() => {
+    if (needsRollover) {
+      const yesterdayObj = getLogicalDate();
+      yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+      const yesterdayKey = getStandardDateKey(yesterdayObj);
+      const yesterdayMetric = lifeMetrics.find(
+        (m) => isSameLogicalDay((m as any).date, yesterdayKey) || (m.day === yesterdayObj.getDate() && (m.sleep > 0 || m.screenTime > 0))
+      );
+      if (yesterdayMetric) {
+        if (!sleepInput && yesterdayMetric.sleep !== undefined && yesterdayMetric.sleep !== null && yesterdayMetric.sleep >= 0) {
+          const totalHours = yesterdayMetric.sleep;
+          const hrs = Math.floor(totalHours);
+          const mins = Math.round((totalHours - hrs) * 60);
+          setSleepInput(String(hrs));
+          if (mins > 0) setSleepMinsInput(String(mins));
+        }
+        if (!screenInput && yesterdayMetric.screenTime !== undefined && yesterdayMetric.screenTime !== null && yesterdayMetric.screenTime >= 0) {
+          const totalHours = yesterdayMetric.screenTime;
+          const hrs = Math.floor(totalHours);
+          const mins = Math.round((totalHours - hrs) * 60);
+          setScreenInput(String(hrs));
+          if (mins > 0) setScreenMinsInput(String(mins));
+        }
+      }
+    }
+  }, [needsRollover, lifeMetrics]);
 
   useEffect(() => {
     const handleGlobalClick = (e: Event) => {
@@ -1797,6 +1852,7 @@ function AppContent() {
         onClose={handleDismissTracker360GoalBox}
         tasks={todayBacklogTasks}
         backlogPlan={backlogPlan}
+        onStartTask={handleStartTask}
       />
 
       {/* Top Navigation */}

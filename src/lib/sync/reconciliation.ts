@@ -241,29 +241,44 @@ export function mergeLifeMetrics(
   localMetrics: LifeMetric[] = [],
   cloudMetrics: LifeMetric[] = []
 ): LifeMetric[] {
-  const map = new Map<number, LifeMetric>();
+  const map = new Map<string, LifeMetric>();
+
+  const getMetricKey = (m: LifeMetric): string => {
+    if ((m as any).date) return String((m as any).date);
+    if (m.day) return `day_${m.day}`;
+    return `unknown_${Math.random()}`;
+  };
+
   (cloudMetrics || []).forEach((m) => {
-    if (m && m.day) map.set(m.day, { ...m });
+    if (m && (m.day || (m as any).date)) {
+      map.set(getMetricKey(m), { ...m });
+    }
   });
+
   (localMetrics || []).forEach((m) => {
-    if (m && m.day) {
-      const existing = map.get(m.day);
+    if (m && (m.day || (m as any).date)) {
+      const key = getMetricKey(m);
+      const existing = map.get(key);
       if (existing) {
-        map.set(m.day, {
-          day: m.day,
+        map.set(key, {
+          day: m.day || existing.day,
           date: (m as any).date || (existing as any).date,
-          sleep: m.sleep > 0 ? m.sleep : existing.sleep || 0,
-          screenTime: m.screenTime > 0 ? m.screenTime : existing.screenTime || 0,
+          sleep:
+            typeof m.sleep === "number" && !isNaN(m.sleep) && m.sleep >= 0
+              ? m.sleep
+              : existing.sleep || 0,
+          screenTime:
+            typeof m.screenTime === "number" && !isNaN(m.screenTime) && m.screenTime >= 0
+              ? m.screenTime
+              : existing.screenTime || 0,
         });
       } else {
-        map.set(m.day, { ...m });
+        map.set(key, { ...m });
       }
     }
   });
-  return Array.from({ length: 31 }, (_, i) => {
-    const day = i + 1;
-    return map.get(day) || { day, sleep: 0, screenTime: 0 };
-  });
+
+  return Array.from(map.values());
 }
 
 export interface ReconcileResult {

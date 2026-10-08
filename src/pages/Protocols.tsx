@@ -127,37 +127,58 @@ const Protocols = React.memo(function Protocols() {
  const [screenInputVal, setScreenInputVal] = useState<string>('');
 
  useEffect(() => {
- const s = todayMetric?.sleep;
- setSleepInputVal(s && s > 0 ? String(s) : '');
- const sc = todayMetric?.screenTime;
- setScreenInputVal(sc && sc > 0 ? String(sc) : '');
+   const s = todayMetric?.sleep;
+   if (typeof s === "number" && !isNaN(s) && s >= 0) {
+     setSleepInputVal(String(s));
+   } else {
+     setSleepInputVal("");
+   }
+   const sc = todayMetric?.screenTime;
+   if (typeof sc === "number" && !isNaN(sc) && sc >= 0) {
+     setScreenInputVal(String(sc));
+   } else {
+     setScreenInputVal("");
+   }
  }, [todayMetric?.sleep, todayMetric?.screenTime]);
 
  const updateMetric = (day: number, field: 'sleep' | 'screenTime', value: number) => {
  setLifeMetrics(prev => {
- const exists = prev.some(m => isSameLogicalDay(m.date, todayDateKey) || m.day === day);
- if (exists) {
- return prev.map(m => 
- (isSameLogicalDay(m.date, todayDateKey) || m.day === day)
- ? { ...m, [field]: value, date: m.date || todayDateKey }
- : m
- );
- }
- return [...prev, { day, sleep: field === 'sleep' ? value : 0, screenTime: field === 'screenTime' ? value : 0, date: todayDateKey }];
+   const exists = prev.some(m => isSameLogicalDay((m as any).date, todayDateKey) || m.day === day);
+   if (exists) {
+     return prev.map(m => 
+       (isSameLogicalDay((m as any).date, todayDateKey) || m.day === day)
+         ? { ...m, [field]: value, date: (m as any).date || todayDateKey }
+         : m
+     );
+   }
+   return [...prev, { day, sleep: field === 'sleep' ? value : 0, screenTime: field === 'screenTime' ? value : 0, date: todayDateKey }];
  });
 
  // Also update history for today so History page matches perfectly!
  setHistory(prevHistory => {
- const idx = prevHistory.findIndex(h => isSameLogicalDay(h.date, todayDateKey));
- if (idx >= 0) {
- const next = [...prevHistory];
- next[idx] = {
- ...next[idx],
- [field === 'sleep' ? 'sleepTime' : 'screenTime']: value,
- };
- return next;
- }
- return prevHistory;
+   const idx = prevHistory.findIndex(h => isSameLogicalDay(h.date, todayDateKey));
+   if (idx >= 0) {
+     const next = [...prevHistory];
+     next[idx] = {
+       ...next[idx],
+       [field === 'sleep' ? 'sleepTime' : 'screenTime']: value,
+     };
+     return next;
+   } else {
+     const currentLogicalDateObj = getLogicalDate();
+     return [
+       ...prevHistory,
+       {
+         date: currentLogicalDateObj.toISOString(),
+         hoursStudied: 0,
+         xpEarned: 0,
+         completedTasks: [],
+         plannedTasks: [],
+         sleepTime: field === 'sleep' ? value : 0,
+         screenTime: field === 'screenTime' ? value : 0,
+       },
+     ];
+   }
  });
  };
 
@@ -381,8 +402,11 @@ const Protocols = React.memo(function Protocols() {
  onChange={(e) => {
    const val = e.target.value;
    setSleepInputVal(val);
-   const parsed = parseFloat(val) || 0;
-   updateMetric(currentDay, 'sleep', parsed);
+   if (val.trim() === "") return;
+   const parsed = parseFloat(val);
+   if (!isNaN(parsed) && parsed >= 0) {
+     updateMetric(currentDay, 'sleep', parsed);
+   }
  }}
  className="w-28 dark:bg-black bg-slate-50 border dark:border-slate-700 border-slate-300 rounded-lg px-3 py-2 dark:text-white text-slate-900 focus:border-purple-500 outline-none"
  />
@@ -397,8 +421,11 @@ const Protocols = React.memo(function Protocols() {
  onChange={(e) => {
    const val = e.target.value;
    setScreenInputVal(val);
-   const parsed = parseFloat(val) || 0;
-   updateMetric(currentDay, 'screenTime', parsed);
+   if (val.trim() === "") return;
+   const parsed = parseFloat(val);
+   if (!isNaN(parsed) && parsed >= 0) {
+     updateMetric(currentDay, 'screenTime', parsed);
+   }
  }}
  className="w-28 dark:bg-black bg-slate-50 border dark:border-slate-700 border-slate-300 rounded-lg px-3 py-2 dark:text-white text-slate-900 focus:border-orange-500 outline-none"
  />
