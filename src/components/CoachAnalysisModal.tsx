@@ -509,35 +509,13 @@ export function CoachAnalysisModal({ isOpen, onClose }: CoachAnalysisModalProps)
                   </div>
                 </div>
 
-                {/* Mode Selector: Personal vs Scenario Simulator */}
+                {/* Edit Sleep Button */}
                 <div className="flex items-center gap-2">
-                  <div className="bg-slate-900 p-1 rounded-xl border border-slate-800 flex text-xs font-bold">
-                    <button
-                      onClick={() => setActiveTab("personal")}
-                      className={`px-3 py-1.5 rounded-lg transition-all ${
-                        activeTab === "personal"
-                          ? "bg-cyan-500 text-black shadow-sm"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      My Directive
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("scenarios")}
-                      className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                        activeTab === "scenarios"
-                          ? "bg-indigo-600 text-white shadow-sm"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >
-                      <FlaskConical className="w-3.5 h-3.5" /> Scenarios Lab
-                    </button>
-                  </div>
                   <button
                     onClick={() => setStep(1)}
-                    className="text-[11px] font-mono text-slate-400 hover:text-cyan-400 underline ml-1 cursor-pointer"
+                    className="text-xs font-mono text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 bg-cyan-950/20 px-3 py-1.5 rounded-xl cursor-pointer transition-all flex items-center gap-1.5"
                   >
-                    Edit Sleep
+                    <Moon className="w-3.5 h-3.5" /> Edit Sleep & Screen
                   </button>
                 </div>
               </div>

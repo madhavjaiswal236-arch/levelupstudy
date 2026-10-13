@@ -1036,8 +1036,7 @@ function AppContent() {
     { id: "quests", label: "Missions", icon: Target, requiredLevel: 3 },
     { id: "protocols", label: "Protocols", icon: Shield, requiredLevel: 4 },
     { id: "store", label: "Store", icon: ShoppingBag, requiredLevel: 8 },
-    // Tracker 360 tab saved for future activation:
-    // { id: "backlog", label: "Tracker 360", icon: Layers, requiredLevel: 1 },
+    { id: "backlog", label: "Tracker 360", icon: Layers, requiredLevel: 1 },
     { id: "profile", label: "Profile", icon: User, requiredLevel: 1 },
     { id: "settings", label: "Settings", icon: SettingsIcon, requiredLevel: 1 },
   ];

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAppContext } from "@/context/AppContext";
 import { generateDeterministicCoachReport } from "@/lib/coach/engine";
+import { canOfferStudyTask } from "@/lib/coach/reporting/validateReport";
 import { getLocalDateString, isCurrentDayTask } from "@/lib/utils";
 
 function parseTaskDate(id: string | number, fallbackDate?: string): Date {
@@ -345,25 +346,49 @@ export function LiveDayOverlay({ onClose }: LiveDayOverlayProps) {
                   <p className="text-blue-100 text-sm font-medium mb-3 relative z-10">
                     {coachReport.todayMission}
                   </p>
-                  <button
-                    onClick={() => {
-                      setTodos((prev) => [
-                        ...prev,
-                        {
-                          id: Date.now(),
-                          text: `Tactical Mission: ${coachReport.todayMission}`,
-                          completed: false,
-                          xpReward: 150,
-                          type: "Practice",
-                          priority: "High",
-                        },
-                      ]);
-                      onClose();
-                    }}
-                    className="relative z-10 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" /> Accept as Task (+150 XP)
-                  </button>
+                  {(() => {
+                    const isStudyPermitted = canOfferStudyTask(
+                      hoursStudiedToday,
+                      coachReport.explanation.baseline.avgHours || 5.0,
+                      coachReport.coachReport.telemetry.sleepTier
+                    );
+                    const isRecovery = coachReport.coachReport.mission.kind === "RECOVERY";
+                    const isLocked = !isStudyPermitted && !isRecovery;
+
+                    return (
+                      <button
+                        disabled={isLocked}
+                        onClick={() => {
+                          if (isLocked) return;
+                          setTodos((prev) => [
+                            ...prev,
+                            {
+                              id: Date.now(),
+                              text: `Tactical Mission: ${coachReport.todayMission}`,
+                              completed: false,
+                              xpReward: coachReport.coachReport.mission.xp || 150,
+                              type: isRecovery ? "Health" : "Practice",
+                              priority: "High",
+                            },
+                          ]);
+                          onClose();
+                        }}
+                        className={`relative z-10 text-xs font-bold text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                          isLocked
+                            ? "bg-slate-700/80 text-slate-300 opacity-60 cursor-not-allowed"
+                            : "bg-blue-600 hover:bg-blue-500 cursor-pointer"
+                        }`}
+                      >
+                        {!isLocked ? (
+                          <>
+                            <Plus className="w-4 h-4" /> Accept as Task (+{coachReport.coachReport.mission.xp || 150} XP)
+                          </>
+                        ) : (
+                          "Locked: Sleep Recovery Active (RED Tier)"
+                        )}
+                      </button>
+                    );
+                  })()}
                 </div>
                 <p className="dark:text-cyan-400 text-cyan-700 font-bold text-lg uppercase tracking-widest mt-6">
                   "{coachReport.closing}"

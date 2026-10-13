@@ -116,6 +116,7 @@ export function runCoach(
       session.date,
       effectiveAccuracy,
       session.attempted,
+      normalized.examDate,
     );
   }
 

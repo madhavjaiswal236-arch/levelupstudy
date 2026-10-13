@@ -1,6 +1,6 @@
 {
-  "summary": "Reconciled final build plan for the LevelUp Study Cognitive Mentor Engine, addressing all 8 critical audit blockers from the 52-page compendium: corrected spacing formula, unified sleep firewall v2, accuracy-band challenge tuning, residual Theil-Sen multiscale trends, calibrated BKT, novice gating, and closed-loop outcome tracking—100% offline and deterministic.",
-  "updatedAt": "2026-10-13T00:20:59.874731352Z",
+  "summary": "Implementation plan to restore the classic Overview layout, reinstate Tracker 360 in sidebar navigation, reinstate the exact startup modal sequence (Days Left -> Sleep & Screen -> Yesterday's Analysis card -> Missed Days Accountability), and render the comprehensive assessment in History for all days.",
+  "updatedAt": "2026-10-13T04:38:08.202456412Z",
   "requestFeedback": true,
   "userFacing": true
 }

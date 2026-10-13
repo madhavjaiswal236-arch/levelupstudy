@@ -31,12 +31,14 @@ export function retrievability(
 /**
  * Updates half-life upon a retrieval practice session.
  * Accuracy must be EFFECTIVE accuracy: (correct + 0.75 * slipTagged) / attempted
+ * Optionally clamps maximum interval to ~20% of remaining days before examDate (Defect A3, §2.2 & §7.6).
  */
 export function onRetrieval(
   s: ChapterMastery,
   today: ISODate,
   effectiveAccuracy: number,
   attempts: number,
+  examDate?: ISODate,
 ): ChapterMastery {
   const R = retrievability(s, today) ?? 0;
   let h = s.halfLifeDays;
@@ -51,9 +53,15 @@ export function onRetrieval(
   }
   // Neutral zone (0.4 <= accuracy < 0.6) leaves half-life unchanged
 
+  let maxHorizon = MAX_H;
+  if (examDate) {
+    const daysLeft = Math.max(1, daysBetween(today, examDate));
+    maxHorizon = Math.min(MAX_H, Math.max(MIN_H, Math.round(daysLeft * 0.20)));
+  }
+
   return {
     ...s,
-    halfLifeDays: clamp(h, MIN_H, MAX_H),
+    halfLifeDays: clamp(h, MIN_H, maxHorizon),
     lastRetrievalDate: today,
   };
 }

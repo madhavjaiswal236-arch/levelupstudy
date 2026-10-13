@@ -24,6 +24,8 @@ export type { BacklogPlan };
 import { reconstructPlanFromTodos } from "@/lib/backlog/engine";
 import { getLevelFromXp, getLocalDateString, isCurrentDayTask, getLogicalDate, setCachedRolloverTime } from "@/lib/utils";
 export { getLogicalDate, setCachedRolloverTime };
+import { StudentScheduleProfile, DEFAULT_SCHEDULE_PROFILE } from "@/lib/coach/student-model/profile";
+export type { StudentScheduleProfile };
 import { Preferences } from "@capacitor/preferences";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
@@ -246,6 +248,8 @@ interface AppState {
   totalXpGoal: number;
   setTotalXpGoal: (val: number) => void;
   setClass11EndDate: (date: string) => void;
+  scheduleProfile: StudentScheduleProfile;
+  setScheduleProfile: React.Dispatch<React.SetStateAction<StudentScheduleProfile>>;
   isClass11SetupDone: boolean;
   setIsClass11SetupDone: (val: boolean) => void;
   backlogPriorities: Record<string, "Must-Do" | "Review">;
@@ -552,6 +556,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [class11EndDate, setClass11EndDate] = useState<string | null>(null);
   const [totalXpGoal, setTotalXpGoal] = useState<number>(800000);
   const [isClass11SetupDone, setIsClass11SetupDone] = useState(false);
+  const [scheduleProfile, setScheduleProfile] = useState<StudentScheduleProfile>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("LEVELUP_SCHEDULE_PROFILE");
+        if (saved) return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return DEFAULT_SCHEDULE_PROFILE;
+  });
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("LEVELUP_SCHEDULE_PROFILE", JSON.stringify(scheduleProfile));
+      }
+    } catch (e) {}
+  }, [scheduleProfile]);
   const [backlogPriorities, setBacklogPriorities] = useState<
     Record<string, "Must-Do" | "Review">
   >({});
@@ -2460,6 +2481,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTotalXpGoal,
       isClass11SetupDone,
       setIsClass11SetupDone,
+      scheduleProfile,
+      setScheduleProfile,
       backlogPriorities,
       setBacklogPriorities,
       hasSeenReminder,
@@ -2573,6 +2596,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTotalXpGoal,
       isClass11SetupDone,
       setIsClass11SetupDone,
+      scheduleProfile,
       backlogPriorities,
       setBacklogPriorities,
       hasSeenReminder,

@@ -526,7 +526,76 @@ const History = React.memo(function History() {
  ))}
  </div>
  </div>
- {entry.aiFeedback && (
+ {entry.aiFeedback && (() => {
+ const text = entry.aiFeedback || "";
+ const rawMatch = text.match(/Raw Report:\s*([\s\S]*?)(?=\n\nDiagnosis:|$)/i);
+ const diagMatch = text.match(/Diagnosis:\s*([\s\S]*?)(?=\n\nVerdict:|$)/i);
+ const verdMatch = text.match(/Verdict:\s*([\s\S]*?)(?=\n\nToday's Mission:|$)/i);
+ const missMatch = text.match(/Today's Mission:\s*([\s\S]*?)(?=\n\nClosing:|$)/i);
+ const closeMatch = text.match(/Closing:\s*([\s\S]*?)$/i);
+
+ if (rawMatch && diagMatch) {
+ return (
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mt-4 text-left">
+ <div className="flex flex-col gap-3">
+ <div className="p-3.5 rounded-2xl dark:bg-slate-900/80 bg-white border dark:border-slate-800 border-slate-200 shadow-sm">
+ <div className="flex items-center gap-2 mb-1.5">
+ <BrainCircuit className="w-4 h-4 dark:text-cyan-400 text-cyan-600" />
+ <h4 className="text-xs font-bold uppercase tracking-wider dark:text-cyan-400 text-cyan-700">
+ Yesterday's Raw Report
+ </h4>
+ </div>
+ <p className="dark:text-slate-300 text-slate-800 text-xs leading-relaxed font-mono">
+ {rawMatch[1].trim()}
+ </p>
+ </div>
+
+ <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex-1">
+ <h4 className="text-xs font-bold uppercase tracking-wider dark:text-amber-400 text-amber-600 mb-1.5">
+ Diagnosis
+ </h4>
+ <p className="dark:text-amber-100 text-slate-900 text-xs leading-relaxed font-medium">
+ {diagMatch[1].trim()}
+ </p>
+ </div>
+ </div>
+
+ <div className="flex flex-col gap-3">
+ {verdMatch && (
+ <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/35 shadow-sm">
+ <h4 className="text-xs font-bold uppercase tracking-wider dark:text-blue-400 text-blue-600 mb-1">
+ Coach Verdict
+ </h4>
+ <p className="dark:text-white text-slate-900 text-xs font-black tracking-wide">
+ {verdMatch[1].trim()}
+ </p>
+ </div>
+ )}
+
+ {missMatch && (
+ <div className="p-3.5 rounded-2xl bg-gradient-to-br from-cyan-950/40 to-emerald-950/30 border border-cyan-500/40 shadow-sm flex-1">
+ <h4 className="text-xs font-bold uppercase tracking-wider dark:text-cyan-400 text-cyan-600 mb-1.5">
+ Today's Tactical Mission
+ </h4>
+ <p className="dark:text-cyan-100 text-slate-900 text-xs font-semibold leading-relaxed">
+ {missMatch[1].trim()}
+ </p>
+ </div>
+ )}
+
+ {closeMatch && (
+ <div className="p-3 rounded-2xl dark:bg-slate-900/80 bg-white border dark:border-slate-800 border-slate-200">
+ <p className="dark:text-slate-300 text-slate-800 text-xs italic font-medium">
+ "{closeMatch[1].trim()}"
+ </p>
+ </div>
+ )}
+ </div>
+ </div>
+ );
+ }
+
+ return (
  <div className="bg-cyan-900/10 border border-cyan-800/50 p-4 rounded-xl mt-4">
  <h4 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 uppercase text-xs tracking-wider">
  <BrainCircuit className="w-4 h-4" /> AI Coach Assessment
@@ -539,7 +608,8 @@ const History = React.memo(function History() {
  ))}
  </div>
  </div>
- )}
+ );
+ })()}
  </CardContent>
  </Card>
  </TiltWrapper>

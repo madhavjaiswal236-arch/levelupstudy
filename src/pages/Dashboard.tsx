@@ -33,6 +33,8 @@ import {
   Settings,
   Activity,
   Calendar,
+  Compass,
+  Sparkles,
   Maximize,
   EyeOff,
   MousePointerClick,
@@ -65,6 +67,9 @@ import { getDynamicInsight, getStaticDynamicInsight } from "@/lib/gemini";
 import { TourStep, useTour } from "@/components/TourGuide";
 import { LiveDayOverlay } from "@/components/LiveDayOverlay";
 import { CoachAnalysisModal } from "@/components/CoachAnalysisModal";
+import { WeeklyReview } from "@/components/coach/WeeklyReview";
+import { ScheduleProfileEditor } from "@/components/coach/ScheduleProfileEditor";
+import { OnboardingIntake } from "@/components/coach/OnboardingIntake";
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { useHaptic } from "@/hooks/useHaptic";
 import confetti from "canvas-confetti";
@@ -360,6 +365,9 @@ const Dashboard = React.memo(function Dashboard() {
   });
   const [showLiveDay, setShowLiveDay] = useState(false);
   const [showCoachModal, setShowCoachModal] = useState(false);
+  const [showWeeklyReview, setShowWeeklyReview] = useState(false);
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [showIntakeModal, setShowIntakeModal] = useState(false);
 
   const todayStr = useMemo(() => getLocalDateString(), []);
 
@@ -1435,6 +1443,18 @@ const Dashboard = React.memo(function Dashboard() {
         isOpen={showCoachModal}
         onClose={() => setShowCoachModal(false)}
       />
+      <WeeklyReview
+        isOpen={showWeeklyReview}
+        onClose={() => setShowWeeklyReview(false)}
+      />
+      <ScheduleProfileEditor
+        isOpen={showScheduleEditor}
+        onClose={() => setShowScheduleEditor(false)}
+      />
+      <OnboardingIntake
+        isOpen={showIntakeModal}
+        onClose={() => setShowIntakeModal(false)}
+      />
       <AnimatePresence>
         {toastMessage && (
           <motion.div
@@ -2250,15 +2270,6 @@ const Dashboard = React.memo(function Dashboard() {
           ) : (
             <div className="flex gap-2 w-full md:w-auto">
               <Button
-                onClick={() => setShowCoachModal(true)}
-                variant="outline"
-                size="lg"
-                className="w-full md:w-auto gap-2 font-bold tracking-widest border-indigo-500/50 dark:text-indigo-300 text-indigo-700 hover:bg-indigo-500/10 shadow-md h-12 md:h-11 rounded-xl md:rounded-lg text-xs md:text-sm"
-              >
-                <Moon className="w-4 h-4 md:w-5 md:h-5 dark:text-indigo-400 text-indigo-600" />
-                DAILY RECOVERY LOG
-              </Button>
-              <Button
                 onClick={handleStartStudyClick}
                 variant="default"
                 size="lg"
@@ -2276,6 +2287,8 @@ const Dashboard = React.memo(function Dashboard() {
           )}
         </div>
       </motion.header>
+
+
 
       <motion.div
         variants={itemVariants}

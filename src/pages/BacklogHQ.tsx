@@ -22,7 +22,8 @@ import {
   ChevronRight,
   Filter,
   Compass,
-  Trash2
+  Trash2,
+  BrainCircuit,
 } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { BacklogWizard } from '@/components/backlog/BacklogWizard';
@@ -30,6 +31,7 @@ import { BacklogSimulator } from '@/components/backlog/BacklogSimulator';
 import { BacklogMissedModal } from '@/components/backlog/BacklogMissedModal';
 import { ChapterLectureModal } from '@/components/backlog/ChapterLectureModal';
 import { BacklogProgressJourney } from '@/components/backlog/BacklogProgressJourney';
+import { SpacedMemoryWidget } from '@/components/coach/SpacedMemoryWidget';
 import {
   BacklogPlan,
   RoadmapTask,
@@ -60,8 +62,8 @@ export default function BacklogHQ() {
   const [showSimulator, setShowSimulator] = useState(false);
   const [showMissedModal, setShowMissedModal] = useState(false);
 
-  // Active view tab: 'journey' | 'today' | 'curriculum' | 'roadmap'
-  const [activeTab, setActiveTab] = useState<'journey' | 'today' | 'curriculum' | 'roadmap'>('journey');
+  // Active view tab: 'journey' | 'today' | 'curriculum' | 'roadmap' | 'spaced'
+  const [activeTab, setActiveTab] = useState<'journey' | 'today' | 'curriculum' | 'roadmap' | 'spaced'>('journey');
 
   // Chapter & Lecture modal states
   const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);
@@ -440,6 +442,8 @@ export default function BacklogHQ() {
               </p>
             </div>
           </div>
+
+          <SpacedMemoryWidget />
         </div>
       )}
 
@@ -546,6 +550,7 @@ export default function BacklogHQ() {
             {[
               { id: 'journey', label: 'Progress & Journey', icon: TrendingUp },
               { id: 'today', label: "Today's Mission", icon: Target },
+              { id: 'spaced', label: 'Spaced Memory', icon: BrainCircuit },
               { id: 'curriculum', label: 'Curriculum & Lectures', icon: BookOpen },
               { id: 'roadmap', label: 'Roadmap Schedule', icon: Calendar }
             ].map(tab => {
@@ -571,12 +576,20 @@ export default function BacklogHQ() {
 
           {/* TAB 0: PROGRESS & JOURNEY TRACKER */}
           {activeTab === 'journey' && (
-            <BacklogProgressJourney
-              plan={backlogPlan}
-              todos={todos}
-              onSelectTab={setActiveTab}
-              onOpenSimulator={() => setShowSimulator(true)}
-            />
+            <div className="space-y-6">
+              <BacklogProgressJourney
+                plan={backlogPlan}
+                todos={todos}
+                onSelectTab={setActiveTab}
+                onOpenSimulator={() => setShowSimulator(true)}
+              />
+              <SpacedMemoryWidget />
+            </div>
+          )}
+
+          {/* TAB: SPACED MEMORY CONSOLIDATION */}
+          {activeTab === 'spaced' && (
+            <SpacedMemoryWidget />
           )}
 
           {/* TAB 1: TODAY'S MISSION */}
@@ -658,6 +671,7 @@ export default function BacklogHQ() {
                   })}
                 </div>
               )}
+              <SpacedMemoryWidget className="mt-6" />
             </div>
           )}
 

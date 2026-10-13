@@ -19,7 +19,9 @@ import {
   Check,
   ArrowRight,
   Menu,
+  BrainCircuit,
 } from "lucide-react";
+import { SpacedMemoryWidget } from "./coach/SpacedMemoryWidget";
 import {
   getAccessToken,
   getAccessTokenSync,
@@ -141,6 +143,7 @@ export function StudyCalendar({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [now, setNow] = useState(new Date());
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [showSpacedMemory, setShowSpacedMemory] = useState(false);
 
   const dragInitialScroll = useRef(0);
   const autoScrollRef = useRef<NodeJS.Timeout | null>(null);
@@ -3102,7 +3105,15 @@ export function StudyCalendar({
               </h2>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowSpacedMemory(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs md:text-sm font-bold bg-purple-600/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 hover:bg-purple-600 hover:text-white transition-all shadow-sm"
+                title="Spaced Memory Consolidation Queue"
+              >
+                <BrainCircuit className="w-4 h-4 text-purple-500" />
+                <span className="hidden sm:inline">Spaced Review</span>
+              </button>
               <button
                 onClick={() => handleCalendarSync(true)}
                 disabled={isSyncing}
@@ -3154,6 +3165,20 @@ export function StudyCalendar({
             </AnimatePresence>
           </div>
         </div>
+
+        {showSpacedMemory && (
+          <div className="fixed inset-0 z-[250] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-4xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-900 border border-purple-500/30 rounded-3xl p-6 shadow-2xl relative">
+              <button
+                onClick={() => setShowSpacedMemory(false)}
+                className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <SpacedMemoryWidget />
+            </div>
+          </div>
+        )}
 
         {toastMessage && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[200]">

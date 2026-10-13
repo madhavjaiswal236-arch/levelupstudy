@@ -303,8 +303,11 @@ export function runCoachTests(): {
   const mFail = onRetrieval(mInit, "2026-09-03", 0.2, 10);
   const sameDayExp = mSameDay.halfLifeDays / mInit.halfLifeDays;
   const spacedExp = mSpaced.halfLifeDays / mInit.halfLifeDays;
-  const t15Success = sameDayExp <= 1.05 && spacedExp >= 1.9 && spacedExp <= 2.5 && mFail.halfLifeDays === 2.0;
-  results.push({ name: "T15: Corrected Half-Life Spacing Formula", success: t15Success, detail: `Same-day: x${sameDayExp.toFixed(2)}, Spaced: x${spacedExp.toFixed(2)}, Fail: ${mFail.halfLifeDays}d` });
+  // Exam-date spacing horizon cap test (Gap 2): 10 days to exam clamps horizon to round(10 * 0.2) = 2.0 days
+  const mExamCap = onRetrieval(mInit, "2026-09-03", 1.0, 10, "2026-09-13");
+  const examCapped = mExamCap.halfLifeDays <= 2.0;
+  const t15Success = sameDayExp <= 1.05 && spacedExp >= 1.9 && spacedExp <= 2.5 && mFail.halfLifeDays === 2.0 && examCapped;
+  results.push({ name: "T15: Corrected Half-Life Spacing Formula & Exam-Date Horizon Cap", success: t15Success, detail: `Same-day: x${sameDayExp.toFixed(2)}, Spaced: x${spacedExp.toFixed(2)}, Fail: ${mFail.halfLifeDays}d, ExamCapped: ${mExamCap.halfLifeDays}d` });
 
   // T16: Review queue excludes chapters under P(L) 0.35
   const chapHighPL = { ...mInit, pL: 0.8, halfLifeDays: 1.0, lastRetrievalDate: "2026-08-01" };
