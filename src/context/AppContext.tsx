@@ -118,6 +118,7 @@ export interface Habit {
   id: string;
   name: string;
   completedDays: number[];
+  monthKey?: string;
 }
 
 export interface LifeMetric {
@@ -177,6 +178,12 @@ export interface PracticeSession {
   correct: number;
   timeSpent: number;
   mistakes: string[];
+  errorCounts?: Partial<Record<"KNOWLEDGE_DEFICIT" | "PROCEDURAL_FLAW" | "ATTENTIONAL_SLIP" | "TRANSFER_FAILURE", number>>;
+  confidencePre?: number;
+  perceivedDifficulty?: 1 | 2 | 3 | 4 | 5;
+  questionType?: "MCQ" | "MULTI" | "NUMERIC" | "UNKNOWN";
+  difficultyTier?: 1 | 2 | 3;
+  timed?: boolean;
 }
 
 export interface PlayHistoryEntry {
@@ -295,6 +302,12 @@ interface AppState {
     correct: number,
     timeSpent: number,
     mistakes: string[],
+    errorCounts?: Partial<Record<"KNOWLEDGE_DEFICIT" | "PROCEDURAL_FLAW" | "ATTENTIONAL_SLIP" | "TRANSFER_FAILURE", number>>,
+    confidencePre?: number,
+    perceivedDifficulty?: 1 | 2 | 3 | 4 | 5,
+    questionType?: "MCQ" | "MULTI" | "NUMERIC" | "UNKNOWN",
+    difficultyTier?: 1 | 2 | 3,
+    timed?: boolean,
   ) => void;
   logFocusSession: (durationMins: number, isDeepFocus: boolean) => void;
   updateChapterStats: (
@@ -303,6 +316,7 @@ interface AppState {
     updates: Partial<Chapter>,
   ) => void;
   resetApp: () => void;
+  logoutUser: () => Promise<void>;
   firebaseUser: import("firebase/auth").User | null;
   setFirebaseUser: React.Dispatch<
     React.SetStateAction<import("firebase/auth").User | null>
@@ -336,6 +350,7 @@ interface AppState {
   setShowWelcomeHero: React.Dispatch<React.SetStateAction<boolean>>;
   triggerWelcomeScreen: () => void;
   dismissWelcomeHero: () => void;
+  markReminderSeen: () => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -540,7 +555,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [backlogPriorities, setBacklogPriorities] = useState<
     Record<string, "Must-Do" | "Review">
   >({});
-  const [hasSeenReminder, setHasSeenReminder] = useState(false);
+  const [hasSeenReminder, setHasSeenReminder] = useState<boolean>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        if (sessionStorage.getItem("has_seen_countdown_reminder_session") === "true") {
+          return true;
+        }
+        const todayKey = getStandardDateKey(getLogicalDate());
+        if (localStorage.getItem("has_seen_countdown_reminder_date") === todayKey) {
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  });
+
+  const markReminderSeen = useCallback(() => {
+    setHasSeenReminder(true);
+    try {
+      if (typeof window !== "undefined") {
+        const todayKey = getStandardDateKey(getLogicalDate());
+        sessionStorage.setItem("has_seen_countdown_reminder_session", "true");
+        localStorage.setItem("has_seen_countdown_reminder_date", todayKey);
+      }
+    } catch (e) {}
+  }, []);
   const [hasSeenRules, setHasSeenRules] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [backlogPlan, setBacklogPlan] = useState<BacklogPlan | null>(null);
@@ -1209,9 +1248,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [firebaseUser, isLoaded]);
 
-  // Real-Time Cloud Listener removed to prevent feedback write loops and stream exhaustion.
-  // Data is loaded on initial app load / refresh via syncCloudOnLogin.
-  // Cross-tab sync remains active via localStorage events.
+  // Real-Time Cloud Listener for multi-device sync with write-loop suppression
+  useEffect(() => {
+    if (!firebaseUser?.uid || !isCloudSyncComplete) {
+      return;
+    }
+
+    const unsubscribe = subscribeToCloudUserData(firebaseUser.uid, (cloudData, metadata) => {
+      // If the write originated locally on this client, metadata.hasPendingWrites is true. Skip to prevent write loop.
+      if (metadata?.hasPendingWrites) {
+        return;
+      }
+
+      if (!cloudData || (cloudData as any).__docExists === false) {
+        return;
+      }
+
+      // Check if remote data differs from our last known cloud snapshot
+      const remoteJson = JSON.stringify(cloudData);
+      if (remoteJson === lastSavedCloudJsonRef.current) {
+        return;
+      }
+
+      // Non-reverting CRDT reconciliation across devices
+      const currentLocal = latestStateRef.current;
+      const { mergedState, needsCloudUpload } = reconcileState(currentLocal, cloudData);
+
+      isRemoteSyncingRef.current = true;
+      applyStateSnapshot(mergedState);
+      isRemoteSyncingRef.current = false;
+
+      lastSavedCloudJsonRef.current = remoteJson;
+
+      if (mergedState.lastSyncTimestamp) {
+        setLastSyncTimestamp(mergedState.lastSyncTimestamp);
+        lastSyncTimestampRef.current = mergedState.lastSyncTimestamp;
+      }
+
+      if (needsCloudUpload && firebaseUser?.uid) {
+        saveUserDataToCloud(firebaseUser.uid, mergedState, true).catch(() => {});
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    };
+  }, [firebaseUser?.uid, isCloudSyncComplete, applyStateSnapshot]);
 
 
   // Handle Cross-Tab Synchronization
@@ -1916,6 +2000,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     correct: number,
     timeSpent: number,
     mistakes: string[],
+    errorCounts?: Partial<Record<"KNOWLEDGE_DEFICIT" | "PROCEDURAL_FLAW" | "ATTENTIONAL_SLIP" | "TRANSFER_FAILURE", number>>,
+    confidencePre?: number,
+    perceivedDifficulty?: 1 | 2 | 3 | 4 | 5,
+    questionType?: "MCQ" | "MULTI" | "NUMERIC" | "UNKNOWN",
+    difficultyTier?: 1 | 2 | 3,
+    timed?: boolean,
   ) => {
     if (attempted === 0 || chapters.length === 0) return;
     updateStreak();
@@ -1955,6 +2045,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       correct: perChapCorrect,
       timeSpent: perChapTime,
       mistakes,
+      errorCounts,
+      confidencePre,
+      perceivedDifficulty,
+      questionType,
+      difficultyTier,
+      timed,
     }));
 
     setPracticeSessions((prev) => [...prev, ...newSessions]);
@@ -2025,6 +2121,74 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {}
     window.location.reload();
   }, []);
+
+  const logoutUser = useCallback(async () => {
+    try {
+      await logout();
+    } catch (e) {}
+    setFirebaseUser(null);
+    setHasToken(false);
+    lastSavedCloudJsonRef.current = "";
+    hasUnsavedLocalChangesRef.current = false;
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      localStorage.removeItem("jee_tracker_backlog_plan");
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.remove({ key: LOCAL_STORAGE_KEY });
+      }
+    } catch (e) {}
+    const cleanDefault = {
+      xp: 0,
+      xpGainedToday: 0,
+      spentXpToday: 0,
+      totalSpentXp: 0,
+      hoursStudiedToday: 0,
+      level: 1,
+      questionsSolved: 0,
+      streakDays: 0,
+      dailyTarget: 4,
+      accuracy: 0,
+      speedScore: 0,
+      lastStudyDate: null,
+      focusBadges: 0,
+      syllabus: initialSyllabusData,
+      activeBoost: null,
+      class11EndDate: null,
+      isClass11SetupDone: false,
+      backlogPriorities: [],
+      backlogPlan: null,
+      todos: [],
+      loggedTasksToday: [],
+      pendingTasks: [],
+      history: [],
+      practiceSessions: [],
+      playerName: "Student",
+      hasSeenRules: false,
+      habits: [],
+      lifeMetrics: Array.from({ length: 31 }, (_, i) => ({ day: i + 1, sleep: 0, screenTime: 0 })),
+      monthlyGoals: [],
+      lastBossDayDate: null,
+      bossDayTargetXp: null,
+      bossDayCompleted: false,
+      equippedTitle: "",
+      equippedAura: "",
+      unlockedItems: [],
+      notificationSettings: {
+        dailyReminder: true,
+        reminderTime: "20:00",
+        streakAlerts: true,
+        smartNudges: true,
+        weeklyDigest: true,
+        hapticsEnabled: true,
+      },
+      totalXpGoal: 10000,
+      ongoingChapters: {},
+    };
+    isRemoteSyncingRef.current = true;
+    applyStateSnapshot(cleanDefault);
+    latestStateRef.current = cleanDefault;
+    isRemoteSyncingRef.current = false;
+  }, [applyStateSnapshot]);
 
   const submitMissedDayReasons = useCallback((
     reasons: { date: string; reason: string }[],
@@ -2330,6 +2494,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logFocusSession,
       updateChapterStats,
       resetApp,
+      logoutUser,
       isLoaded,
       needsRollover: needsRolloverState,
       setNeedsRollover,
@@ -2376,11 +2541,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setShowWelcomeHero,
       triggerWelcomeScreen,
       dismissWelcomeHero,
+      markReminderSeen,
     }),
     [
       showWelcomeHero,
       triggerWelcomeScreen,
       dismissWelcomeHero,
+      markReminderSeen,
       xp,
       xpGainedToday,
       spentXpToday,
@@ -2439,6 +2606,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logFocusSession,
       updateChapterStats,
       resetApp,
+      logoutUser,
       isLoaded,
       needsRolloverState,
       setNeedsRollover,

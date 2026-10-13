@@ -1,4 +1,26 @@
-import { NormalizedStudentData, DerivedMetrics } from "./types";
+// src/lib/coach/metrics.ts
+/**
+ * Metrics Computation & Normalized Cognitive Yield.
+ * Resolves Defect A11: Normalizes cognitive yield multipliers to 1.0 (active retrieval/timed solving),
+ * 0.75 (guided practice/worked examples), and 0.35 (passive lecture/rereading).
+ * Cognitive yield can never exceed actual hours worked.
+ */
+
+import type { NormalizedStudentData, DerivedMetrics, CoachInput } from "./types";
+
+export function computeCognitiveYield(
+  lectureHours: number,
+  practiceHours: number,
+  totalHours: number,
+): number {
+  // Dunlosky normalized design heuristics (A11):
+  // Active retrieval / practice sets: 1.0
+  // Mixed / structured scaffolding: 0.75
+  // Passive lecture / rereading: 0.35
+  const yieldEst = 1.0 * practiceHours + 0.35 * lectureHours;
+  // Yield is capped at total hours worked
+  return Math.min(totalHours, Math.round(yieldEst * 10) / 10);
+}
 
 export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
   // Practice metrics
@@ -13,23 +35,31 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
     totalCorrect += correct;
 
     if (session.subject) {
-      subjectDistribution[session.subject] = (subjectDistribution[session.subject] || 0) + (session.timeSpent ? session.timeSpent / 60 : attempted * 0.05);
+      subjectDistribution[session.subject] =
+        (subjectDistribution[session.subject] || 0) +
+        (session.timeSpent ? session.timeSpent / 60 : attempted * 0.05);
     }
   }
 
-  const accuracyOverall = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : data.accuracy || 0;
-  const outputPerHour = data.hours > 0 ? Math.round(totalQuestions / data.hours) : totalQuestions;
+  const accuracyOverall =
+    totalQuestions > 0
+      ? Math.round((totalCorrect / totalQuestions) * 100)
+      : data.accuracy || 0;
+  const outputPerHour =
+    data.hours > 0 ? Math.round(totalQuestions / data.hours) : totalQuestions;
 
   // Lecture vs Practice breakdown from logged tasks or todo types
   let lectureHours = 0;
   let practiceHours = 0;
 
-  // Deduplicate tasks by ID/text between loggedTasksToday and completedTasks
+  // Deduplicate tasks by ID/text
   const seenTaskIds = new Set<string>();
   const allTasks: typeof data.loggedTasksToday = [];
 
   for (const t of [...data.loggedTasksToday, ...data.completedTasks]) {
-    const key = t.id ? String(t.id) : `${t.text}_${t.type || ''}_${t.subject || ''}_${t.lectureHours || 0}`;
+    const key = t.id
+      ? String(t.id)
+      : `${t.text}_${t.type || ""}_${t.subject || ""}_${t.lectureHours || 0}`;
     if (!seenTaskIds.has(key)) {
       seenTaskIds.add(key);
       allTasks.push(t);
@@ -37,36 +67,67 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
   }
 
   for (const task of allTasks) {
-    const taskHours = task.lectureHours || (task.durationMinutes ? task.durationMinutes / 60 : 0.5);
+    const taskHours =
+      task.lectureHours ||
+      (task.durationMinutes ? task.durationMinutes / 60 : 0.5);
     const typeLower = (task.type || "").toLowerCase();
     if (typeLower.includes("lecture") || typeLower.includes("theory")) {
       lectureHours += taskHours;
-    } else if (typeLower.includes("practice") || typeLower.includes("dpp") || typeLower.includes("pyq")) {
+    } else if (
+      typeLower.includes("practice") ||
+      typeLower.includes("dpp") ||
+      typeLower.includes("pyq")
+    ) {
       practiceHours += taskHours;
     }
     if (task.subject) {
-      subjectDistribution[task.subject] = (subjectDistribution[task.subject] || 0) + taskHours;
+      subjectDistribution[task.subject] =
+        (subjectDistribution[task.subject] || 0) + taskHours;
     }
   }
 
   const totalCategorizedHours = lectureHours + practiceHours;
-  const lectureRatio = totalCategorizedHours > 0 ? lectureHours / totalCategorizedHours : (data.hours > 0 && totalQuestions < 10 ? 0.8 : 0.2);
+  const lectureRatio =
+    totalCategorizedHours > 0
+      ? lectureHours / totalCategorizedHours
+      : data.hours > 0 && totalQuestions < 10
+        ? 0.8
+        : 0.2;
   const practiceRatio = 1 - lectureRatio;
 
   // Task planning & completion metrics
   const plannedTaskCount = data.plannedTasks.length;
   const completedTaskIds = new Set(data.completedTasks.map((t) => t.id));
   const completedTaskCount = data.completedTasks.length;
-  const taskCompletionRate = plannedTaskCount > 0 ? Math.min(1, Math.max(0, completedTaskCount / plannedTaskCount)) : 1;
+  const taskCompletionRate =
+    plannedTaskCount > 0
+      ? Math.min(1, Math.max(0, completedTaskCount / plannedTaskCount))
+      : 1;
 
-  const highPriorityTasks = data.plannedTasks.filter((t) => t.priority === "High");
-  const highPriorityCompleted = highPriorityTasks.filter((t) => completedTaskIds.has(t.id)).length;
-  const highPriorityCompletionRate = highPriorityTasks.length > 0 ? Math.min(1, Math.max(0, highPriorityCompleted / highPriorityTasks.length)) : taskCompletionRate;
+  const highPriorityTasks = data.plannedTasks.filter(
+    (t) => t.priority === "High",
+  );
+  const highPriorityCompleted = highPriorityTasks.filter((t) =>
+    completedTaskIds.has(t.id),
+  ).length;
+  const highPriorityCompletionRate =
+    highPriorityTasks.length > 0
+      ? Math.min(1, Math.max(0, highPriorityCompleted / highPriorityTasks.length))
+      : taskCompletionRate;
 
-  const uncompletedTasks = data.plannedTasks.filter((t) => !completedTaskIds.has(t.id));
-  const uncompletedTaskNames = uncompletedTasks.map((t) => t.text.trim()).filter(Boolean);
+  const uncompletedTasks = data.plannedTasks.filter(
+    (t) => !completedTaskIds.has(t.id),
+  );
+  const uncompletedTaskNames = uncompletedTasks
+    .map((t) =>
+      t && typeof t.text === "string"
+        ? t.text.trim()
+        : (t as any)?.title
+          ? String((t as any).title).trim()
+          : "Study Task",
+    )
+    .filter(Boolean);
 
-  // Detect neglected subjects (from standard subjects: Physics, Chemistry, Mathematics)
   const standardSubjects = ["Physics", "Chemistry", "Mathematics"];
   const neglectedSubjects: string[] = [];
 
@@ -76,7 +137,6 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
     }
   }
 
-  // Determine weakest subject (subject with least studied hours or lowest practice score)
   let weakestSubject: string | undefined = undefined;
   let minVal = Infinity;
   for (const sub of standardSubjects) {

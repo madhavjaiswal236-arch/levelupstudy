@@ -200,12 +200,10 @@ const Syllabus = React.memo(function Syllabus() {
   };
 
   const itemVariants = {
-    hidden: { opacity: 0, y: 30, scale: 0.9 },
+    hidden: { opacity: 0 },
     show: {
       opacity: 1,
-      y: 0,
-      scale: 1,
-      transition: { type: "spring" as any, stiffness: 120, damping: 10 },
+      transition: { duration: 0.25, ease: "easeOut" as const },
     },
   };
 
@@ -214,8 +212,7 @@ const Syllabus = React.memo(function Syllabus() {
       <motion.header
         variants={itemVariants}
         initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, margin: "-50px" }}
+        animate="show"
       >
         <h1 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-500">
           SYLLABUS & INTEL
@@ -229,8 +226,7 @@ const Syllabus = React.memo(function Syllabus() {
       <motion.div
         variants={itemVariants}
         initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, margin: "-50px" }}
+        animate="show"
         className="grid grid-cols-1 lg:grid-cols-3 gap-6"
       >
         {/* AI Priority Warning */}

@@ -28,6 +28,7 @@ import {
   Shield,
   ShieldAlert,
   BrainCircuit,
+  Moon,
   Timer,
   Settings,
   Activity,
@@ -60,9 +61,10 @@ import {
   getAccessTokenSync,
   googleSignIn,
 } from "@/lib/firebase";
-import { getDynamicInsight } from "@/lib/gemini";
+import { getDynamicInsight, getStaticDynamicInsight } from "@/lib/gemini";
 import { TourStep, useTour } from "@/components/TourGuide";
 import { LiveDayOverlay } from "@/components/LiveDayOverlay";
+import { CoachAnalysisModal } from "@/components/CoachAnalysisModal";
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { useHaptic } from "@/hooks/useHaptic";
 import confetti from "canvas-confetti";
@@ -240,6 +242,7 @@ const Dashboard = React.memo(function Dashboard() {
     setHasSeenRules,
     hasSeenReminder,
     setHasSeenReminder,
+    markReminderSeen,
     getStreakMultiplier,
     lastBossDayDate,
     bossDayTargetXp,
@@ -340,8 +343,23 @@ const Dashboard = React.memo(function Dashboard() {
     "Connect your Calendar in settings to auto-schedule blocked review time. Time-blocking your pending topics ensures nothing slips through the cracks before exams!",
   );
 
-  const [dynamicInsight, setDynamicInsight] = useState<string | null>(null);
+  const [dynamicInsight, setDynamicInsight] = useState<string | null>(() => {
+    try {
+      return getStaticDynamicInsight({
+        hoursToday: 0,
+        streak: 0,
+        questionsSolved: 0,
+        target: 4,
+        accuracy: 0,
+        pendingTasksCount: 0,
+        recentTaskTypes: "General",
+      });
+    } catch {
+      return null;
+    }
+  });
   const [showLiveDay, setShowLiveDay] = useState(false);
+  const [showCoachModal, setShowCoachModal] = useState(false);
 
   const todayStr = useMemo(() => getLocalDateString(), []);
 
@@ -410,24 +428,27 @@ const Dashboard = React.memo(function Dashboard() {
   useEffect(() => {
     let active = true;
     const fetchInsight = async () => {
-      const insight = await getDynamicInsight({
-        hoursToday: hoursStudiedToday,
-        streak: streakDays,
-        questionsSolved,
-        target: dailyTarget,
-        accuracy,
-        pendingTasksCount: todayPendingTodosCount,
-        recentTaskTypes: recentTaskTypesStr,
-      });
-      if (active && insight) {
-        setDynamicInsight(insight);
+      try {
+        const insight = await getDynamicInsight({
+          hoursToday: hoursStudiedToday,
+          streak: streakDays,
+          questionsSolved,
+          target: dailyTarget,
+          accuracy,
+          pendingTasksCount: todayPendingTodosCount,
+          recentTaskTypes: recentTaskTypesStr,
+        });
+        if (active && insight) {
+          setDynamicInsight(insight);
+        }
+      } catch (e) {
+        console.warn("Failed to generate dynamic coach insight", e);
       }
     };
 
-    const timeout = setTimeout(fetchInsight, 2000);
+    fetchInsight();
     return () => {
       active = false;
-      clearTimeout(timeout);
     };
   }, [
     hoursStudiedToday,
@@ -782,10 +803,10 @@ const Dashboard = React.memo(function Dashboard() {
     let finalMins = logSessionHours * 60 + logSessionMins;
 
     // If the manual input exactly matches the floor of the recorded time, use the float to keep precision
-    if (finalMins === Math.floor(maxSessionDuration)) {
+    if (maxSessionDuration > 0 && finalMins === Math.floor(maxSessionDuration)) {
       finalMins = maxSessionDuration;
-    } else if (finalMins > maxSessionDuration) {
-      // Don't allow logging more than actual time
+    } else if (maxSessionDuration > 0 && finalMins > maxSessionDuration) {
+      // Don't allow logging more than actual time when bounded by a recorded timer
       return;
     }
 
@@ -1410,6 +1431,10 @@ const Dashboard = React.memo(function Dashboard() {
           <LiveDayOverlay onClose={() => setShowLiveDay(false)} />
         )}
       </AnimatePresence>
+      <CoachAnalysisModal
+        isOpen={showCoachModal}
+        onClose={() => setShowCoachModal(false)}
+      />
       <AnimatePresence>
         {toastMessage && (
           <motion.div
@@ -1597,7 +1622,11 @@ const Dashboard = React.memo(function Dashboard() {
 
                   <Button
                     size="lg"
-                    onClick={() => setHasSeenReminder(true)}
+                    onClick={() => {
+                      markReminderSeen();
+                      setHasSeenReminder(true);
+                      setShowCoachModal(true);
+                    }}
                     className="bg-red-600 hover:bg-red-500 text-white text-xl px-12 py-8 h-auto rounded-2xl font-black tracking-widest shadow-md hover:shadow-md transition-all hover:scale-105"
                   >
                     ACKNOWLEDGE
@@ -1684,19 +1713,20 @@ const Dashboard = React.memo(function Dashboard() {
                       <input
                         type="number"
                         min="0"
-                        max={Math.floor(maxSessionDuration / 60)}
+                        max={maxSessionDuration > 0 ? Math.floor(maxSessionDuration / 60) : 24}
                         value={logSessionHours}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const maxH = maxSessionDuration > 0 ? Math.floor(maxSessionDuration / 60) : 24;
                           setLogSessionHours(
                             Math.max(
                               0,
                               Math.min(
-                                Math.floor(maxSessionDuration / 60),
+                                maxH,
                                 parseInt(e.target.value) || 0,
                               ),
                             ),
-                          )
-                        }
+                          );
+                        }}
                         className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-lg p-3 dark:text-white text-slate-900 focus:border-cyan-500 outline-none transition-colors"
                       />
                     </div>
@@ -1712,10 +1742,11 @@ const Dashboard = React.memo(function Dashboard() {
                         onChange={(e) => {
                           let m = parseInt(e.target.value) || 0;
                           if (
+                            maxSessionDuration > 0 &&
                             logSessionHours >=
                             Math.floor(maxSessionDuration / 60)
                           ) {
-                            m = Math.min(maxSessionDuration % 60, m);
+                            m = Math.min(Math.floor(maxSessionDuration % 60), m);
                           } else {
                             m = Math.min(59, m);
                           }
@@ -2217,20 +2248,31 @@ const Dashboard = React.memo(function Dashboard() {
               onStop={handleStopSession}
             />
           ) : (
-            <Button
-              onClick={handleStartStudyClick}
-              variant="default"
-              size="lg"
-              className="w-full md:w-auto gap-2 font-bold tracking-widest bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500 shadow-md group overflow-hidden h-12 md:h-11 rounded-xl md:rounded-lg text-xs md:text-sm"
-            >
-              <motion.div
-                whileHover={{ scale: 1.2, rotate: 15 }}
-                transition={{ type: "spring", stiffness: 200, damping: 10 }}
+            <div className="flex gap-2 w-full md:w-auto">
+              <Button
+                onClick={() => setShowCoachModal(true)}
+                variant="outline"
+                size="lg"
+                className="w-full md:w-auto gap-2 font-bold tracking-widest border-indigo-500/50 dark:text-indigo-300 text-indigo-700 hover:bg-indigo-500/10 shadow-md h-12 md:h-11 rounded-xl md:rounded-lg text-xs md:text-sm"
               >
-                <Play className="w-4 h-4 md:w-5 md:h-5 fill-current drop-shadow-md group-hover:scale-110 transition-transform" />
-              </motion.div>
-              START STUDY
-            </Button>
+                <Moon className="w-4 h-4 md:w-5 md:h-5 dark:text-indigo-400 text-indigo-600" />
+                DAILY RECOVERY LOG
+              </Button>
+              <Button
+                onClick={handleStartStudyClick}
+                variant="default"
+                size="lg"
+                className="w-full md:w-auto gap-2 font-bold tracking-widest bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500 shadow-md group overflow-hidden h-12 md:h-11 rounded-xl md:rounded-lg text-xs md:text-sm"
+              >
+                <motion.div
+                  whileHover={{ scale: 1.2, rotate: 15 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 10 }}
+                >
+                  <Play className="w-4 h-4 md:w-5 md:h-5 fill-current drop-shadow-md group-hover:scale-110 transition-transform" />
+                </motion.div>
+                START STUDY
+              </Button>
+            </div>
           )}
         </div>
       </motion.header>
@@ -2268,15 +2310,24 @@ const Dashboard = React.memo(function Dashboard() {
             <div className="flex items-start gap-2 md:gap-3 h-full">
               <motion.div
                 whileHover={{ scale: 1.3, rotate: 15 }}
-                className="relative z-10 shrink-0 mt-0.5"
+                className="relative z-10 shrink-0 mt-0.5 cursor-pointer"
+                onClick={() => setShowCoachModal(true)}
               >
-                <div className="absolute inset-0 bg-blue-500/40 rounded-full  opacity-30" />
-                <Lightbulb className="w-6 h-6 dark:text-blue-400 text-blue-700 drop-shadow-md relative z-10" />
+                <div className="absolute inset-0 bg-blue-500/40 rounded-full opacity-30" />
+                <BrainCircuit className="w-6 h-6 dark:text-blue-400 text-blue-700 drop-shadow-md relative z-10" />
               </motion.div>
-              <div className="flex flex-col justify-center h-full">
-                <h2 className="dark:text-blue-400 text-blue-700 font-bold uppercase tracking-wider text-xs md:text-sm mb-1">
-                  Performance Insight
-                </h2>
+              <div className="flex flex-col justify-center h-full flex-1">
+                <div className="flex items-center justify-between w-full mb-1">
+                  <h2 className="dark:text-blue-400 text-blue-700 font-bold uppercase tracking-wider text-xs md:text-sm flex items-center gap-1.5">
+                    <BrainCircuit className="w-3.5 h-3.5" /> AI Coach Live Insight
+                  </h2>
+                  <button
+                    onClick={() => setShowCoachModal(true)}
+                    className="text-[10px] dark:text-blue-300 text-blue-600 hover:underline font-mono tracking-wider cursor-pointer font-bold"
+                  >
+                    FULL BRIEFING →
+                  </button>
+                </div>
                 <div className="dark:text-slate-300 text-slate-900 text-xs md:text-sm leading-relaxed font-medium whitespace-pre-wrap">
                   {dynamicInsight
                     ? dynamicInsight

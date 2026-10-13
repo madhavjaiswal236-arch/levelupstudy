@@ -2,7 +2,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "motion/react";
-import { GripVertical, Target, Calendar, Trash2, Clock } from "lucide-react";
+import { GripVertical, Target, Calendar, Trash2, Clock, Play, ArrowUpRight } from "lucide-react";
 import { NeonCheckbox } from "./ui/neon-checkbox";
 import { getLogicalDate } from "../context/AppContext";
 import { isSameDay, format } from "date-fns";
@@ -12,10 +12,16 @@ interface SortableTodoItemProps {
   todo: any;
   toggleTodo: (id: number | string) => void;
   deleteTodo: (id: number | string) => any;
+  onMoveToToday?: (todo: any) => void;
   key?: any;
 }
 
-export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, toggleTodo, deleteTodo }: SortableTodoItemProps) {
+export const SortableTodoItem = React.memo(function SortableTodoItem({
+  todo,
+  toggleTodo,
+  deleteTodo,
+  onMoveToToday,
+}: SortableTodoItemProps) {
   const {
     attributes,
     listeners,
@@ -223,17 +229,49 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({ todo, tog
         </button>
       </div>
 
-      <button
-        onClick={() => deleteTodo(todo.id)}
-        className="p-2 dark:text-slate-500 text-slate-600 hover:dark:text-rose-400 text-rose-700 transition-colors rounded-lg hover:bg-rose-500/10 relative z-10 group/trash focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
-      >
-        <motion.div
-          whileHover={{ scale: 1.2, rotate: -10 }}
-          transition={{ duration: 0.4 }}
+      <div className="flex items-center gap-1 relative z-10 shrink-0">
+        {!todo.completed && onMoveToToday && (todo.isBacklogTask || (scheduledDate && scheduledDate < todayStr)) && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveToToday(todo);
+            }}
+            title="Move this task into today's active study plan"
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:border-amber-500/60 transition-all hover:scale-105 active:scale-95 shadow-xs"
+          >
+            <ArrowUpRight className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">To Today</span>
+          </button>
+        )}
+        {!todo.completed && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.dispatchEvent(
+                new CustomEvent("start-focus-task", { detail: { task: todo } })
+              );
+            }}
+            title="Start Deep Focus on this task"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30 hover:border-cyan-500/60 transition-all hover:scale-105 active:scale-95 shadow-xs"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span className="hidden sm:inline">Focus</span>
+          </button>
+        )}
+        <button
+          onClick={() => deleteTodo(todo.id)}
+          className="p-2 dark:text-slate-500 text-slate-600 hover:dark:text-rose-400 text-rose-700 transition-colors rounded-lg hover:bg-rose-500/10 group/trash focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
         >
-          <Trash2 className="w-5 h-5 group-hover/trash:drop-shadow-md" />
-        </motion.div>
-      </button>
+          <motion.div
+            whileHover={{ scale: 1.2, rotate: -10 }}
+            transition={{ duration: 0.4 }}
+          >
+            <Trash2 className="w-4 h-4 group-hover/trash:drop-shadow-md" />
+          </motion.div>
+        </button>
+      </div>
     </div>
   );
 });

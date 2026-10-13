@@ -88,6 +88,24 @@ export default function JeeSessionLogger({
   const [accuracy, setAccuracy] = useState<number>(80);
   const [isLectureComplete, setIsLectureComplete] = useState<boolean>(false);
 
+  // Cognitive Mentor Extensions
+  const [questionType, setQuestionType] = useState<"MCQ" | "MULTI" | "NUMERIC">("MCQ");
+  const [difficultyTier, setDifficultyTier] = useState<1 | 2 | 3>(2);
+  const [confidencePre, setConfidencePre] = useState<string>("");
+  const [perceivedDifficulty, setPerceivedDifficulty] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [isTimed, setIsTimed] = useState<boolean>(true);
+  const [errorCounts, setErrorCounts] = useState<{
+    KNOWLEDGE_DEFICIT: number;
+    PROCEDURAL_FLAW: number;
+    ATTENTIONAL_SLIP: number;
+    TRANSFER_FAILURE: number;
+  }>({
+    KNOWLEDGE_DEFICIT: 0,
+    PROCEDURAL_FLAW: 0,
+    ATTENTIONAL_SLIP: 0,
+    TRANSFER_FAILURE: 0,
+  });
+
   // DPP Status Modal State
   const [showDppModal, setShowDppModal] = useState(false);
   const [dppStatus, setDppStatus] = useState<
@@ -286,6 +304,12 @@ export default function JeeSessionLogger({
         correctQuestions,
         timeSpentMinutes,
         [],
+        errorCounts,
+        confidencePre !== "" ? Number(confidencePre) : undefined,
+        perceivedDifficulty,
+        questionType,
+        difficultyTier,
+        isTimed,
       );
     }
 
@@ -709,6 +733,256 @@ export default function JeeSessionLogger({
                       onChange={(e) => setAccuracy(parseInt(e.target.value))}
                       className="w-full h-2 dark:bg-slate-800 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                     />
+                  </div>
+                )}
+
+                {/* Cognitive Mentor Diagnostics: Question Type, Tier, Timed & JOL */}
+                {(sessionType === "Practice" || sessionType === "PYQs" || sessionType === "DPP") && (
+                  <div className="space-y-6 pt-4 border-t dark:border-slate-800 border-slate-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {/* Question Type */}
+                      <div>
+                        <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider mb-2 block">
+                          Format
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {(["MCQ", "MULTI", "NUMERIC"] as const).map((qt) => (
+                            <button
+                              key={qt}
+                              type="button"
+                              onClick={() => setQuestionType(qt)}
+                              className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${
+                                questionType === qt
+                                  ? "bg-cyan-500/20 border-cyan-400 text-cyan-400 shadow-sm"
+                                  : "dark:bg-black bg-slate-50 border-slate-700 text-slate-400"
+                              }`}
+                            >
+                              {qt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Difficulty Tier */}
+                      <div>
+                        <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider mb-2 block">
+                          Target Tier
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { tier: 1, label: "T1 Concept" },
+                            { tier: 2, label: "T2 Main" },
+                            { tier: 3, label: "T3 Adv" },
+                          ].map((t) => (
+                            <button
+                              key={t.tier}
+                              type="button"
+                              onClick={() => setDifficultyTier(t.tier as 1 | 2 | 3)}
+                              className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${
+                                difficultyTier === t.tier
+                                  ? "bg-indigo-500/20 border-indigo-400 text-indigo-400 shadow-sm"
+                                  : "dark:bg-black bg-slate-50 border-slate-700 text-slate-400"
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Timed Session */}
+                      <div>
+                        <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider mb-2 block">
+                          Condition
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setIsTimed(!isTimed)}
+                          className={`w-full py-2 text-xs font-bold rounded-lg border transition-all flex items-center justify-center gap-2 ${
+                            isTimed
+                              ? "bg-amber-500/20 border-amber-400 text-amber-400 shadow-sm"
+                              : "dark:bg-black bg-slate-50 border-slate-700 text-slate-400"
+                          }`}
+                        >
+                          <span>{isTimed ? "⏱ Timed Closed-Book" : "Untimed"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Pre-Session JOL Prediction & Perceived Difficulty */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider mb-2 flex items-center justify-between">
+                          <span>Pre-Session Confidence (JOL)</span>
+                          <span className="text-[10px] text-slate-500 lowercase">optional 0-100%</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={confidencePre}
+                          onChange={(e) => setConfidencePre(e.target.value)}
+                          placeholder="Forecast predicted score %"
+                          className="w-full dark:bg-black bg-slate-50 border dark:border-slate-700 border-slate-300 rounded-xl px-4 py-2.5 dark:text-white text-slate-900 font-mono text-sm focus:border-cyan-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider mb-2 block">
+                          Post-Session Difficulty Perception
+                        </label>
+                        <div className="grid grid-cols-5 gap-1">
+                          {[
+                            { val: 1, label: "Too Easy" },
+                            { val: 2, label: "Easy" },
+                            { val: 3, label: "Right" },
+                            { val: 4, label: "Hard" },
+                            { val: 5, label: "Too Hard" },
+                          ].map((item) => (
+                            <button
+                              key={item.val}
+                              type="button"
+                              onClick={() => setPerceivedDifficulty(item.val as any)}
+                              className={`py-2 text-[10px] font-bold rounded-lg border transition-all ${
+                                perceivedDifficulty === item.val
+                                  ? "bg-purple-500/20 border-purple-400 text-purple-300 shadow-sm"
+                                  : "dark:bg-black bg-slate-50 border-slate-700 text-slate-400"
+                              }`}
+                            >
+                              {item.val}·{item.label.split(" ")[0]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4-Counter Error Quick-Tag Sheet (Shown when accuracy < 100%) */}
+                    {parseInt(String(questions || 0)) > 0 && accuracy < 100 && (
+                      <div className="p-4 rounded-2xl dark:bg-slate-900/90 bg-slate-50 border dark:border-slate-800 border-slate-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                              Cognitive Error Diagnostics
+                            </span>
+                            <p className="text-[11px] text-slate-400">
+                              Tag root causes for the ~
+                              {Math.max(
+                                1,
+                                Math.round(
+                                  parseInt(String(questions)) * (1 - accuracy / 100),
+                                ),
+                              )}{" "}
+                              missed question(s). Weight feeds BKT mastery.
+                            </p>
+                          </div>
+                          <span className="text-xs font-mono text-cyan-400 bg-cyan-950/40 px-2.5 py-1 rounded-md border border-cyan-800/40">
+                            Tagged:{" "}
+                            {errorCounts.KNOWLEDGE_DEFICIT +
+                              errorCounts.PROCEDURAL_FLAW +
+                              errorCounts.ATTENTIONAL_SLIP +
+                              errorCounts.TRANSFER_FAILURE}
+                            /
+                            {Math.max(
+                              1,
+                              Math.round(
+                                parseInt(String(questions)) * (1 - accuracy / 100),
+                              ),
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          {[
+                            {
+                              key: "KNOWLEDGE_DEFICIT" as const,
+                              label: "Concept Deficit",
+                              sub: "Formula / theory missing",
+                              color: "rose",
+                            },
+                            {
+                              key: "PROCEDURAL_FLAW" as const,
+                              label: "Procedural Flaw",
+                              sub: "Algebra / step error",
+                              color: "amber",
+                            },
+                            {
+                              key: "ATTENTIONAL_SLIP" as const,
+                              label: "Attentional Slip",
+                              sub: "Misread / units / sign",
+                              color: "blue",
+                            },
+                            {
+                              key: "TRANSFER_FAILURE" as const,
+                              label: "Transfer Failure",
+                              sub: "Wrong model chosen",
+                              color: "purple",
+                            },
+                          ].map((err) => {
+                            const totalWrong = Math.max(
+                              1,
+                              Math.round(
+                                parseInt(String(questions)) * (1 - accuracy / 100),
+                              ),
+                            );
+                            const currentSum =
+                              errorCounts.KNOWLEDGE_DEFICIT +
+                              errorCounts.PROCEDURAL_FLAW +
+                              errorCounts.ATTENTIONAL_SLIP +
+                              errorCounts.TRANSFER_FAILURE;
+                            const count = errorCounts[err.key];
+
+                            return (
+                              <div
+                                key={err.key}
+                                className="p-2.5 rounded-xl dark:bg-black bg-white border dark:border-slate-800 border-slate-200 flex flex-col justify-between"
+                              >
+                                <div>
+                                  <span className="text-[11px] font-bold block dark:text-slate-200 text-slate-800 leading-tight">
+                                    {err.label}
+                                  </span>
+                                  <span className="text-[9px] text-slate-500 block truncate">
+                                    {err.sub}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t dark:border-slate-850 border-slate-100">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setErrorCounts((prev) => ({
+                                        ...prev,
+                                        [err.key]: Math.max(0, prev[err.key] - 1),
+                                      }))
+                                    }
+                                    disabled={count === 0}
+                                    className="w-6 h-6 rounded bg-slate-800 text-slate-300 font-bold flex items-center justify-center hover:bg-slate-700 disabled:opacity-30"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="font-mono text-sm font-bold text-cyan-400">
+                                    {count}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (currentSum < totalWrong) {
+                                        setErrorCounts((prev) => ({
+                                          ...prev,
+                                          [err.key]: prev[err.key] + 1,
+                                        }));
+                                      }
+                                    }}
+                                    disabled={currentSum >= totalWrong}
+                                    className="w-6 h-6 rounded bg-slate-800 text-slate-300 font-bold flex items-center justify-center hover:bg-slate-700 disabled:opacity-30"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

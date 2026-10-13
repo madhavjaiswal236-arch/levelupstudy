@@ -22,7 +22,20 @@ export function ImmersiveTimer({
  onComplete,
  onExitEarly,
 }: ImmersiveTimerProps) {
-  const [timeLeft, setTimeLeft] = useState(initialSeconds);
+  const timerStorageKey = `active_immersive_timer_${taskId || 'general'}`;
+
+  const [timeLeft, setTimeLeft] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(`active_immersive_timer_${taskId || 'general'}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.endTime && parsed.endTime > Date.now()) {
+          return Math.max(0, Math.ceil((parsed.endTime - Date.now()) / 1000));
+        }
+      }
+    } catch (e) {}
+    return initialSeconds;
+  });
   const [isActive, setIsActive] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [breaches, setBreaches] = useState(0);
@@ -45,13 +58,23 @@ export function ImmersiveTimer({
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isActive && !isPaused && !isBreached && timeLeft > 0) {
-      endTimeRef.current = Date.now() + timeLeft * 1000;
+      const targetEndTime = Date.now() + timeLeft * 1000;
+      endTimeRef.current = targetEndTime;
+      try {
+        sessionStorage.setItem(timerStorageKey, JSON.stringify({
+          endTime: targetEndTime,
+          initialSeconds
+        }));
+      } catch (e) {}
       interval = setInterval(() => {
         if (endTimeRef.current) {
           const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
           setTimeLeft(remaining);
           if (remaining <= 0) {
              setIsActive(false);
+             try {
+               sessionStorage.removeItem(timerStorageKey);
+             } catch (e) {}
              vibrate(HAPTIC_PATTERNS.SUCCESS);
              onComplete(initialSeconds, taskId, breaches);
              if (document.fullscreenElement) {
@@ -62,7 +85,7 @@ export function ImmersiveTimer({
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isActive, isPaused, isBreached, initialSeconds, taskId, onComplete, breaches]);
+  }, [isActive, isPaused, isBreached, initialSeconds, taskId, onComplete, breaches, timerStorageKey]);
 
   useEffect(() => {
     if (!isStrictMode) return;
@@ -124,6 +147,9 @@ export function ImmersiveTimer({
  };
 
  const handleStop = () => {
+ try {
+   sessionStorage.removeItem(timerStorageKey);
+ } catch (e) {}
  const elapsed = initialSeconds - timeLeft;
  if (document.fullscreenElement) {
  document.exitFullscreen().catch(() => {});

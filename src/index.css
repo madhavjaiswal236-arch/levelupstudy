@@ -368,6 +368,16 @@
   -webkit-user-select: none !important;
 }
 
+/* ========================================================
+   UNIVERSAL SCROLL STABILIZATION & HIGH-PERFORMANCE ENGINE
+   Freezes hover triggers, 3D shifts, and layout micro-translations
+   during active scrolling, ensuring rock-solid stability and 60fps.
+   ======================================================== */
+body.is-scrolling,
+body.is-scrolling * {
+  pointer-events: none !important;
+}
+
 /* ==========================================
    NEON CHECKBOX STYLING
    ========================================== */

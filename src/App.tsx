@@ -51,6 +51,7 @@ import { useHaptic } from "./hooks/useHaptic";
 import { useAuthToken } from "./hooks/useAuthToken";
 import { useCapacitorSetup } from "./hooks/useCapacitorSetup";
 import { getAICoachFeedback } from "./lib/gemini";
+import { generateDeterministicCoachReport } from "./lib/coach/engine";
 import confetti from "canvas-confetti";
 import { Tracker360GoalBox } from "./components/backlog/Tracker360GoalBox";
 
@@ -410,22 +411,10 @@ function AppContent() {
   // Priority 1: Name Setup
   // Priority 2: Daily Rollover
   // Priority 3: Missed Days
-  // Priority 4: Tracker 360 Daily Goal Box Briefing
+  // Tracker 360 Daily Goal Box is saved for future activation and does not auto-popup on app entry.
+  // It can still be opened manually or via custom event when needed.
   useEffect(() => {
-    if (!isLoaded) return;
-    if (firebaseUser && !isCloudSyncComplete) return;
-    if (showNameModal) return;
-    if (needsRollover) return;
-    if (pendingMissedDays.length > 0) return;
-    if (todayBacklogTasks.length === 0) return;
-
-    const todayKey = getStandardDateKey(getLogicalDate());
-    try {
-      const alreadySeen = sessionStorage.getItem(`tracker360_briefing_seen_${todayKey}`);
-      if (!alreadySeen) {
-        setShowTracker360GoalBox(true);
-      }
-    } catch {}
+    // Preserved for future live rollout
   }, [isLoaded, firebaseUser, isCloudSyncComplete, needsRollover, showNameModal, pendingMissedDays.length, todayBacklogTasks.length]);
 
   useEffect(() => {
@@ -675,7 +664,7 @@ function AppContent() {
 
     let feedback = "";
     try {
-      feedback = await getAICoachFeedback({
+      const canonicalReport = generateDeterministicCoachReport({
         hours: yesterdayEntry.hoursStudied || 0,
         sleep: finalSleep,
         screenTime: finalScreen,
@@ -691,8 +680,9 @@ function AppContent() {
         accuracy,
         loggedTasksToday,
       });
+      feedback = `Raw Report:\n${canonicalReport.rawReport}\n\nDiagnosis:\n${canonicalReport.diagnosis}\n\nVerdict:\n${canonicalReport.verdict}\n\nToday's Mission:\n${canonicalReport.todayMission}\n\nClosing:\n${canonicalReport.closing}`;
     } catch (err) {
-      console.error("Error generating AI Coach feedback on rollover submit:", err);
+      console.error("Error generating deterministic Coach report on rollover submit:", err);
     }
 
     completeRollover(finalSleep, finalScreen, feedback);
@@ -1046,7 +1036,8 @@ function AppContent() {
     { id: "quests", label: "Missions", icon: Target, requiredLevel: 3 },
     { id: "protocols", label: "Protocols", icon: Shield, requiredLevel: 4 },
     { id: "store", label: "Store", icon: ShoppingBag, requiredLevel: 8 },
-    { id: "backlog", label: "Tracker 360", icon: Layers, requiredLevel: 1 },
+    // Tracker 360 tab saved for future activation:
+    // { id: "backlog", label: "Tracker 360", icon: Layers, requiredLevel: 1 },
     { id: "profile", label: "Profile", icon: User, requiredLevel: 1 },
     { id: "settings", label: "Settings", icon: SettingsIcon, requiredLevel: 1 },
   ];
@@ -1495,7 +1486,9 @@ function AppContent() {
                   initial={{ scale: 0.8, y: 50, opacity: 0 }}
                   animate={{ scale: 1, y: 0, opacity: 1 }}
                   transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
-                  className="dark:bg-slate-900 bg-white border border-cyan-500/30 p-8 rounded-3xl max-w-2xl w-full text-center shadow-md relative overflow-hidden"
+                  className={`dark:bg-slate-900 bg-white border border-cyan-500/30 p-6 sm:p-8 rounded-3xl w-full text-center shadow-md relative overflow-hidden transition-all duration-300 ${
+                    rolloverStep === 2 ? "max-w-5xl" : "max-w-2xl"
+                  }`}
                 >
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
 
@@ -1667,50 +1660,99 @@ function AppContent() {
                               </div>
                             )}
 
-                            {/* Output AI Motivation */}
-                            <div className="bg-cyan-900/10 border border-cyan-800/50 p-5 rounded-2xl mt-4">
-                              <h3 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 uppercase text-sm tracking-wider">
-                                <BrainCircuit className="w-5 h-5" /> AI Coach
-                                Assessment
-                              </h3>
-                              <div className="dark:text-slate-300 text-slate-900 text-sm leading-relaxed space-y-3">
-                                {latestWithFeedback.aiFeedback ? (
-                                  latestWithFeedback.aiFeedback
-                                    .split("\n\n")
-                                    .map(
-                                      (
-                                        paragraph: string,
-                                        idx: number,
-                                        arr: string[],
-                                      ) => (
-                                        <p
-                                          key={`idx-${idx}`}
-                                          className={
-                                            idx === arr.length - 1
-                                              ? "pt-2 font-bold dark:text-white text-slate-900 italic border-t dark:border-slate-800 border-slate-200 mt-3"
-                                              : ""
-                                          }
-                                        >
+                            {/* Output AI Coach 2-Column Tactical Analysis */}
+                            {(() => {
+                              const text = latestWithFeedback.aiFeedback || "";
+                              const rawMatch = text.match(/Raw Report:\s*([\s\S]*?)(?=\n\nDiagnosis:|$)/i);
+                              const diagMatch = text.match(/Diagnosis:\s*([\s\S]*?)(?=\n\nVerdict:|$)/i);
+                              const verdMatch = text.match(/Verdict:\s*([\s\S]*?)(?=\n\nToday's Mission:|$)/i);
+                              const missMatch = text.match(/Today's Mission:\s*([\s\S]*?)(?=\n\nClosing:|$)/i);
+                              const closeMatch = text.match(/Closing:\s*([\s\S]*?)$/i);
+
+                              if (rawMatch && diagMatch) {
+                                return (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 my-4 text-left">
+                                    {/* Left: Raw Report & Diagnosis */}
+                                    <div className="flex flex-col gap-3">
+                                      <div className="p-4 rounded-2xl dark:bg-slate-900/80 bg-white border dark:border-slate-800 border-slate-200 shadow-sm">
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                          <BrainCircuit className="w-4 h-4 dark:text-cyan-400 text-cyan-600" />
+                                          <h4 className="text-xs font-bold uppercase tracking-wider dark:text-cyan-400 text-cyan-700">
+                                            Yesterday's Raw Report
+                                          </h4>
+                                        </div>
+                                        <p className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed font-mono">
+                                          {rawMatch[1].trim()}
+                                        </p>
+                                      </div>
+
+                                      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex-1">
+                                        <h4 className="text-xs font-bold uppercase tracking-wider dark:text-amber-400 text-amber-600 mb-1.5">
+                                          Diagnosis
+                                        </h4>
+                                        <p className="dark:text-amber-100 text-slate-900 text-xs sm:text-sm leading-relaxed font-medium">
+                                          {diagMatch[1].trim()}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* Right: Verdict & Today's Mission & Closing */}
+                                    <div className="flex flex-col gap-3">
+                                      {verdMatch && (
+                                        <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/35 shadow-sm">
+                                          <h4 className="text-xs font-bold uppercase tracking-wider dark:text-blue-400 text-blue-600 mb-1">
+                                            Coach Verdict
+                                          </h4>
+                                          <p className="dark:text-white text-slate-900 text-xs sm:text-sm font-black tracking-wide">
+                                            {verdMatch[1].trim()}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {missMatch && (
+                                        <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-950/40 to-emerald-950/30 border border-cyan-500/40 shadow-sm flex-1">
+                                          <h4 className="text-xs font-bold uppercase tracking-wider dark:text-cyan-400 text-cyan-600 mb-1.5">
+                                            Today's Tactical Mission
+                                          </h4>
+                                          <p className="dark:text-cyan-100 text-slate-900 text-xs sm:text-sm font-semibold leading-relaxed">
+                                            {missMatch[1].trim()}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {closeMatch && (
+                                        <div className="p-3 rounded-2xl dark:bg-slate-900/80 bg-white border dark:border-slate-800 border-slate-200">
+                                          <p className="dark:text-slate-300 text-slate-800 text-xs italic font-medium">
+                                            "{closeMatch[1].trim()}"
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div className="bg-cyan-900/10 border border-cyan-800/50 p-5 rounded-2xl mt-4">
+                                  <h3 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 uppercase text-sm tracking-wider">
+                                    <BrainCircuit className="w-5 h-5" /> AI Coach Assessment
+                                  </h3>
+                                  <div className="dark:text-slate-300 text-slate-900 text-sm leading-relaxed space-y-3">
+                                    {latestWithFeedback.aiFeedback ? (
+                                      latestWithFeedback.aiFeedback.split("\n\n").map((paragraph: string, idx: number, arr: string[]) => (
+                                        <p key={`idx-${idx}`} className={idx === arr.length - 1 ? "pt-2 font-bold dark:text-white text-slate-900 italic border-t dark:border-slate-800 border-slate-200 mt-3" : ""}>
                                           {paragraph}
                                         </p>
-                                      ),
-                                    )
-                                ) : latestEntry.isMissed ? (
-                                  <div className="text-slate-500 italic">
-                                    <p>
-                                      No recent performance data to analyze.
-                                    </p>
+                                      ))
+                                    ) : (
+                                      <div className="animate-pulse">
+                                        <p>Coach is analyzing yesterday's performance...</p>
+                                      </div>
+                                    )}
                                   </div>
-                                ) : (
-                                  <div className="animate-pulse">
-                                    <p>
-                                      Coach is analyzing yesterday's
-                                      performance...
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                                </div>
+                              );
+                            })()}
                             <button
                               onClick={closeRollover}
                               className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-lg py-4 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.02] uppercase tracking-widest mt-6"

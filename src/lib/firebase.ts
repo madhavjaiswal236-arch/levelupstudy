@@ -3,8 +3,9 @@ import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAut
 import { 
   getFirestore, 
   initializeFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager,
+  memoryLocalCache, 
+  memoryLruGarbageCollector,
+  setLogLevel,
   doc, 
   setDoc, 
   getDoc, 
@@ -40,13 +41,19 @@ export const firestoreDatabaseId: string =
 const app = getApps().length > 0 ? getApp() : initializeApp(mergedFirebaseConfig);
 export const auth = getAuth(app);
 
-// Modern Firebase multi-tab persistent IndexedDB cache initialization with target database ID
+// Suppress internal lease warnings and configure robust in-memory caching to eliminate multi-tab lease contentions
+if (typeof window !== 'undefined') {
+  try {
+    setLogLevel('error');
+  } catch (e) {}
+}
+
 let dbInstance;
 if (typeof window !== 'undefined') {
   try {
     dbInstance = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
+      localCache: memoryLocalCache({
+        garbageCollector: memoryLruGarbageCollector(),
       }),
     }, firestoreDatabaseId);
   } catch (e) {
@@ -367,11 +374,21 @@ const persistOAuthToken = async (token: string | null, expiresAt: number) => {
   cachedTokenExpiresAt = expiresAt;
   try {
     if (token) {
-      await Preferences.set({ key: 'google_access_token', value: token });
-      await Preferences.set({ key: 'google_token_expires_at', value: String(expiresAt) });
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.set({ key: 'google_access_token', value: token });
+        await Preferences.set({ key: 'google_token_expires_at', value: String(expiresAt) });
+      } else {
+        sessionStorage.setItem('google_access_token', token);
+        sessionStorage.setItem('google_token_expires_at', String(expiresAt));
+      }
     } else {
-      await Preferences.remove({ key: 'google_access_token' });
-      await Preferences.remove({ key: 'google_token_expires_at' });
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.remove({ key: 'google_access_token' });
+        await Preferences.remove({ key: 'google_token_expires_at' });
+      } else {
+        sessionStorage.removeItem('google_access_token');
+        sessionStorage.removeItem('google_token_expires_at');
+      }
     }
   } catch (e) {
     console.warn('Preferences token persistence error:', e);
@@ -387,14 +404,23 @@ export const invalidateOAuthToken = async () => {
 
 const hydratePersistedToken = async (): Promise<string | null> => {
   try {
-    const [tokenRes, expRes] = await Promise.all([
-      Preferences.get({ key: 'google_access_token' }),
-      Preferences.get({ key: 'google_token_expires_at' }),
-    ]);
-    if (tokenRes.value) {
-      const exp = expRes.value ? parseInt(expRes.value, 10) : 0;
+    let tokenVal: string | null = null;
+    let expVal: string | null = null;
+    if (Capacitor.isNativePlatform()) {
+      const [tokenRes, expRes] = await Promise.all([
+        Preferences.get({ key: 'google_access_token' }),
+        Preferences.get({ key: 'google_token_expires_at' }),
+      ]);
+      tokenVal = tokenRes.value;
+      expVal = expRes.value;
+    } else {
+      tokenVal = sessionStorage.getItem('google_access_token');
+      expVal = sessionStorage.getItem('google_token_expires_at');
+    }
+    if (tokenVal) {
+      const exp = expVal ? parseInt(expVal, 10) : 0;
       if (exp > Date.now() + 60 * 1000) {
-        cachedAccessToken = tokenRes.value;
+        cachedAccessToken = tokenVal;
         cachedTokenExpiresAt = exp;
         return cachedAccessToken;
       }

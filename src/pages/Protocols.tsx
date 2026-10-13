@@ -97,14 +97,27 @@ const Protocols = React.memo(function Protocols() {
  setNewHabitName('');
  };
 
+ const currentLogicalDate = useMemo(() => getLogicalDate(), []);
+ const todayDateKey = useMemo(() => getStandardDateKey(currentLogicalDate), [currentLogicalDate]);
+ const currentDay = currentLogicalDate.getDate();
+ const currentMonthKey = useMemo(() => {
+   const y = currentLogicalDate.getFullYear();
+   const m = String(currentLogicalDate.getMonth() + 1).padStart(2, '0');
+   return `${y}-${m}`;
+ }, [currentLogicalDate]);
+ const daysInMonth = useMemo(() => {
+   return new Date(currentLogicalDate.getFullYear(), currentLogicalDate.getMonth() + 1, 0).getDate();
+ }, [currentLogicalDate]);
+
  const toggleHabitDay = (habitId: string, day: number) => {
  setHabits(habits.map(h => {
  if (h.id === habitId) {
- const isCompleted = h.completedDays.includes(day);
+ const activeDays = (h.monthKey && h.monthKey !== currentMonthKey) ? [] : (h.completedDays || []);
+ const isCompleted = activeDays.includes(day);
  const newCompletedDays = isCompleted 
- ? h.completedDays.filter(d => d !== day)
- : [...h.completedDays, day];
- return { ...h, completedDays: newCompletedDays };
+ ? activeDays.filter(d => d !== day)
+ : [...activeDays, day];
+ return { ...h, completedDays: newCompletedDays, monthKey: currentMonthKey };
  }
  return h;
  }));
@@ -115,9 +128,6 @@ const Protocols = React.memo(function Protocols() {
  };
 
  // --- Life Metrics Handlers ---
- const currentLogicalDate = useMemo(() => getLogicalDate(), []);
- const todayDateKey = useMemo(() => getStandardDateKey(currentLogicalDate), [currentLogicalDate]);
- const currentDay = currentLogicalDate.getDate();
 
  const todayMetric = useMemo(() => {
  return lifeMetrics.find(m => isSameLogicalDay(m.date, todayDateKey) || m.day === currentDay);
@@ -328,7 +338,7 @@ const Protocols = React.memo(function Protocols() {
  <div className="flex mb-2 w-full">
  <div className="w-24 sm:w-32 md:w-40 shrink-0"></div>
  <div className="flex flex-1 gap-0.5 sm:gap-1">
- {Array.from({ length: 30 }, (_, i) => (
+ {Array.from({ length: daysInMonth }, (_, i) => (
  <div key={`i-${i}`} className={`flex-1 text-center text-[8px] sm:text-[10px] font-mono ${i + 1 === currentDay ? 'dark:text-cyan-400 text-cyan-700 font-bold' : 'text-slate-500'}`}>
  {i + 1}
  </div>
@@ -337,7 +347,9 @@ const Protocols = React.memo(function Protocols() {
  </div>
 
  <div className="space-y-2 w-full">
- {habits.map(habit => (
+ {habits.map(habit => {
+ const activeDays = (habit.monthKey && habit.monthKey !== currentMonthKey) ? [] : (habit.completedDays || []);
+ return (
  <div key={habit.id} className="flex items-center hover:bg-white rounded-lg transition-colors p-1 w-full">
  <div className="w-24 sm:w-32 md:w-40 shrink-0 flex items-center justify-between pr-2 sm:pr-4">
  <span className="font-medium dark:text-slate-200 text-slate-900 text-xs sm:text-sm truncate pr-1 sm:pr-2" title={habit.name}>{habit.name}</span>
@@ -346,9 +358,9 @@ const Protocols = React.memo(function Protocols() {
  </button>
  </div>
  <div className="flex flex-1 gap-0.5 sm:gap-1">
- {Array.from({ length: 30 }, (_, i) => {
+ {Array.from({ length: daysInMonth }, (_, i) => {
  const day = i + 1;
- const isCompleted = habit.completedDays.includes(day);
+ const isCompleted = activeDays.includes(day);
  return (
  <button
  key={day}
@@ -365,7 +377,8 @@ const Protocols = React.memo(function Protocols() {
  })}
  </div>
  </div>
- ))}
+ );
+ })}
  </div>
  </div>
  )}

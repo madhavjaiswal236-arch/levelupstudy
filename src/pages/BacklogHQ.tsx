@@ -145,8 +145,11 @@ export default function BacklogHQ() {
     if (window.confirm("Are you sure you want to reset and delete your Backlog Plan? This will remove all scheduled backlog tasks from your daily study plan.")) {
       setBacklogPlan(null);
       let updatedTodos: typeof todos = [];
+      const now = Date.now();
       setTodos(prev => {
-        updatedTodos = prev.filter(t => !t.isBacklogTask);
+        updatedTodos = prev.map(t => 
+          t.isBacklogTask ? { ...t, isDeleted: true, deletedAt: now } : t
+        );
         return updatedTodos;
       });
       try {

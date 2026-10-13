@@ -38,7 +38,7 @@ const Profile = React.memo(function Profile() {
   const { 
     playerName = "Player", setPlayerName, xp = 0, level = 1, streakDays = 0, syllabus = {}, todos = [], setTodos, 
     pendingTasks = [], setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
-    resetApp, equippedTitle = "", setEquippedTitle, equippedAura = "", setEquippedAura, history = [], questionsSolved = 0,
+    resetApp, logoutUser, equippedTitle = "", setEquippedTitle, equippedAura = "", setEquippedAura, history = [], questionsSolved = 0,
     notificationSettings, setNotificationSettings, forceFetchAndRestoreFromCloud, saveStateToCloudNow
   } = useAppContext();
   const [isEditing, setIsEditing] = useState(false);
@@ -238,9 +238,7 @@ const Profile = React.memo(function Profile() {
 
  const handleLogout = async () => {
     vibrate(HAPTIC_PATTERNS.THUD);
- await logout();
- setFirebaseUser(null);
- setHasToken(false);
+    await logoutUser();
  };
 
   const [syncedTasks, setSyncedTasks] = useState<(Todo & { previewStart?: Date, previewEnd?: Date })[]>([]);

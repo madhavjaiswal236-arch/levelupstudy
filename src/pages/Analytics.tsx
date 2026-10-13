@@ -364,11 +364,11 @@ const Analytics = React.memo(function Analytics() {
  const insights = generateInsights();
 
  const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } };
- const itemVariants = { hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 120, damping: 10 } } };
+ const itemVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.25, ease: "easeOut" as const } } };
 
  return (
  <div className="space-y-8 pb-12">
- <motion.header variants={itemVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="flex flex-col gap-6 w-full">
+ <motion.header variants={itemVariants} initial="hidden" animate="show" className="flex flex-col gap-6 w-full">
  <div>
  <h1 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-600">
  ADVANCED ANALYTICS

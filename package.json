@@ -13,6 +13,7 @@
     "start": "node dist-server/server.cjs",
     "clean": "node -e \"const fs = require('fs'); ['dist', 'dist-server'].forEach(d => { if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true }); });\"",
     "lint": "tsc --noEmit",
+    "test": "tsx -e \"import { runCoachTests } from './src/lib/coach/testRunner'; const c = runCoachTests(); if (!c.passed) { console.error('Coach tests failed'); process.exit(1); } import { runSyncSimulations } from './src/lib/sync/syncTestRunner'; const s = runSyncSimulations(); if (!s.passed) { console.error('Sync simulations failed'); process.exit(1); } console.log('All coach tests and sync simulations passed!');\"",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android"
   },

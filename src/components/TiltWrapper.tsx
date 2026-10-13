@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 
 interface TiltWrapperProps {
@@ -7,84 +7,89 @@ interface TiltWrapperProps {
   tiltAmount?: number;
 }
 
-export const TiltWrapper: React.FC<TiltWrapperProps> = React.memo(({ children, className = '', tiltAmount = 10 }) => {
+export const TiltWrapper: React.FC<TiltWrapperProps> = React.memo(({ children, className = '', tiltAmount = 6 }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const rectRef = useRef<{ width: number; height: number; left: number; top: number } | null>(null);
-  
-  // Motion values to track the pointer's coordinates
+  const [canTilt, setCanTilt] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Motion values to track pointer coordinates
   const x = useMotionValue(0);
   const y = useMotionValue(0);
 
-  // High performance responsive springs
-  const mouseXSpring = useSpring(x, { stiffness: 400, damping: 30 });
-  const mouseYSpring = useSpring(y, { stiffness: 400, damping: 30 });
+  // Responsive, stabilized springs with high damping to prevent overshoot or wobble
+  const mouseXSpring = useSpring(x, { stiffness: 300, damping: 38 });
+  const mouseYSpring = useSpring(y, { stiffness: 300, damping: 38 });
 
   // Map coordinate bounds (-0.5 to 0.5) to rotation range
   const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], [`${tiltAmount}deg`, `-${tiltAmount}deg`]);
   const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], [`-${tiltAmount}deg`, `${tiltAmount}deg`]);
 
-  const handleMouseEnter = useCallback(() => {
-    if (ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      rectRef.current = {
-        width: rect.width || 1,
-        height: rect.height || 1,
-        left: rect.left,
-        top: rect.top,
-      };
+  useEffect(() => {
+    // Only enable 3D tilt effects on devices with a mouse/pointer and hover support
+    if (typeof window !== 'undefined') {
+      const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+      setCanTilt(finePointer);
     }
   }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!rectRef.current && ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      rectRef.current = {
-        width: rect.width || 1,
-        height: rect.height || 1,
-        left: rect.left,
-        top: rect.top,
-      };
-    }
-    if (!rectRef.current) return;
+  const handleMouseEnter = useCallback(() => {
+    if (!canTilt) return;
+    if (typeof document !== 'undefined' && document.body.classList.contains('is-scrolling')) return;
+    setIsHovered(true);
+  }, [canTilt]);
 
-    const mouseX = e.clientX - rectRef.current.left;
-    const mouseY = e.clientY - rectRef.current.top;
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!canTilt) return;
+    if (typeof document !== 'undefined' && document.body.classList.contains('is-scrolling')) return;
+    if (!ref.current) return;
+
+    const rect = ref.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
     
-    const xPct = mouseX / rectRef.current.width - 0.5;
-    const yPct = mouseY / rectRef.current.height - 0.5;
+    const xPct = mouseX / rect.width - 0.5;
+    const yPct = mouseY / rect.height - 0.5;
     
     x.set(Math.max(-0.5, Math.min(0.5, xPct)));
     y.set(Math.max(-0.5, Math.min(0.5, yPct)));
-  }, [x, y]);
+  }, [canTilt, x, y]);
 
   const handleMouseLeave = useCallback(() => {
-    rectRef.current = null;
+    setIsHovered(false);
     x.set(0);
     y.set(0);
   }, [x, y]);
 
+  // If touch screen or mobile, render cleanly without 3D layer overhead
+  if (!canTilt) {
+    return <div className={className}>{children}</div>;
+  }
+
   return (
-    <motion.div
+    <div
       style={{ perspective: 1000 }}
       className={className}
+      onMouseEnter={handleMouseEnter}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     >
       <motion.div
         ref={ref}
-        onMouseEnter={handleMouseEnter}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
         style={{
-          rotateX,
-          rotateY,
+          rotateX: isHovered ? rotateX : 0,
+          rotateY: isHovered ? rotateY : 0,
           transformStyle: "preserve-3d",
-          willChange: "transform",
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
         }}
-        whileHover={{ scale: 1.015 }}
-        whileTap={{ scale: 0.985 }}
         className="w-full h-full relative"
       >
         {children}
       </motion.div>
-    </motion.div>
+    </div>
   );
 });
+
+TiltWrapper.displayName = 'TiltWrapper';

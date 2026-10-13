@@ -41,18 +41,16 @@ const Missions = React.memo(function Missions() {
  };
 
  const itemVariants = {
- hidden: { opacity: 0, y: 30, scale: 0.9 },
+ hidden: { opacity: 0 },
  show: { 
  opacity: 1, 
- y: 0, 
- scale: 1, 
- transition: { type: "spring" as const, stiffness: 120, damping: 10 } 
+ transition: { duration: 0.25, ease: "easeOut" as const } 
  }
  };
 
  return (
  <div className="space-y-8 pb-12">
- <motion.header variants={itemVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+ <motion.header variants={itemVariants} initial="hidden" animate="show" className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
  <div>
  <h1 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r dark:from-white dark:to-slate-500 from-slate-900 to-slate-600">
  DAILY GOALS
