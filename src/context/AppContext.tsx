@@ -438,7 +438,7 @@ export const hasTodayProtocolRecord = (
 
   // 3. Check if yesterday's sleep was recorded in lifeMetrics
   const yesterdayMetric = lifeMetrics.find(
-    (m) => isSameLogicalDay((m as any).date, yesterdayKey) || (m.day === yesterdayObj.getDate() && m.sleep > 0)
+    (m) => m.date ? isSameLogicalDay(m.date, yesterdayKey) : false
   );
   if (yesterdayMetric && yesterdayMetric.sleep > 0) {
     return true;

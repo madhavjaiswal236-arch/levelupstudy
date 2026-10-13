@@ -66,7 +66,6 @@ import {
 import { getDynamicInsight, getStaticDynamicInsight } from "@/lib/gemini";
 import { TourStep, useTour } from "@/components/TourGuide";
 import { LiveDayOverlay } from "@/components/LiveDayOverlay";
-import { CoachAnalysisModal } from "@/components/CoachAnalysisModal";
 import { WeeklyReview } from "@/components/coach/WeeklyReview";
 import { ScheduleProfileEditor } from "@/components/coach/ScheduleProfileEditor";
 import { OnboardingIntake } from "@/components/coach/OnboardingIntake";
@@ -364,7 +363,6 @@ const Dashboard = React.memo(function Dashboard() {
     }
   });
   const [showLiveDay, setShowLiveDay] = useState(false);
-  const [showCoachModal, setShowCoachModal] = useState(false);
   const [showWeeklyReview, setShowWeeklyReview] = useState(false);
   const [showScheduleEditor, setShowScheduleEditor] = useState(false);
   const [showIntakeModal, setShowIntakeModal] = useState(false);
@@ -1439,10 +1437,6 @@ const Dashboard = React.memo(function Dashboard() {
           <LiveDayOverlay onClose={() => setShowLiveDay(false)} />
         )}
       </AnimatePresence>
-      <CoachAnalysisModal
-        isOpen={showCoachModal}
-        onClose={() => setShowCoachModal(false)}
-      />
       <WeeklyReview
         isOpen={showWeeklyReview}
         onClose={() => setShowWeeklyReview(false)}
@@ -1645,7 +1639,6 @@ const Dashboard = React.memo(function Dashboard() {
                     onClick={() => {
                       markReminderSeen();
                       setHasSeenReminder(true);
-                      setShowCoachModal(true);
                     }}
                     className="bg-red-600 hover:bg-red-500 text-white text-xl px-12 py-8 h-auto rounded-2xl font-black tracking-widest shadow-md hover:shadow-md transition-all hover:scale-105"
                   >
@@ -2323,8 +2316,7 @@ const Dashboard = React.memo(function Dashboard() {
             <div className="flex items-start gap-2 md:gap-3 h-full">
               <motion.div
                 whileHover={{ scale: 1.3, rotate: 15 }}
-                className="relative z-10 shrink-0 mt-0.5 cursor-pointer"
-                onClick={() => setShowCoachModal(true)}
+                className="relative z-10 shrink-0 mt-0.5"
               >
                 <div className="absolute inset-0 bg-blue-500/40 rounded-full opacity-30" />
                 <BrainCircuit className="w-6 h-6 dark:text-blue-400 text-blue-700 drop-shadow-md relative z-10" />
@@ -2332,14 +2324,8 @@ const Dashboard = React.memo(function Dashboard() {
               <div className="flex flex-col justify-center h-full flex-1">
                 <div className="flex items-center justify-between w-full mb-1">
                   <h2 className="dark:text-blue-400 text-blue-700 font-bold uppercase tracking-wider text-xs md:text-sm flex items-center gap-1.5">
-                    <BrainCircuit className="w-3.5 h-3.5" /> AI Coach Live Insight
+                    <BrainCircuit className="w-3.5 h-3.5" /> Performance Insight
                   </h2>
-                  <button
-                    onClick={() => setShowCoachModal(true)}
-                    className="text-[10px] dark:text-blue-300 text-blue-600 hover:underline font-mono tracking-wider cursor-pointer font-bold"
-                  >
-                    FULL BRIEFING →
-                  </button>
                 </div>
                 <div className="dark:text-slate-300 text-slate-900 text-xs md:text-sm leading-relaxed font-medium whitespace-pre-wrap">
                   {dynamicInsight

@@ -130,8 +130,8 @@ const Protocols = React.memo(function Protocols() {
  // --- Life Metrics Handlers ---
 
  const todayMetric = useMemo(() => {
- return lifeMetrics.find(m => isSameLogicalDay(m.date, todayDateKey) || m.day === currentDay);
- }, [lifeMetrics, todayDateKey, currentDay]);
+  return lifeMetrics.find(m => m.date ? isSameLogicalDay(m.date, todayDateKey) : false);
+  }, [lifeMetrics, todayDateKey]);
 
  const [sleepInputVal, setSleepInputVal] = useState<string>('');
  const [screenInputVal, setScreenInputVal] = useState<string>('');
@@ -153,10 +153,10 @@ const Protocols = React.memo(function Protocols() {
 
  const updateMetric = (day: number, field: 'sleep' | 'screenTime', value: number) => {
  setLifeMetrics(prev => {
-   const exists = prev.some(m => isSameLogicalDay((m as any).date, todayDateKey) || m.day === day);
+    const exists = prev.some(m => m.date ? isSameLogicalDay((m as any).date, todayDateKey) : false);
    if (exists) {
      return prev.map(m => 
-       (isSameLogicalDay((m as any).date, todayDateKey) || m.day === day)
+        (m.date && isSameLogicalDay((m as any).date, todayDateKey))
          ? { ...m, [field]: value, date: (m as any).date || todayDateKey }
          : m
      );

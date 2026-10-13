@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to restore the classic Overview layout, reinstate Tracker 360 in sidebar navigation, reinstate the exact startup modal sequence (Days Left -> Sleep & Screen -> Yesterday's Analysis card -> Missed Days Accountability), and render the comprehensive assessment in History for all days.",
-  "updatedAt": "2026-10-13T04:38:08.202456412Z",
+  "summary": "Implementation plan to restore the classic Performance Insight dashboard section, remove the Full Briefing button, restore the exact single-card AI Coach Assessment layout from the reference screenshot, and ensure fresh daily data collection.",
+  "updatedAt": "2026-10-13T18:53:55.543465953Z",
   "requestFeedback": true,
   "userFacing": true
 }

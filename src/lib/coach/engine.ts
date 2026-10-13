@@ -235,12 +235,12 @@ export function generateDeterministicCoachReport(
   const canonicalReport = runCoach(adaptedInput, adaptedInput.today);
 
   return {
-    rawReport: canonicalReport.priority.rationale,
-    diagnosis: canonicalReport.hypothesis.claim,
-    verdict: canonicalReport.pattern.summary,
-    todayMission: canonicalReport.mission.ifThen,
-    closing: canonicalReport.mindsetAnchor,
-    fullFormattedText: `${canonicalReport.pattern.summary}\n\n${canonicalReport.hypothesis.claim}\n\n${canonicalReport.mission.ifThen}\n\n${canonicalReport.mindsetAnchor}`,
+    rawReport: legacyReport.rawReport,
+    diagnosis: legacyReport.diagnosis,
+    verdict: legacyReport.verdict,
+    todayMission: legacyReport.todayMission,
+    closing: legacyReport.closing,
+    fullFormattedText: `${legacyReport.rawReport}\n\n${legacyReport.diagnosis}\n\n${legacyReport.verdict}\n\n${legacyReport.todayMission}\n\n${legacyReport.closing}`,
     explanation: legacyReport.explanation,
     coachReport: canonicalReport,
   };

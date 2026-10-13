@@ -535,34 +535,6 @@ function AppContent() {
   );
   const [rolloverStep, setRolloverStep] = useState<number>(1);
 
-  // Pre-fill rollover inputs with metrics previously logged in Protocols for yesterday
-  useEffect(() => {
-    if (needsRollover) {
-      const yesterdayObj = getLogicalDate();
-      yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-      const yesterdayKey = getStandardDateKey(yesterdayObj);
-      const yesterdayMetric = lifeMetrics.find(
-        (m) => isSameLogicalDay((m as any).date, yesterdayKey) || (m.day === yesterdayObj.getDate() && (m.sleep > 0 || m.screenTime > 0))
-      );
-      if (yesterdayMetric) {
-        if (!sleepInput && yesterdayMetric.sleep !== undefined && yesterdayMetric.sleep !== null && yesterdayMetric.sleep >= 0) {
-          const totalHours = yesterdayMetric.sleep;
-          const hrs = Math.floor(totalHours);
-          const mins = Math.round((totalHours - hrs) * 60);
-          setSleepInput(String(hrs));
-          if (mins > 0) setSleepMinsInput(String(mins));
-        }
-        if (!screenInput && yesterdayMetric.screenTime !== undefined && yesterdayMetric.screenTime !== null && yesterdayMetric.screenTime >= 0) {
-          const totalHours = yesterdayMetric.screenTime;
-          const hrs = Math.floor(totalHours);
-          const mins = Math.round((totalHours - hrs) * 60);
-          setScreenInput(String(hrs));
-          if (mins > 0) setScreenMinsInput(String(mins));
-        }
-      }
-    }
-  }, [needsRollover, lifeMetrics]);
-
   useEffect(() => {
     const handleGlobalClick = (e: Event) => {
       const target = e.target as HTMLElement;
@@ -680,7 +652,7 @@ function AppContent() {
         accuracy,
         loggedTasksToday,
       });
-      feedback = `Raw Report:\n${canonicalReport.rawReport}\n\nDiagnosis:\n${canonicalReport.diagnosis}\n\nVerdict:\n${canonicalReport.verdict}\n\nToday's Mission:\n${canonicalReport.todayMission}\n\nClosing:\n${canonicalReport.closing}`;
+      feedback = `Raw Report: ${canonicalReport.rawReport}\n\nDiagnosis: ${canonicalReport.diagnosis}\n\nVerdict: ${canonicalReport.verdict}\n\nToday's Mission: ${canonicalReport.todayMission}\n\n${canonicalReport.closing}`;
     } catch (err) {
       console.error("Error generating deterministic Coach report on rollover submit:", err);
     }
@@ -1601,157 +1573,125 @@ function AppContent() {
                             {/* Stats Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                               <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1">
+                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
                                   XP Earned
                                 </span>
                                 <span className="text-xl font-bold dark:text-cyan-400 text-cyan-700">
-                                  {latestEntry.xpEarned}
+                                  +{latestEntry.xpEarned} XP
                                 </span>
                               </div>
                               <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1">
+                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
                                   Tasks Done
                                 </span>
                                 <span className="text-xl font-bold dark:text-emerald-400 text-emerald-700">
-                                  {latestEntry.completedTasks.length}
+                                  {latestEntry.completedTasks.length} / {Math.max(latestEntry.completedTasks.length, (latestEntry.plannedTasks || []).length || latestEntry.completedTasks.length)}
                                 </span>
                               </div>
                               <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1">
+                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
                                   Sleep
                                 </span>
                                 <span className="text-xl font-bold dark:text-blue-400 text-blue-700">
-                                  {latestEntry.sleepTime}h
+                                  {Math.floor(latestEntry.sleepTime || 0)}h {Math.round(((latestEntry.sleepTime || 0) % 1) * 60)}m
                                 </span>
                               </div>
                               <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1">
+                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
                                   Screen
                                 </span>
                                 <span className="text-xl font-bold dark:text-rose-400 text-rose-700">
-                                  {latestEntry.screenTime}h
+                                  {Math.floor(latestEntry.screenTime || 0)}h {Math.round(((latestEntry.screenTime || 0) % 1) * 60)}m
                                 </span>
                               </div>
                             </div>
 
-                            {/* Completed Tasks List */}
-                            {latestEntry.completedTasks.length > 0 && (
-                              <div className="mb-6">
-                                <h3 className="text-sm font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider mb-3">
-                                  Objectives Handled
-                                </h3>
-                                <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2 custom-scrollbar">
-                                  {latestEntry.completedTasks.map((t, idx) => (
-                                    <div
-                                      key={t.id || `t-${idx}`}
-                                      className="flex items-center gap-3 p-3 dark:bg-black bg-white border dark:border-slate-800 border-slate-200 rounded-lg"
-                                    >
-                                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                      <span className="dark:text-slate-300 text-slate-900 text-sm flex-1">
-                                        {t.text}
-                                      </span>
-                                      <span className="dark:text-cyan-400 text-cyan-700 text-xs font-mono">
-                                        +{t.xpReward} XP
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Output AI Coach 2-Column Tactical Analysis */}
+                            {/* Objectives Logged */}
                             {(() => {
-                              const text = latestWithFeedback.aiFeedback || "";
-                              const rawMatch = text.match(/Raw Report:\s*([\s\S]*?)(?=\n\nDiagnosis:|$)/i);
-                              const diagMatch = text.match(/Diagnosis:\s*([\s\S]*?)(?=\n\nVerdict:|$)/i);
-                              const verdMatch = text.match(/Verdict:\s*([\s\S]*?)(?=\n\nToday's Mission:|$)/i);
-                              const missMatch = text.match(/Today's Mission:\s*([\s\S]*?)(?=\n\nClosing:|$)/i);
-                              const closeMatch = text.match(/Closing:\s*([\s\S]*?)$/i);
-
-                              if (rawMatch && diagMatch) {
-                                return (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 my-4 text-left">
-                                    {/* Left: Raw Report & Diagnosis */}
-                                    <div className="flex flex-col gap-3">
-                                      <div className="p-4 rounded-2xl dark:bg-slate-900/80 bg-white border dark:border-slate-800 border-slate-200 shadow-sm">
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                          <BrainCircuit className="w-4 h-4 dark:text-cyan-400 text-cyan-600" />
-                                          <h4 className="text-xs font-bold uppercase tracking-wider dark:text-cyan-400 text-cyan-700">
-                                            Yesterday's Raw Report
-                                          </h4>
-                                        </div>
-                                        <p className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed font-mono">
-                                          {rawMatch[1].trim()}
-                                        </p>
-                                      </div>
-
-                                      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex-1">
-                                        <h4 className="text-xs font-bold uppercase tracking-wider dark:text-amber-400 text-amber-600 mb-1.5">
-                                          Diagnosis
-                                        </h4>
-                                        <p className="dark:text-amber-100 text-slate-900 text-xs sm:text-sm leading-relaxed font-medium">
-                                          {diagMatch[1].trim()}
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    {/* Right: Verdict & Today's Mission & Closing */}
-                                    <div className="flex flex-col gap-3">
-                                      {verdMatch && (
-                                        <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/35 shadow-sm">
-                                          <h4 className="text-xs font-bold uppercase tracking-wider dark:text-blue-400 text-blue-600 mb-1">
-                                            Coach Verdict
-                                          </h4>
-                                          <p className="dark:text-white text-slate-900 text-xs sm:text-sm font-black tracking-wide">
-                                            {verdMatch[1].trim()}
-                                          </p>
-                                        </div>
-                                      )}
-
-                                      {missMatch && (
-                                        <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-950/40 to-emerald-950/30 border border-cyan-500/40 shadow-sm flex-1">
-                                          <h4 className="text-xs font-bold uppercase tracking-wider dark:text-cyan-400 text-cyan-600 mb-1.5">
-                                            Today's Tactical Mission
-                                          </h4>
-                                          <p className="dark:text-cyan-100 text-slate-900 text-xs sm:text-sm font-semibold leading-relaxed">
-                                            {missMatch[1].trim()}
-                                          </p>
-                                        </div>
-                                      )}
-
-                                      {closeMatch && (
-                                        <div className="p-3 rounded-2xl dark:bg-slate-900/80 bg-white border dark:border-slate-800 border-slate-200">
-                                          <p className="dark:text-slate-300 text-slate-800 text-xs italic font-medium">
-                                            "{closeMatch[1].trim()}"
-                                          </p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              }
+                              const completedIds = new Set((latestEntry.completedTasks || []).map((t: any) => String(t.id || t.text)));
+                              const incompletePlanned = (latestEntry.plannedTasks || []).filter(
+                                (t: any) => !completedIds.has(String(t.id || t.text)) && !t.completed
+                              );
+                              const totalCount = (latestEntry.completedTasks || []).length + incompletePlanned.length;
+                              if (totalCount === 0) return null;
 
                               return (
-                                <div className="bg-cyan-900/10 border border-cyan-800/50 p-5 rounded-2xl mt-4">
-                                  <h3 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 uppercase text-sm tracking-wider">
-                                    <BrainCircuit className="w-5 h-5" /> AI Coach Assessment
+                                <div className="mb-6">
+                                  <h3 className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-widest mb-3 flex items-center justify-between">
+                                    <span>OBJECTIVES LOGGED ({totalCount})</span>
                                   </h3>
-                                  <div className="dark:text-slate-300 text-slate-900 text-sm leading-relaxed space-y-3">
-                                    {latestWithFeedback.aiFeedback ? (
-                                      latestWithFeedback.aiFeedback.split("\n\n").map((paragraph: string, idx: number, arr: string[]) => (
-                                        <p key={`idx-${idx}`} className={idx === arr.length - 1 ? "pt-2 font-bold dark:text-white text-slate-900 italic border-t dark:border-slate-800 border-slate-200 mt-3" : ""}>
-                                          {paragraph}
-                                        </p>
-                                      ))
-                                    ) : (
-                                      <div className="animate-pulse">
-                                        <p>Coach is analyzing yesterday's performance...</p>
+                                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {latestEntry.completedTasks.map((t, idx) => (
+                                      <div
+                                        key={t.id || `t-c-${idx}`}
+                                        className="flex items-center gap-3 p-3 dark:bg-black bg-white border dark:border-slate-800 border-slate-200 rounded-xl"
+                                      >
+                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                        <span className="dark:text-slate-200 text-slate-900 text-xs sm:text-sm flex-1 font-medium">
+                                          {t.text}
+                                        </span>
+                                        <span className="dark:text-cyan-400 text-cyan-700 text-xs font-mono font-bold">
+                                          +{t.xpReward} XP
+                                        </span>
                                       </div>
-                                    )}
+                                    ))}
+                                    {incompletePlanned.map((t: any, idx: number) => (
+                                      <div
+                                        key={t.id || `t-inc-${idx}`}
+                                        className="flex items-center gap-3 p-3 dark:bg-rose-950/20 bg-rose-50 border dark:border-rose-900/40 border-rose-200 rounded-xl"
+                                      >
+                                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                                        <span className="dark:text-rose-200 text-rose-900 text-xs sm:text-sm flex-1 font-medium">
+                                          {t.text} <span className="opacity-75 text-[10px] font-mono uppercase tracking-wider ml-1">(Incomplete)</span>
+                                        </span>
+                                        <span className="dark:text-rose-400 text-rose-700 text-xs font-mono font-bold">
+                                          0 XP
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               );
                             })()}
+
+                            {/* AI Coach Assessment - Single Card matching screenshot */}
+                            <div className="bg-cyan-950/20 border border-cyan-800/50 p-5 rounded-2xl mt-4 text-left">
+                              <h3 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-4 uppercase text-sm tracking-wider">
+                                <BrainCircuit className="w-5 h-5" /> AI Coach Assessment
+                              </h3>
+                              <div className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed space-y-3 font-normal">
+                                {latestWithFeedback.aiFeedback ? (
+                                  latestWithFeedback.aiFeedback.split("\n\n").map((paragraph: string, idx: number, arr: string[]) => {
+                                    const match = paragraph.match(/^(Raw Report|Diagnosis|Verdict|Today's Mission|Closing):\s*([\s\S]*)$/i);
+                                    if (match) {
+                                      return (
+                                        <p key={`idx-${idx}`} className="leading-relaxed">
+                                          <span className="font-bold dark:text-white text-slate-900">{match[1]}:</span>{" "}
+                                          <span>{match[2]}</span>
+                                        </p>
+                                      );
+                                    }
+                                    const isClosing = idx === arr.length - 1;
+                                    return (
+                                      <p
+                                        key={`idx-${idx}`}
+                                        className={
+                                          isClosing
+                                            ? "pt-2 font-medium dark:text-slate-200 text-slate-800 italic border-t dark:border-slate-800/80 border-slate-200 mt-2"
+                                            : "leading-relaxed"
+                                        }
+                                      >
+                                        {paragraph}
+                                      </p>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="animate-pulse">
+                                    <p>Coach is analyzing yesterday's performance...</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                             <button
                               onClick={closeRollover}
                               className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-lg py-4 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.02] uppercase tracking-widest mt-6"
