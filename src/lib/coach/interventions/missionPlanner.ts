@@ -135,10 +135,21 @@ export function selectPrimaryMission(ctx: PlannerContext): {
   for (const hyp of hypotheses) {
     let missionId = hyp.missionId;
 
-    // Check Novice Gate (Defect D1): If chapter mastery is low (< 0.35), NEVER prescribe M1 retrieval first; route to M2
+    // Check Novice Gate (Defect D1): Check the TARGET chapter, not all chapters globally
     if (missionId === "M1_RETRIEVAL_FIRST") {
-      const activeKeys = Object.keys(chapterMasteries);
-      const isNovice = activeKeys.some((k) => chapterMasteries[k].pL < 0.35 || chapterMasteries[k].distinctDays < 2);
+      const targetChapterVal = hyp.supporting.find(
+        (s) => s.label === "Chapter" || s.label === "Novice Chapter Mastery",
+      )?.value;
+      const targetKey = targetChapterVal
+        ? String(targetChapterVal)
+        : Object.keys(chapterMasteries)[0];
+
+      const targetMastery = targetKey ? chapterMasteries[targetKey] : null;
+      const isNovice =
+        !targetMastery ||
+        targetMastery.pL < 0.35 ||
+        targetMastery.distinctDays < 2;
+
       if (isNovice) {
         missionId = "M2_WORKED_EXAMPLE_LADDER";
       }

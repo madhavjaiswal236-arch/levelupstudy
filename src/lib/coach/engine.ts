@@ -23,7 +23,7 @@ import {
 } from "./trends";
 import { calculateSleepTier } from "./safety/sleepTier";
 import { updateChapter } from "./student-model/knowledgeTracing";
-import { reviewQueue } from "./student-model/retentionModel";
+import { onRetrieval, reviewQueue } from "./student-model/retentionModel";
 import { evaluateCalibration } from "./student-model/srlModel";
 import { evaluateHypotheses } from "./diagnostics/hypotheses";
 import { selectPrimaryMission } from "./interventions/missionPlanner";
@@ -90,10 +90,11 @@ export function runCoach(
     normalized.targetSleepHours || 7.5,
   );
 
-  // Stage 7: Knowledge Update (Weighted BKT on practice sessions)
+  // Stage 7 & 8: Knowledge Update (BKT) and Spaced Retention (Half-life)
   const activeMasteries = { ...(normalized.activeMasteries || {}) };
   for (const session of normalized.practiceSessions) {
     const key = `${session.subject}:${session.chapter}`;
+    // 1. Update BKT mastery
     activeMasteries[key] = updateChapter(activeMasteries[key] || null, key, {
       date: session.date,
       attempted: session.attempted,
@@ -102,10 +103,21 @@ export function runCoach(
       tier: session.difficultyTier,
       errorCounts: session.errorCounts,
     });
-  }
 
-  // Stage 8: Retention & Review Queue
-  // (Available via reviewQueue(Object.values(activeMasteries), currentDate))
+    // 2. Update half-life memory stability
+    const slipTagged = session.errorCounts?.ATTENTIONAL_SLIP || 0;
+    const effectiveAccuracy =
+      session.attempted > 0
+        ? (session.correct + 0.75 * slipTagged) / session.attempted
+        : 0;
+
+    activeMasteries[key] = onRetrieval(
+      activeMasteries[key],
+      session.date,
+      effectiveAccuracy,
+      session.attempted,
+    );
+  }
 
   // Stage 9: SRL & Metacognitive Calibration
   evaluateCalibration(normalized.practiceSessions);
@@ -165,13 +177,16 @@ export function runCoach(
     {
       today: currentDate,
       targetSleepHours: normalized.targetSleepHours || 7.5,
-      wakeTime: "06:00",
+      wakeTime: (normalized.scheduleProfile as any)?.wakeTime || "06:00",
       baselineHours: currentBaselineHours,
     },
   );
 
   // Stage 14: Dispatch ready report
-  return finalReport;
+  return {
+    ...finalReport,
+    updatedMasteries: activeMasteries,
+  };
 }
 
 /**

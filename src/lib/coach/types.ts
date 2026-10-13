@@ -233,6 +233,7 @@ export interface CoachReport {
     tone: 'GOGGINS_INTENSE';
     remedyApplied?: 'RECOVERY_REGENERATED' | 'AMBER_CAPPED';
   };
+  updatedMasteries?: Record<string, ChapterMastery>;
 }
 
 // -------------------------------------------------------------
