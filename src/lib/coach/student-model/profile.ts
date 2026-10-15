@@ -28,7 +28,7 @@ export const DEFAULT_SCHEDULE_PROFILE: StudentScheduleProfile = {
     Friday: "COACHING_DAY",
     Saturday: "FULL_STUDY_DAY",
   },
-  targetSleepHours: 7.5,
+  targetSleepHours: 6.0,
   usualWakeTime: "06:00",
   maxConsecutiveStudyHours: 3.5,
 };

@@ -111,36 +111,36 @@ export function SpacedMemoryWidget({ onStartPracticeSession, className = "" }: S
   };
 
   return (
-    <div className={`p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${className}`}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800/80">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0">
-            <BrainCircuit className="w-5 h-5" />
+    <div className={`p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${className}`}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 sm:pb-4 mb-3 sm:mb-4 border-b border-slate-100 dark:border-slate-800/80">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0">
+            <BrainCircuit className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider">
                 Spaced Memory Consolidation
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20">
+              <span className="px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-mono font-bold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20">
                 Half-Life Model
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Chapters with P(L) ≥ 0.35 where retrievability has decayed below R &lt; 0.65
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs font-mono">
+        <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-mono self-start sm:self-auto">
           <span className="text-slate-500">Threshold:</span>
           <span className="font-bold text-amber-600 dark:text-amber-400">R &lt; 65%</span>
         </div>
       </div>
 
       {decayingChapters.length === 0 ? (
-        <div className="py-6 text-center rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-dashed border-slate-200 dark:border-slate-800">
-          <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+        <div className="py-5 sm:py-6 text-center rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-dashed border-slate-200 dark:border-slate-800 px-3">
+          <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-500 mx-auto mb-1.5 sm:mb-2 opacity-80" />
           <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
             All Knowledge Traces Consolidated
           </p>
@@ -150,7 +150,7 @@ export function SpacedMemoryWidget({ onStartPracticeSession, className = "" }: S
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
             {decayingChapters.map((m) => {
               const r = retrievability(m, todayStr);
               const rPct = r !== null ? Math.round(r * 100) : 0;
@@ -167,25 +167,25 @@ export function SpacedMemoryWidget({ onStartPracticeSession, className = "" }: S
               return (
                 <div
                   key={m.key}
-                  className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 hover:border-purple-500/40 transition-all flex flex-col justify-between"
+                  className="p-3 sm:p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 hover:border-purple-500/40 transition-all flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${subjectColor}`}>
+                      <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded border ${subjectColor}`}>
                         {m.subject}
                       </span>
-                      <span className="text-[10px] font-mono text-rose-500 font-bold bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20 flex items-center gap-1">
+                      <span className="text-[9px] sm:text-[10px] font-mono text-rose-500 font-bold bg-rose-500/10 px-1.5 sm:px-2 py-0.5 rounded-full border border-rose-500/20 flex items-center gap-1">
                         <AlertCircle className="w-2.5 h-2.5" /> R: {rPct}%
                       </span>
                     </div>
 
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1 mb-2">
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-1 mb-2">
                       {m.chapter}
                     </h4>
 
                     {/* Retrievability progress bar */}
-                    <div className="space-y-1 mb-3">
-                      <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                    <div className="space-y-1 mb-2.5">
+                      <div className="flex justify-between text-[9px] sm:text-[10px] font-mono text-slate-500">
                         <span>Retrievability: {rPct}%</span>
                         <span>Mastery: {pLPct}%</span>
                       </div>
@@ -199,17 +199,17 @@ export function SpacedMemoryWidget({ onStartPracticeSession, className = "" }: S
                       </div>
                     </div>
 
-                    <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 space-y-0.5 mb-3">
+                    <div className="text-[9px] sm:text-[10px] font-mono text-slate-500 dark:text-slate-400 space-y-0.5 mb-2.5">
                       <div>Half-Life: {m.halfLifeDays.toFixed(1)} days</div>
                       <div>Last active: {m.lastRetrievalDate || "Stale"}</div>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex gap-2">
+                  <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800">
                     <button
                       disabled={isTaskAdded}
                       onClick={() => handleAddRetrievalTask(m)}
-                      className={`w-full py-2 px-3 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                      className={`w-full py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
                         isTaskAdded
                           ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 cursor-default"
                           : "bg-purple-600 hover:bg-purple-500 text-white shadow-sm cursor-pointer"
@@ -217,11 +217,11 @@ export function SpacedMemoryWidget({ onStartPracticeSession, className = "" }: S
                     >
                       {isTaskAdded ? (
                         <>
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Added to Tasks
+                          <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Queued
                         </>
                       ) : (
                         <>
-                          <Zap className="w-3.5 h-3.5" /> Start 15-Min Set (+100 XP)
+                          <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Review (+100 XP)
                         </>
                       )}
                     </button>

@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -8,6 +9,7 @@ import { Activity, Brain, TrendingUp, AlertCircle, Target, Zap, Clock, Plus, Boo
 import { useAppContext, SyllabusData, getLogicalDate } from '../context/AppContext';
 import { TourStep, useTour } from '../components/TourGuide';
 import { getLocalDateString, isCurrentDayTask, getTaskScheduledDate } from '../lib/utils';
+import { AnalyticsCoachSection } from '../components/coach/AnalyticsCoachSection';
 
 const MISTAKE_TYPES = [
  "Conceptual",
@@ -39,6 +41,17 @@ const Analytics = React.memo(function Analytics() {
  const [timeSpent, setTimeSpent] = useState('');
  const [selectedMistakes, setSelectedMistakes] = useState<string[]>([]);
  const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);
+
+ // Lock body scroll when chapter modal is open
+ useEffect(() => {
+   if (isChapterModalOpen) {
+     const orig = document.body.style.overflow;
+     document.body.style.overflow = 'hidden';
+     return () => {
+       document.body.style.overflow = orig;
+     };
+   }
+ }, [isChapterModalOpen]);
 
  const [activeTab, setActiveTab] = useState<'Tracker'|'Insights'|'Trends'>('Tracker');
  const [chartSubject, setChartSubject] = useState<'All'|'Physics'|'Chemistry'|'Mathematics'>('All');
@@ -442,6 +455,8 @@ const Analytics = React.memo(function Analytics() {
  </TiltWrapper>
  </div>
  </motion.header>
+
+ <AnalyticsCoachSection />
 
  <div className="flex flex-wrap gap-2 md:gap-4 justify-center md:justify-start border-b dark:border-slate-800 border-slate-200 pb-4 mb-4">
  {[
@@ -857,66 +872,70 @@ const Analytics = React.memo(function Analytics() {
  )}
  </AnimatePresence>
 
- <AnimatePresence>
- {isChapterModalOpen && (
- <motion.div 
- initial={{ opacity: 0 }}
- animate={{ opacity: 1 }}
- exit={{ opacity: 0 }}
- className="fixed inset-0 z-50 dark:bg-black bg-slate-50 flex items-center justify-center p-4"
- onClick={() => setIsChapterModalOpen(false)}
- >
- <motion.div 
- initial={{ scale: 0.9, y: 20 }}
- animate={{ scale: 1, y: 0 }}
- exit={{ scale: 0.9, y: 20 }}
- onClick={(e) => e.stopPropagation()}
- className="dark:bg-slate-900 bg-white border dark:border-slate-700 border-slate-300 w-full max-w-2xl rounded-xl overflow-hidden shadow-lg relative max-h-[80vh] flex flex-col"
- >
- <div className="flex justify-between items-center p-4 border-b dark:border-slate-800 border-slate-200">
- <h2 className="text-lg font-bold dark:text-slate-100 text-slate-900 flex items-center gap-2">
- <BookOpen className="w-5 h-5 dark:text-blue-400 text-blue-700" />
- Select {subject} Chapters
- </h2>
- <button onClick={() => setIsChapterModalOpen(false)} className="text-slate-500 hover:dark:text-white text-slate-900 transition-colors">
- <X className="w-5 h-5" />
- </button>
- </div>
- <div className="p-3 border-b dark:border-slate-800 border-slate-200 dark:bg-slate-900/50 bg-white">
- <input 
- type="text" 
- placeholder="Search chapter..." 
- value={chapterSearch || ""}
- onChange={(e) => setChapterSearch(e.target.value)}
- className="w-full dark:bg-slate-800 bg-slate-100/80 border dark:border-slate-700 border-slate-300/50 rounded-lg p-2.5 dark:text-slate-200 text-slate-900 focus:border-blue-500 outline-none text-sm placeholder:text-slate-500 transition-colors"
- />
- </div>
- <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
- <div className="flex flex-wrap gap-2">
- {syllabus[subject]
- .filter((c: any) => c.name.toLowerCase().includes(chapterSearch.toLowerCase()))
- .map((c: any) => {
- const isSelected = selectedChapters.includes(c.name);
- return (
- <div 
- key={`${c.subject || Math.random()}-${c.name}`}
- onClick={() => setSelectedChapters(prev => isSelected ? prev.filter(x => x !== c.name) : [...prev, c.name])}
- className={`text-xs px-3 py-2 rounded-lg border cursor-pointer transition-all ${isSelected ? 'bg-blue-600/20 dark:text-blue-300 dark:text-blue-400 text-blue-700 border-blue-500 scale-105 shadow-lg' : 'dark:bg-slate-800 bg-slate-100/50 dark:text-slate-400 text-slate-600 dark:border-slate-700 border-slate-300 hover:border-slate-500 hover:dark:bg-slate-800 bg-slate-100'}`}
- >
- {c.name}
- </div>
- );
- })}
- </div>
- </div>
- <div className="p-4 border-t dark:border-slate-800 border-slate-200 dark:bg-slate-900/80 bg-white flex justify-between items-center">
- <span className="text-sm font-mono dark:text-slate-400 text-slate-600">{selectedChapters.length} selected</span>
- <Button onClick={() => setIsChapterModalOpen(false)} className="bg-blue-600 hover:bg-blue-500 text-white shadow-lg">Done</Button>
- </div>
- </motion.div>
- </motion.div>
- )}
- </AnimatePresence>
+ {typeof document !== 'undefined' &&
+   createPortal(
+     <AnimatePresence>
+       {isChapterModalOpen && (
+         <motion.div 
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           exit={{ opacity: 0 }}
+           className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+           onClick={() => setIsChapterModalOpen(false)}
+         >
+           <motion.div 
+             initial={{ scale: 0.9, y: 16 }}
+             animate={{ scale: 1, y: 0 }}
+             exit={{ scale: 0.9, y: 16 }}
+             onClick={(e) => e.stopPropagation()}
+             className="dark:bg-slate-900 bg-white border dark:border-slate-700 border-slate-300 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl relative max-h-[85vh] flex flex-col my-auto"
+           >
+             <div className="flex justify-between items-center p-4 sm:p-5 border-b dark:border-slate-800 border-slate-200">
+               <h2 className="text-lg font-bold dark:text-slate-100 text-slate-900 flex items-center gap-2">
+                 <BookOpen className="w-5 h-5 dark:text-blue-400 text-blue-700" />
+                 Select {subject} Chapters
+               </h2>
+               <button onClick={() => setIsChapterModalOpen(false)} className="text-slate-400 hover:dark:text-white text-slate-900 transition-colors p-1 rounded-lg">
+                 <X className="w-5 h-5" />
+               </button>
+             </div>
+             <div className="p-3 border-b dark:border-slate-800 border-slate-200 dark:bg-slate-900/50 bg-white">
+               <input 
+                 type="text" 
+                 placeholder="Search chapter..." 
+                 value={chapterSearch || ""}
+                 onChange={(e) => setChapterSearch(e.target.value)}
+                 className="w-full dark:bg-slate-800 bg-slate-100/80 border dark:border-slate-700 border-slate-300/50 rounded-lg p-2.5 dark:text-slate-200 text-slate-900 focus:border-blue-500 outline-none text-sm placeholder:text-slate-500 transition-colors"
+               />
+             </div>
+             <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
+               <div className="flex flex-wrap gap-2">
+                 {syllabus[subject]
+                   .filter((c: any) => c.name.toLowerCase().includes(chapterSearch.toLowerCase()))
+                   .map((c: any) => {
+                     const isSelected = selectedChapters.includes(c.name);
+                     return (
+                       <div 
+                         key={`${c.subject || Math.random()}-${c.name}`}
+                         onClick={() => setSelectedChapters(prev => isSelected ? prev.filter(x => x !== c.name) : [...prev, c.name])}
+                         className={`text-xs px-3 py-2 rounded-lg border cursor-pointer transition-all ${isSelected ? 'bg-blue-600/20 dark:text-blue-300 dark:text-blue-400 text-blue-700 border-blue-500 scale-105 shadow-lg' : 'dark:bg-slate-800 bg-slate-100/50 dark:text-slate-400 text-slate-600 dark:border-slate-700 border-slate-300 hover:border-slate-500 hover:dark:bg-slate-800 bg-slate-100'}`}
+                       >
+                         {c.name}
+                       </div>
+                     );
+                   })}
+               </div>
+             </div>
+             <div className="p-4 border-t dark:border-slate-800 border-slate-200 dark:bg-slate-900/80 bg-white flex justify-between items-center">
+               <span className="text-sm font-mono dark:text-slate-400 text-slate-600">{selectedChapters.length} selected</span>
+               <Button onClick={() => setIsChapterModalOpen(false)} className="bg-blue-600 hover:bg-blue-500 text-white shadow-lg">Done</Button>
+             </div>
+           </motion.div>
+         </motion.div>
+       )}
+     </AnimatePresence>,
+     document.body
+   )}
  </div>
  );
 });

@@ -1,58 +1,141 @@
-# Implementation Plan - Restoring Classic Performance Insight & AI Coach Assessment
+# Daily First-Open Morning Roadmap & Yesterday's Analysis Flow
 
-Restore the classic Overview structure, revert the Performance Insight title, remove unwanted briefing buttons and Scenario Lab elements, and format the AI Coach Assessment exactly as shown in the user's reference screenshot (`Screenshot 2026-06-26 011230.png`).
-
----
-
-## 1. User Intent & Clarification Confirmation
-Based on your direct answers:
-- **Dashboard Title & Action**: Revert `"AI Coach Live Insight"` back to `"Performance Insight"` and eliminate the `"FULL BRIEFING →"` button.
-- **Visual Presentation**: Restore the exact single-card **AI Coach Assessment** card format matching your screenshot (`Screenshot 2026-06-26 011230.png`) in both the morning rollover debrief and the History page.
-- **Scenario Lab Removal**: Completely remove the Scenario Lab / Simulator mode and arbitrary sleep/screen editing inside the analysis display.
-- **Fresh Daily Inputs**: Ensure sleep and screen recording strictly requires fresh data for each day's evaluation rather than pre-filling or relying on previous months' historical averages.
+A unified, 4-stage sequential morning protocol triggered on the first app launch of each day, connecting the Welcome Screen, the Target Countdown Page, Recovery Metrics Intake, and Consistency / Yesterday's AI Analysis.
 
 ---
 
-## 2. Proposed Changes
+## User Review & Critical Decisions
 
-### A. Dashboard Overview (`src/pages/Dashboard.tsx`)
-- Revert the header title from `<BrainCircuit /> AI Coach Live Insight` back to `Performance Insight`.
-- Remove the `FULL BRIEFING →` link/button and remove opening the complex multi-tab modal from this card.
-- Retain the clean, direct daily insight text and locking mechanism.
-
-### B. AI Coach Report Engine (`src/lib/coach/engine.ts` & `missions.ts`)
-- Ensure `generateDeterministicCoachReport` directly returns the exact, battle-tested 5-part report produced by `buildCoachReport`:
-  - **Yesterday's raw report**: `Sleep [X]h. Screen [Y]h. Planned [N] tasks...`
-  - **Diagnosis**: Targeted analysis of yesterday's execution friction and bleeding wounds.
-  - **Verdict**: Plain-language consistency rating (`CONSISTENT`, `DOMINANT EXECUTION`, `RECOVERY DEFICIT`, etc.).
-  - **Today's mission**: Actionable first 90-minute task.
-  - **Closing**: High-intensity closing quote (*"The IIT paper doesn't care how you felt yesterday. Stay hard."*).
-- Remove the override that was replacing this classic format with the multi-metric telemetry text.
-
-### C. Rollover Modal Step 2 (`src/App.tsx`)
-- Revert from the 2-column multi-card grid to the exact visual structure from your reference screenshot:
-  1. **Top Metric Strip**: 4 stat cards in a single row:
-     - `XP EARNED` (Cyan)
-     - `TASKS DONE` (Emerald)
-     - `SLEEP` (Blue, e.g. `1h`)
-     - `SCREEN` (Rose, e.g. `1h`)
-  2. **Objectives Handled**: Clean list with emerald bullet indicators and `+XP` rewards.
-  3. **AI Coach Assessment Card**: Single container with cyan header icon (`BrainCircuit`) and the exact parsed sections formatted with proper spacing and bold italic closing quote.
-
-### D. History Page (`src/pages/History.tsx`)
-- Update the expandable daily log assessment in `History.tsx` to use the identical single-card card layout as Step 2, ensuring consistent historical viewing for all past days.
-
-### E. Fresh Daily Data Protocol (`src/App.tsx` & `src/context/AppContext.tsx`)
-- Keep the rollover input form clean and blank/fresh for each day.
-- Prevent arbitrary editing of sleep/screen values after submission so that daily evaluations represent committed, unaltered records.
-- Remove Scenario Lab controls from `CoachAnalysisModal.tsx`.
+> [!IMPORTANT]
+> The following architecture has been aligned based on your confirmed preferences:
+> - **Navigation Model**: Step-by-step modal sequence with explicit "Continue" / action buttons for predictable user agency.
+> - **Absence & Underperformance Flow**: If a day was missed or consistency broken, the user sees the **Absence Reason / Consistency Broken Debrief** first, followed by **Yesterday's Analysis** before entering the dashboard.
+> - **Days Left Screen**: Reuses the high-impact countdown screen with large tabular days remaining and pending backlog status.
+> - **Rollover Bug Fix**: Resolves the race condition where `needsRollover` was cleared immediately upon saving metrics, allowing Yesterday's Analysis to display reliably.
 
 ---
 
-## 3. Verification Plan
-1. **Compilation & Lint**: Run `lint_applet` and `compile_applet` to confirm error-free TypeScript compilation.
-2. **Visual Inspection**:
-   - Verify Overview displays `Performance Insight` with no `FULL BRIEFING →` button.
-   - Verify Rollover Step 2 displays the exact card from the screenshot.
-   - Verify History cards match the screenshot layout.
-   - Verify Scenario Lab is absent.
+## 1. Overview & Core Concept
+
+When a JEE aspirant opens LevelUp Study for the first time each day, they need immediate orientation, urgency calibration, recovery logging, and objective coaching feedback. 
+
+Instead of disjointed popups appearing at different times or disappearing abruptly, this feature arranges the opening experience into a clear 4-step sequence:
+1. **Stage 1 (Welcome Screen)**: High-focus atmospheric briefing screen with one primary CTA to proceed.
+2. **Stage 2 (Days Left Page)**: The full countdown page showing exact days left until the target exam date, reinforcing daily focus and urgency.
+3. **Stage 3 (Metrics Collection)**: Clean intake for yesterday's sleep hours/minutes and screen time hours/minutes.
+4. **Stage 4 (Accountability & Coach Analysis)**:
+   - *If consistency broken or day missed*: Displays the Absence Reason debrief first, and upon submission flows directly into Yesterday's Analysis.
+   - *If consistent*: Displays Yesterday's Analysis immediately (XP earned, completed tasks, recovery metrics, and the deterministic AI Coach assessment: Diagnosis, Verdict, and Today's Mission).
+   - A single "Init Day Protocol / Enter Command Center" button finalizes the protocol and opens the dashboard for the day.
+
+---
+
+## 2. User Experience & Visual Design
+
+### Step-by-Step Flow
+
+```
+┌────────────────────────┐      ┌────────────────────────┐
+│  STAGE 1: WELCOME      │ ───> │  STAGE 2: DAYS LEFT    │
+│  - Atmospheric Canvas  │      │  - Huge Tabular Days   │
+│  - "Command Center"    │      │  - Target Date Alert   │
+│  - [ Continue / Enter] │      │  - [ Continue ]        │
+└────────────────────────┘      └────────────────────────┘
+                                            │
+                                            ▼
+┌────────────────────────┐      ┌────────────────────────┐
+│  STAGE 4: ANALYSIS     │ <─── │  STAGE 3: METRICS      │
+│  - (Absence if broken) │      │  - Sleep (Hrs / Mins)  │
+│  - Yesterday's Report  │      │  - Screen (Hrs / Mins) │
+│  - AI Coach Missions   │      │  - [ Calculate Report] │
+│  - [ Enter Dashboard ] │      └────────────────────────┘
+└────────────────────────┘
+```
+
+### Visual Specifications & Consistency
+- **Stage 1 (Welcome Screen)**:
+  - Deep black canvas (`bg-black`), WebGL shader backdrop, subtle border framing (`border-[#27272a]`), and clear "ENTER COMMAND CENTER" primary action.
+- **Stage 2 (Days Left Page)**:
+  - Red/crimson accent atmosphere (`border-red-500/30`), massive high-contrast tabular countdown numeral (`text-[8rem] md:text-[12rem] font-black font-mono`), and "Days Remaining" label.
+  - Shows pending backlog alert if tasks remain from previous days.
+  - "Continue to Daily Intake" button advances smoothly to Stage 3.
+- **Stage 3 (Metrics Intake)**:
+  - Clean dual inputs for Sleep Time and Screen Time with explicit Hours and Minutes fields.
+  - "Calculate Yesterday's Report" button triggers deterministic coaching calculations and advances to Stage 4.
+- **Stage 4A (If Consistency Broken / Missed Days)**:
+  - Rose/crimson theme (`border-rose-500/50`) with "MISSION DEBRIEF & RECOVERY" header.
+  - Input field for absence reason without guilt-tripping; submitting transitions immediately into Stage 4B (Yesterday's Analysis).
+- **Stage 4B (Yesterday's Analysis)**:
+  - 4-column metric grid: XP Earned, Tasks Done (`completed / total`), Sleep (`h m`), and Screen (`h m`).
+  - Objectives Logged itemized list showing completed vs incomplete tasks.
+  - AI Coach Assessment card rendering structured coach feedback (`Diagnosis`, `Verdict`, `Today's Mission`, `Closing`).
+  - Final CTA: "Init Day Protocol" closes the morning routine and brings the user to their active workspace.
+
+---
+
+## 3. Key Product Decisions & Bug Fixes
+
+### Bug Fix: Preserving Yesterday's Analysis Screen
+- **Root Cause**: In `App.tsx`, an automated rollover watcher hook observed `localStorage.getItem("rollover_completed_${todayKey}")`. When `completeRollover()` wrote to localStorage inside Step 3, the watcher hook detected `protocolExists === true` and instantly called `setNeedsRollover(false)` before Step 2 (Yesterday's Analysis) could render.
+- **Fix**: The morning protocol state machine will be driven by a dedicated, resilient sequence controller (`morningProtocolStep`: `welcome` | `days_left` | `metrics` | `absence` | `analysis` | `complete`). `needsRollover` will remain active until the user explicitly clicks "Init Day Protocol" at the end of Stage 4.
+
+### Determining "Consistency Broken" vs "Regular Study"
+- The app checks:
+  1. Any unrecorded calendar days in `pendingMissedDays` (missed days without logins).
+  2. Underperformance criteria: studied hours under minimum threshold (e.g. `< 2.0h`) or severe decline relative to the student's daily target.
+- If either condition is true: Show the Absence / Debrief screen first, then proceed to the Coach Analysis report so the student still receives their daily mission and diagnostic feedback.
+
+---
+
+## 4. Technical Architecture & State Strategy
+
+### Sequential Flow State Machine
+
+```
+[ App Launch on New Day ]
+         │
+         ▼
+Is First Open of the Day? ── No ──> Normal Dashboard
+         │ Yes
+         ▼
+[ Stage 1: Welcome Screen ]
+         │ (User clicks "Enter")
+         ▼
+[ Stage 2: Days Left Modal ]
+         │ (User clicks "Continue")
+         ▼
+[ Stage 3: Sleep & Screen Intake ]
+         │ (User clicks "Calculate Yesterday's Report")
+         ▼
+Has missed days OR underperformed?
+   ├─ Yes ──> [ Stage 4A: Absence Debrief ] ──> (Submit reason) ──┐
+   └─ No ─────────────────────────────────────────────────────────┼─> [ Stage 4B: Yesterday's Analysis ]
+                                                                      │ (User clicks "Init Day Protocol")
+                                                                      ▼
+                                                            [ Workspace Dashboard ]
+                                                            (Mark day protocol as complete)
+```
+
+### Components to Update
+1. **`src/App.tsx`**:
+   - Consolidate morning modals into a single coordinated flow (`morningStep`: 1, 2, 3, 4A, 4B).
+   - Prevent the background rollover monitor from prematurely unmounting the modal after metrics submission.
+   - Re-route Stage 1 (Welcome) directly into Stage 2 (Days Left) when opened on a new day.
+2. **`src/context/AppContext.tsx`**:
+   - Ensure `sessionStorage` / `localStorage` flags for `rollover_completed` are set only after Stage 4 is finalized, or guard `needsRollover` state transition until Stage 4 completes.
+3. **`src/pages/Dashboard.tsx`**:
+   - Ensure the static "Days Remaining" reminder does not double-prompt if already viewed during the morning sequence.
+
+---
+
+## 5. Verification Plan
+
+- **Compilation & Type Check**: Run `compile_applet` and `lint_applet` to confirm strict TypeScript compliance.
+- **Unit & Logic Tests**: Run `npm test -- --run` to ensure all 43 coach engine tests pass without regression.
+- **Flow Verification**:
+  1. Simulate new day launch -> verify Welcome screen opens.
+  2. Click Enter -> verify Days Left screen opens with countdown.
+  3. Click Continue -> verify Metrics intake opens for Sleep & Screen time.
+  4. Submit metrics -> verify Yesterday's Analysis card opens (does not vanish).
+  5. Test broken consistency path -> verify Absence reason screen appears first, followed by Yesterday's Analysis.
+  6. Click "Init Day Protocol" -> verify clean transition into the Dashboard workspace.

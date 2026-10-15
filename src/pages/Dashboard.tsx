@@ -42,7 +42,7 @@ import {
   AlertCircle,
   Layers,
 } from "lucide-react";
-import { useAppContext, SyllabusData } from "@/context/AppContext";
+import { useAppContext, SyllabusData, getLogicalDate, getStandardDateKey, isSameLogicalDay } from "@/context/AppContext";
 import TimeBar from "@/components/TimeBar";
 import JeeSessionLogger from "@/components/JeeSessionLogger";
 import { predictNextLecture, getLocalDateString, isCurrentDayTask, getTaskScheduledDate } from "@/lib/utils";
@@ -262,6 +262,8 @@ const Dashboard = React.memo(function Dashboard() {
     setPendingTasks,
     setClass11EndDate,
     history,
+    lifeMetrics,
+    practiceSessions,
     getCurrentChapterForSubject,
     scheduleBacklogTask,
     saveStateToCloudNow,
@@ -347,21 +349,7 @@ const Dashboard = React.memo(function Dashboard() {
     "Connect your Calendar in settings to auto-schedule blocked review time. Time-blocking your pending topics ensures nothing slips through the cracks before exams!",
   );
 
-  const [dynamicInsight, setDynamicInsight] = useState<string | null>(() => {
-    try {
-      return getStaticDynamicInsight({
-        hoursToday: 0,
-        streak: 0,
-        questionsSolved: 0,
-        target: 4,
-        accuracy: 0,
-        pendingTasksCount: 0,
-        recentTaskTypes: "General",
-      });
-    } catch {
-      return null;
-    }
-  });
+  const [dynamicInsight, setDynamicInsight] = useState<string | null>(null);
   const [showLiveDay, setShowLiveDay] = useState(false);
   const [showWeeklyReview, setShowWeeklyReview] = useState(false);
   const [showScheduleEditor, setShowScheduleEditor] = useState(false);
@@ -431,6 +419,128 @@ const Dashboard = React.memo(function Dashboard() {
     [todos],
   );
 
+  // Previous Day (Yesterday) stats resolution for accurate, grounded Performance Insight
+  const yesterdayObj = useMemo(() => {
+    const d = getLogicalDate();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }, []);
+
+  const yesterdayDateKey = useMemo(() => getStandardDateKey(yesterdayObj), [yesterdayObj]);
+  const yesterdayDateStr = useMemo(() => getLocalDateString(yesterdayObj), [yesterdayObj]);
+
+  const yesterdayEntry = useMemo(() => {
+    if (!history || history.length === 0) return null;
+    const match = history.find(
+      (h) => isSameLogicalDay(h.date, yesterdayDateKey) || new Date(h.date).toDateString() === yesterdayObj.toDateString(),
+    );
+    if (match) return match;
+    const past = history.filter((h) => {
+      const dt = new Date(h.date);
+      return !isNaN(dt.getTime()) && getStandardDateKey(dt) < getStandardDateKey(getLogicalDate());
+    });
+    return past.length > 0 ? past[past.length - 1] : history[history.length - 1] || null;
+  }, [history, yesterdayDateKey, yesterdayObj]);
+
+  const yesterdayMetric = useMemo(() => {
+    if (!lifeMetrics || lifeMetrics.length === 0) return null;
+    return (
+      lifeMetrics.find((m) => (m.date ? isSameLogicalDay(m.date, yesterdayDateKey) : m.day === yesterdayObj.getDate())) ||
+      null
+    );
+  }, [lifeMetrics, yesterdayDateKey, yesterdayObj]);
+
+  const yesterdaySleep = useMemo(() => {
+    if (yesterdayEntry && typeof yesterdayEntry.sleepTime === "number" && yesterdayEntry.sleepTime > 0) {
+      return yesterdayEntry.sleepTime;
+    }
+    if (yesterdayMetric && typeof yesterdayMetric.sleep === "number" && yesterdayMetric.sleep > 0) {
+      return yesterdayMetric.sleep;
+    }
+    if (history && history.length > 0) {
+      const past = history.filter((h) => {
+        const dt = new Date(h.date);
+        return !isNaN(dt.getTime()) && getStandardDateKey(dt) < getStandardDateKey(getLogicalDate()) && typeof h.sleepTime === "number" && h.sleepTime > 0;
+      });
+      if (past.length > 0) return past[past.length - 1].sleepTime;
+    }
+    if (lifeMetrics && lifeMetrics.length > 0) {
+      const valid = lifeMetrics.filter((m) => typeof m.sleep === "number" && m.sleep > 0);
+      if (valid.length > 0) return valid[valid.length - 1].sleep;
+    }
+    return null;
+  }, [yesterdayEntry, yesterdayMetric, history, lifeMetrics]);
+
+  const yesterdayScreen = useMemo(() => {
+    if (yesterdayEntry && typeof yesterdayEntry.screenTime === "number" && yesterdayEntry.screenTime > 0) {
+      return yesterdayEntry.screenTime;
+    }
+    if (yesterdayMetric && typeof yesterdayMetric.screenTime === "number" && yesterdayMetric.screenTime > 0) {
+      return yesterdayMetric.screenTime;
+    }
+    if (history && history.length > 0) {
+      const past = history.filter((h) => {
+        const dt = new Date(h.date);
+        return !isNaN(dt.getTime()) && getStandardDateKey(dt) < getStandardDateKey(getLogicalDate()) && typeof h.screenTime === "number" && h.screenTime > 0;
+      });
+      if (past.length > 0) return past[past.length - 1].screenTime;
+    }
+    if (lifeMetrics && lifeMetrics.length > 0) {
+      const valid = lifeMetrics.filter((m) => typeof m.screenTime === "number" && m.screenTime > 0);
+      if (valid.length > 0) return valid[valid.length - 1].screenTime;
+    }
+    return null;
+  }, [yesterdayEntry, yesterdayMetric, history, lifeMetrics]);
+
+  const yesterdayHours = useMemo(() => {
+    if (yesterdayEntry && typeof yesterdayEntry.hoursStudied === "number") {
+      return yesterdayEntry.hoursStudied;
+    }
+    if (history && history.length > 0) {
+      const past = history.filter((h) => {
+        const dt = new Date(h.date);
+        return !isNaN(dt.getTime()) && getStandardDateKey(dt) < getStandardDateKey(getLogicalDate()) && typeof h.hoursStudied === "number";
+      });
+      if (past.length > 0) return past[past.length - 1].hoursStudied;
+    }
+    return null;
+  }, [yesterdayEntry, history]);
+
+  const yesterdayPracticeSessions = useMemo(() => {
+    if (!practiceSessions || practiceSessions.length === 0) return [];
+    return practiceSessions.filter(
+      (ps) => isSameLogicalDay(ps.date, yesterdayDateKey) || new Date(ps.date).toDateString() === yesterdayObj.toDateString(),
+    );
+  }, [practiceSessions, yesterdayDateKey, yesterdayObj]);
+
+  const yesterdayQuestionsAttempted = useMemo(() => {
+    return yesterdayPracticeSessions.reduce((acc, s) => acc + (s.attempted || 0), 0);
+  }, [yesterdayPracticeSessions]);
+
+  const yesterdayAccuracy = useMemo(() => {
+    if (yesterdayQuestionsAttempted === 0) return undefined;
+    const correct = yesterdayPracticeSessions.reduce((acc, s) => acc + (s.correct || 0), 0);
+    return Math.round((correct / yesterdayQuestionsAttempted) * 100);
+  }, [yesterdayPracticeSessions, yesterdayQuestionsAttempted]);
+
+  const yesterdayStatsPayload = useMemo(() => {
+    if (!yesterdayEntry && yesterdayHours === null && yesterdaySleep === null && yesterdayScreen === null && yesterdayQuestionsAttempted === 0) {
+      return undefined;
+    }
+    return {
+      hours: yesterdayHours ?? (yesterdayEntry?.hoursStudied ?? 0),
+      sleep: yesterdaySleep ?? 7.0,
+      screenTime: yesterdayScreen ?? 2.0,
+      questions: yesterdayQuestionsAttempted > 0 ? yesterdayQuestionsAttempted : undefined,
+      accuracy: yesterdayAccuracy,
+      completedTasksCount: (yesterdayEntry?.completedTasks || []).length,
+      totalPlannedCount: Math.max((yesterdayEntry?.plannedTasks || []).length, (yesterdayEntry?.completedTasks || []).length),
+      dateStr: yesterdayEntry?.date ? yesterdayEntry.date.split("T")[0] : yesterdayDateStr,
+      feedbackText: yesterdayEntry?.aiFeedback,
+      xpEarned: yesterdayEntry?.xpEarned ?? 0,
+    };
+  }, [yesterdayEntry, yesterdayHours, yesterdaySleep, yesterdayScreen, yesterdayQuestionsAttempted, yesterdayAccuracy, yesterdayDateStr]);
+
   useEffect(() => {
     let active = true;
     const fetchInsight = async () => {
@@ -443,6 +553,10 @@ const Dashboard = React.memo(function Dashboard() {
           accuracy,
           pendingTasksCount: todayPendingTodosCount,
           recentTaskTypes: recentTaskTypesStr,
+          history,
+          yesterdayStats: yesterdayStatsPayload,
+          sleep: yesterdaySleep ?? undefined,
+          screenTime: yesterdayScreen ?? undefined,
         });
         if (active && insight) {
           setDynamicInsight(insight);
@@ -465,6 +579,10 @@ const Dashboard = React.memo(function Dashboard() {
     accuracy,
     todayPendingTodosCount,
     recentTaskTypesStr,
+    history,
+    yesterdayStatsPayload,
+    yesterdaySleep,
+    yesterdayScreen,
   ]);
 
   useEffect(() => {
@@ -1572,84 +1690,7 @@ const Dashboard = React.memo(function Dashboard() {
         document.body,
       )}
 
-      {createPortal(
-        <AnimatePresence>
-          {isClass11SetupDone &&
-            class11EndDate &&
-            hasSeenRules &&
-            !hasSeenReminder && (
-              <motion.div
-                key="hasSeenReminderModalPortal"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black bg-slate-50 p-4"
-              >
-                <motion.div
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", bounce: 0.5 }}
-                  className="bg-red-950/20 border border-red-500/30 p-8 md:p-16 rounded-3xl max-w-3xl w-full text-center shadow-md relative overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-50" />
-                  <h2 className="text-2xl md:text-3xl font-bold dark:text-red-400 text-red-700 mb-2 uppercase tracking-widest flex items-center justify-center gap-3">
-                    <motion.div
-                      whileHover={{ scale: 1.2, rotate: 15 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                      className="relative"
-                    >
-                      <Clock className="w-8 h-8 relative z-10 drop-shadow-md" />
-                    </motion.div>
-                    Time is Ticking
-                  </h2>
-                  <div className="text-[8rem] md:text-[12rem] leading-none font-black dark:text-white text-slate-900 mb-4 drop-shadow-md">
-                    {daysLeft > 0 ? daysLeft : 0}
-                  </div>
-                  <p className="text-2xl md:text-4xl dark:text-red-400 text-red-700 font-mono mb-6 uppercase tracking-widest">
-                    {daysLeft > 0 ? "Days Remaining" : "Time is Up"}
-                  </p>
 
-                  {pendingTasks.length > 0 && (
-                    <div className="mb-10 p-6 bg-red-950/40 border border-red-500/30 rounded-xl max-w-xl mx-auto text-left">
-                      <h3 className="dark:text-red-400 text-red-700 font-bold uppercase tracking-wider flex items-center gap-2 mb-3">
-                        <Shield className="w-5 h-5" /> Pending Backlogs Alert
-                      </h3>
-                      <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                        {Array.from(
-                          new Map(pendingTasks.map((t) => [t.id, t])).values(),
-                        ).map((pt: any, i) => (
-                          <div
-                            key={pt.id || `pt-${i}`}
-                            className="flex flex-col gap-1 p-2 rounded-lg bg-red-900/10 border border-red-800/50"
-                          >
-                            <span className="text-red-200 font-medium text-sm drop-shadow-md">
-                              {pt.text}
-                            </span>
-                            <span className="text-[10px] dark:text-red-400 text-red-700/80 font-mono uppercase">
-                              Incomplete Goal
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <Button
-                    size="lg"
-                    onClick={() => {
-                      markReminderSeen();
-                      setHasSeenReminder(true);
-                    }}
-                    className="bg-red-600 hover:bg-red-500 text-white text-xl px-12 py-8 h-auto rounded-2xl font-black tracking-widest shadow-md hover:shadow-md transition-all hover:scale-105"
-                  >
-                    ACKNOWLEDGE
-                  </Button>
-                </motion.div>
-              </motion.div>
-            )}
-        </AnimatePresence>,
-        document.body,
-      )}
 
       <AnimatePresence>
         {isSessionActive && sessionStartTime && (
@@ -2308,58 +2349,51 @@ const Dashboard = React.memo(function Dashboard() {
           </div>
         )}
 
-        {/* Insights & Tips */}
-        <div
-          className={`flex flex-col gap-3 md:gap-4 justify-between h-full ${!class11EndDate ? "xl:col-span-5" : "xl:col-span-2"}`}
-        >
-          <motion.div className="bg-blue-500/10 border-l-2 md:border-l-4 border-blue-500 p-3 md:p-4 rounded-r-xl md:rounded-r-lg border-t border-r border-b dark:border-white/5 border-black/5 md:border-transparent hover:translate-x-1 md:hover:translate-x-2 transition-transform duration-300 flex-1">
-            <div className="flex items-start gap-2 md:gap-3 h-full">
-              <motion.div
-                whileHover={{ scale: 1.3, rotate: 15 }}
-                className="relative z-10 shrink-0 mt-0.5"
-              >
-                <div className="absolute inset-0 bg-blue-500/40 rounded-full opacity-30" />
-                <BrainCircuit className="w-6 h-6 dark:text-blue-400 text-blue-700 drop-shadow-md relative z-10" />
-              </motion.div>
-              <div className="flex flex-col justify-center h-full flex-1">
-                <div className="flex items-center justify-between w-full mb-1">
-                  <h2 className="dark:text-blue-400 text-blue-700 font-bold uppercase tracking-wider text-xs md:text-sm flex items-center gap-1.5">
-                    <BrainCircuit className="w-3.5 h-3.5" /> Performance Insight
+        {/* JEE Performance Insight & Pro Tip */}
+        <div className={`h-full ${!class11EndDate ? "xl:col-span-5" : "xl:col-span-2"}`}>
+          <Card className="h-full dark:bg-black bg-slate-50 dark:border-slate-800 border-slate-200 rounded-3xl md:rounded-2xl relative shadow-lg md:shadow-none p-4 md:p-5 flex flex-col justify-between">
+            <div className="flex flex-col justify-center flex-1">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400">
+                    <BrainCircuit className="w-4 h-4 md:w-5 md:h-5" />
+                  </div>
+                  <h2 className="dark:text-slate-200 text-slate-800 font-bold uppercase tracking-wider text-xs md:text-sm">
+                    JEE Performance Insight
                   </h2>
                 </div>
-                <div className="dark:text-slate-300 text-slate-900 text-xs md:text-sm leading-relaxed font-medium whitespace-pre-wrap">
-                  {dynamicInsight
-                    ? dynamicInsight
+                {yesterdayStatsPayload && (
+                  <span className="text-[10px] md:text-xs font-mono font-medium px-2.5 py-0.5 rounded-full bg-slate-200/60 dark:bg-slate-800/80 dark:text-slate-300 text-slate-700 border dark:border-slate-700/60 border-slate-300 shrink-0">
+                    Yesterday: {yesterdayStatsPayload.hours}h{yesterdayStatsPayload.questions ? ` • ${yesterdayStatsPayload.questions} Qs` : ""}{yesterdayStatsPayload.accuracy !== undefined ? ` • ${yesterdayStatsPayload.accuracy}%` : ` • ${yesterdayStatsPayload.sleep}h rest`}
+                  </span>
+                )}
+              </div>
+              <p className="dark:text-slate-200 text-slate-700 text-xs md:text-sm leading-relaxed font-normal">
+                {dynamicInsight || (
+                  yesterdayStatsPayload
+                    ? `Yesterday: ${yesterdayStatsPayload.hours}h study and ${yesterdayStatsPayload.sleep}h sleep logged. Focus on consistent DPP problem solving today without letting distractions creep in.`
                     : hoursStudiedToday < 4 && streakDays < 14
-                      ? `Focus on building consistency first. Phone out of the room. Win the first 30 mins with a 25-min sprint.\n\n🔒 Lock: Motion beats stagnation.`
-                      : streakDays >= 3
-                        ? `Consistent momentum! The ego hangover is the enemy now. Acknowledge the ${streakDays} days, then drop it and execute today.\n\n🔒 Lock: Protect the streak.`
-                        : questionsSolved < dailyTarget && dailyTarget > 0
-                          ? `Fake productivity is reading theory. Close the book, open the DPP. You are ${dailyTarget - questionsSolved} questions away.\n\n🔒 Lock: Let the friction guide you.`
-                          : `Elite output yesterday means nothing today. Reset to zero. Master the fundamentals and prove it again.\n\n🔒 Lock: Reset to zero.`}
-                </div>
-              </div>
+                      ? `Focus on building consistency first. Put your phone out of the room and win the first 30 mins with a 25-min sprint.`
+                      : `Every JEE rank starts with disciplined problem blocks. Clear distractions and win your first 45-minute focus session.`
+                )}
+              </p>
             </div>
-          </motion.div>
 
-          <motion.div className="bg-purple-500/10 border-l-2 md:border-l-4 border-purple-500 p-3 md:p-4 rounded-r-xl md:rounded-r-lg border-t border-r border-b dark:border-white/5 border-black/5 md:border-transparent hover:translate-x-1 md:hover:translate-x-2 transition-transform duration-300 flex-1">
-            <div className="flex items-start gap-2 md:gap-3 h-full">
-              <motion.div
-                whileHover={{ scale: 1.3, rotate: -15 }}
-                className="relative z-10 shrink-0 mt-0.5"
-              >
-                <Zap className="w-6 h-6 text-purple-600 dark:text-purple-400 icon-glow-purple" />
-              </motion.div>
-              <div className="flex flex-col justify-center h-full">
-                <h3 className="dark:text-purple-400 text-purple-700 font-bold uppercase tracking-wider text-xs md:text-sm mb-1">
+            {/* Pro Tip Section - Fully visible, never hidden or cut off */}
+            <div className="mt-3 pt-2.5 border-t dark:border-slate-800/80 border-slate-200 flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <div className="p-1 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+                  <Zap className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-bold text-[10px] md:text-[11px] uppercase tracking-wider text-purple-600 dark:text-purple-400">
                   Pro Tip
-                </h3>
-                <p className="dark:text-slate-300 text-slate-900 text-xs md:text-sm leading-snug">
-                  {currentProTip}
-                </p>
+                </span>
               </div>
+              <p className="dark:text-slate-300 text-slate-600 text-[11px] md:text-xs leading-relaxed">
+                {currentProTip}
+              </p>
             </div>
-          </motion.div>
+          </Card>
         </div>
       </motion.div>
 

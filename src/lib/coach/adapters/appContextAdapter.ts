@@ -136,7 +136,7 @@ export function adaptAppContextToCoachInput(
     hoursToday: payload.hoursStudiedToday ?? 0,
     sleepLastNight: payload.sleepLastNight ?? null,
     screenToday: payload.screenToday ?? null,
-    targetSleepHours: payload.targetSleepHours ?? 7.5,
+    targetSleepHours: payload.targetSleepHours ?? 6.0,
     examDate: payload.examDate,
     dailyHistory,
     practiceSessions,

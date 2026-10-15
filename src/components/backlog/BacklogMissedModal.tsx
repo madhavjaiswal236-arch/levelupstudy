@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle, CheckCircle2, RefreshCw, Calendar, Clock, ArrowRight, ShieldCheck, X, Sparkles, Sliders } from 'lucide-react';
 import { Todo, useAppContext } from '@/context/AppContext';
@@ -75,14 +76,14 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
 
   const totalMissedMins = missedTasks.reduce((acc, t) => acc + (t.durationMinutes || 60), 0);
 
-  return (
+  const modalContent = (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, scale: 0.92, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.92, y: 20 }}
-          className="relative w-full max-w-2xl bg-slate-900/95 border border-amber-500/40 rounded-2xl shadow-[0_0_50px_rgba(245,158,11,0.25)] overflow-hidden flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-2xl bg-slate-900/95 border border-amber-500/40 rounded-2xl shadow-[0_0_50px_rgba(245,158,11,0.25)] overflow-hidden flex flex-col max-h-[90vh] my-auto"
         >
           {/* Header */}
           <div className="p-6 bg-gradient-to-r from-amber-950/50 via-slate-900 to-slate-900 border-b border-amber-500/20 flex items-start justify-between">
@@ -331,4 +332,6 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
       </div>
     </AnimatePresence>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : null;
 };

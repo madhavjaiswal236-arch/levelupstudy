@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -38,6 +39,17 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
   existingChapterIds = []
 }) => {
   const { syllabus } = useAppContext();
+
+  // Lock body scroll to keep viewport completely anchored where the user opened the modal
+  useEffect(() => {
+    if (isOpen) {
+      const orig = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = orig;
+      };
+    }
+  }, [isOpen]);
 
   // Mode: 1 = choose chapter, 2 = configure lectures
   const [modalStep, setModalStep] = useState<1 | 2>(existingChapter ? 2 : 1);
@@ -212,16 +224,20 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
     onClose();
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+      <div 
+        className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
+        onClick={onClose}
+      >
         <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 8 }}
+          initial={{ opacity: 0, scale: 0.96, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 8 }}
+          exit={{ opacity: 0, scale: 0.96, y: 12 }}
           transition={{ duration: 0.18 }}
+          onClick={(e) => e.stopPropagation()}
           className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]"
         >
           {/* Header Bar */}
@@ -736,6 +752,7 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
           )}
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

@@ -42,7 +42,7 @@ export function selectPrimaryMission(ctx: PlannerContext): {
 } {
   const { input, sleepTier, hypotheses, chapterMasteries, baselineHours, outcomeHistory, disengaged } = ctx;
 
-  const lightsOutTime = computeLightsOutTime("06:00", input.targetSleepHours || 7.5);
+  const lightsOutTime = computeLightsOutTime("06:00", input.targetSleepHours || 6.0);
 
   // 1. Hard Override: RED Sleep Tier -> M0 only
   if (sleepTier === "RED") {
@@ -50,7 +50,7 @@ export function selectPrimaryMission(ctx: PlannerContext): {
       today: input.today,
       lightsOutTime,
       wakeTime: "06:00",
-      targetSleepHours: input.targetSleepHours || 7.5,
+      targetSleepHours: input.targetSleepHours || 6.0,
     });
 
     const recoveryHypothesis: Hypothesis = {

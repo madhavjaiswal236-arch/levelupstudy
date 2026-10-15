@@ -175,7 +175,7 @@ export interface CoachInput {
   hoursToday: number;
   sleepLastNight: number | null;
   screenToday: number | null;
-  targetSleepHours?: number; // default 7.5
+  targetSleepHours?: number; // default 6.0
   examDate?: ISODate;
   dailyHistory: DayRecord[]; // sorted oldest to newest
   practiceSessions: PracticeSessionExt[];

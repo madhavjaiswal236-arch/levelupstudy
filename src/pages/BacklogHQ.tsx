@@ -312,31 +312,31 @@ export default function BacklogHQ() {
         </div>
 
         {backlogPlan && !showWizard && (
-          <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start md:self-auto">
             <button
               type="button"
               onClick={() => setShowSimulator(true)}
-              className="px-3.5 py-2 min-h-[42px] rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-amber-400 text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-amber-400 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition"
             >
-              <Sliders className="w-4 h-4 text-amber-500" />
-              <span>What-If Simulator</span>
+              <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
+              <span>Simulator</span>
             </button>
             <button
               type="button"
               onClick={() => setShowWizard(true)}
-              className="px-3.5 py-2 min-h-[42px] rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black flex items-center gap-1.5 transition shadow-sm"
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] sm:text-xs font-black flex items-center gap-1.5 transition shadow-sm"
             >
-              <Edit3 className="w-4 h-4" />
-              <span>Edit Full Plan</span>
+              <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>Edit Plan</span>
             </button>
             <button
               type="button"
               onClick={handleDeletePlan}
-              className="px-3.5 py-2 min-h-[42px] rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition"
               title="Reset and clear active backlog plan"
             >
-              <Trash2 className="w-4 h-4" />
-              <span>Reset Plan</span>
+              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>Reset</span>
             </button>
           </div>
         )}
@@ -451,18 +451,18 @@ export default function BacklogHQ() {
       {backlogPlan && !showWizard && (
         <div className="space-y-6">
           {/* Top 4 Stat Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-32 shadow-sm">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Lectures Left</span>
-                <BookOpen className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Lectures Left</span>
+                <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono">
+                <p className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 dark:text-white font-mono">
                   {Math.max(0, backlogPlan.metrics.totalLectures - (planStats?.completedLecs || 0))}
-                  <span className="text-xs text-slate-400 dark:text-slate-500 font-normal ml-1.5">/ {backlogPlan.metrics.totalLectures}</span>
+                  <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-normal ml-1 sm:ml-1.5">/ {backlogPlan.metrics.totalLectures}</span>
                 </p>
-                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mt-1.5 sm:mt-2 overflow-hidden">
                   <div
                     className="bg-amber-400 h-full rounded-full transition-all duration-500"
                     style={{
@@ -473,46 +473,46 @@ export default function BacklogHQ() {
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-32 shadow-sm">
+            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Workload Hours</span>
-                <Clock className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Workload Hours</span>
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono">
+                <p className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 dark:text-white font-mono">
                   {backlogPlan.metrics.totalWorkloadHours}h
                 </p>
-                <p className="text-xs text-amber-700 dark:text-amber-400/90 mt-1 font-mono">
+                <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-400/90 mt-0.5 sm:mt-1 font-mono truncate">
                   ~{+(backlogPlan.settings.targetDailyMinutes / 60).toFixed(1)}h / study day
                 </p>
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-32 shadow-sm">
+            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Target Deadline</span>
-                <Calendar className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Target Deadline</span>
+                <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono truncate">
+                <p className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white font-mono truncate">
                   {backlogPlan.settings.deadlineDate}
                 </p>
-                <p className="text-xs text-amber-700 dark:text-amber-400/90 mt-1 font-mono truncate">
+                <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-400/90 mt-0.5 sm:mt-1 font-mono truncate">
                   Projected: {backlogPlan.metrics.projectedCompletionDate}
                 </p>
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-32 shadow-sm">
+            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Plan Health</span>
-                <Zap className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Plan Health</span>
+                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                   {getHealthBadge(backlogPlan.metrics.feasibilityStatus)}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-mono">
+                <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 sm:mt-2 font-mono">
                   Score: <span className="text-slate-900 dark:text-white font-bold">{backlogPlan.metrics.healthScore}/100</span>
                 </p>
               </div>
@@ -520,33 +520,33 @@ export default function BacklogHQ() {
           </div>
 
           {/* Subject Rotation Banner */}
-          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-400/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm">
+          <div className="p-3 sm:p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-400/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-xs shadow-sm">
             <div className="flex items-center gap-2.5">
               <div className="p-1.5 rounded-lg bg-amber-400/15 text-amber-600 dark:text-amber-400 shrink-0">
                 <Repeat className="w-4 h-4" />
               </div>
-              <span className="text-slate-700 dark:text-slate-300">
+              <span className="text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs">
                 <strong className="text-slate-900 dark:text-white">Active Rotation Loop:</strong> Tasks interleave sequentially across subjects to maximize focus.
               </span>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2 py-0.5 rounded text-[11px] font-bold font-mono text-cyan-700 dark:text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold font-mono text-cyan-700 dark:text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">
                 Physics
               </span>
-              <span className="text-slate-400 dark:text-slate-500">➔</span>
-              <span className="px-2 py-0.5 rounded text-[11px] font-bold font-mono text-purple-700 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20">
+              <span className="text-slate-400 dark:text-slate-500 text-[10px]">➔</span>
+              <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold font-mono text-purple-700 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20">
                 Chemistry
               </span>
-              <span className="text-slate-400 dark:text-slate-500">➔</span>
-              <span className="px-2 py-0.5 rounded text-[11px] font-bold font-mono text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20">
+              <span className="text-slate-400 dark:text-slate-500 text-[10px]">➔</span>
+              <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold font-mono text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20">
                 Mathematics
               </span>
             </div>
           </div>
 
           {/* Section Navigation Tabs (Optimized for Mobile & Touch) */}
-          <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1.5 sm:gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5 sm:pb-3 overflow-x-auto no-scrollbar">
             {[
               { id: 'journey', label: 'Progress & Journey', icon: TrendingUp },
               { id: 'today', label: "Today's Mission", icon: Target },
@@ -561,7 +561,7 @@ export default function BacklogHQ() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-3.5 sm:px-4 py-2 min-h-[42px] rounded-xl font-bold text-xs flex items-center gap-2 transition whitespace-nowrap shrink-0 ${
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl font-bold text-xs flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap shrink-0 ${
                     isActive
                       ? 'bg-amber-400 text-slate-950 shadow-sm'
                       : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 shadow-sm'

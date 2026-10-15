@@ -60,7 +60,7 @@ export function evaluateHypotheses(ctx: DiagnosticInput): Hypothesis[] {
       });
     }
 
-    if (ctx.input.sleepLastNight !== null && ctx.input.sleepLastNight >= 7.5) {
+    if (ctx.input.sleepLastNight !== null && ctx.input.sleepLastNight >= 6.0) {
       contradicting.push({
         label: "Normal Last Night Sleep",
         value: `${ctx.input.sleepLastNight}h`,

@@ -277,7 +277,7 @@ export function computeTrends(
   const dataPoints = [
     ...recent.map((h) => ({
       hours: h.hoursStudied || 0,
-      sleep: h.sleepTime || 7,
+      sleep: h.sleepTime || 6.0,
       screen: h.screenTime || 3.5,
     })),
     { hours: currentHours, sleep: currentSleep, screen: currentScreen },
@@ -289,7 +289,7 @@ export function computeTrends(
       hoursDirection: "STABLE",
       consecutiveTrendDays: 0,
       sleepSlope: 0,
-      sleepDebt7d: Math.max(0, 7.5 - currentSleep),
+      sleepDebt7d: Math.max(0, 6.0 - currentSleep),
       screenSlope: 0,
       screenEscalating: currentScreen > 5,
       hoursVolatility: 0,
@@ -331,7 +331,7 @@ export function computeTrends(
 
   const sleepDebt7d =
     Math.round(
-      sleepVals.reduce((sum, s) => sum + Math.max(0, 7.5 - s), 0) * 10,
+      sleepVals.reduce((sum, s) => sum + Math.max(0, 6.0 - s), 0) * 10,
     ) / 10;
   const screenEscalating = screenSlope > 0.4 || currentScreen > 5;
 

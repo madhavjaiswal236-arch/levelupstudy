@@ -90,7 +90,7 @@ export function normalizeCoachInput(input: CoachInput): CoachInput {
       input.screenToday !== null && !isNaN(input.screenToday)
         ? Math.min(24, Math.max(0, input.screenToday))
         : null,
-    targetSleepHours: input.targetSleepHours || 7.5,
+    targetSleepHours: input.targetSleepHours || 6.0,
     dailyHistory: sanitizedHistory,
   };
 }

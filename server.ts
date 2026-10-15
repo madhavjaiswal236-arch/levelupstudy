@@ -63,9 +63,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
-  keyGenerator: (req) => {
-    return req.ip || req.socket.remoteAddress || 'unknown';
-  }
+  validate: { ip: false, xForwardedForHeader: false }
 });
 
 app.use('/api/', apiLimiter);

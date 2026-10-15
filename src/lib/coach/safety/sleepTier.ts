@@ -18,7 +18,7 @@ export interface SleepEvaluation {
   partial: boolean;
 }
 
-export function calculateSleepTier(nights: Night[], target = 7.5): SleepEvaluation {
+export function calculateSleepTier(nights: Night[], target = 7.25): SleepEvaluation {
   const logged = nights.filter(
     (n): n is { date: ISODate; hours: number } => n.hours !== null && !isNaN(n.hours),
   );
@@ -38,18 +38,18 @@ export function calculateSleepTier(nights: Night[], target = 7.5): SleepEvaluati
     nights.length >= k &&
     nights.slice(-k).every((n) => n.hours !== null && !isNaN(n.hours) && n.hours < x);
 
-  // RED: Last night < 5.5h; OR 7-day debt >= 8h (if not partial); OR 3 consecutive nights < 6.0h
+  // RED: Last night < 5.0h; OR 7-day debt >= 7h (if not partial); OR 3 consecutive nights < 6.0h
   const red =
-    (last !== null && last < 5.5) ||
-    (!partial && debt >= 8) ||
+    (last !== null && last < 5.0) ||
+    (!partial && debt >= 7) ||
     runBelow(6.0, 3);
 
-  // AMBER: Last night 5.5-6.5h; OR 7-day debt 4 to <8h (if not partial); OR 2 consecutive nights < 6.5h
+  // AMBER: Last night 5.0-6.0h; OR 7-day debt 3 to <7h (if not partial); OR 2 consecutive nights < 6.0h
   const amber =
     !red &&
-    ((last !== null && last < 6.5) ||
-      (!partial && debt >= 4) ||
-      runBelow(6.5, 2));
+    ((last !== null && last < 6.0) ||
+      (!partial && debt >= 3) ||
+      runBelow(6.0, 2));
 
   const tier: SleepTier = red ? "RED" : amber ? "AMBER" : "GREEN";
 
@@ -57,7 +57,7 @@ export function calculateSleepTier(nights: Night[], target = 7.5): SleepEvaluati
 }
 
 // Derive lights-out time from next wake time and target sleep
-export function computeLightsOutTime(wakeTime = "06:00", targetHours = 7.5): string {
+export function computeLightsOutTime(wakeTime = "06:00", targetHours = 6.0): string {
   const [wH, wM] = wakeTime.split(":").map(Number);
   const totalWakeMins = wH * 60 + (wM || 0);
   const sleepMins = Math.round(targetHours * 60);

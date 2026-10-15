@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sliders, Sparkles, Clock, Calendar, CheckCircle2, AlertCircle, X, ArrowRight, Layers } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
@@ -210,14 +211,14 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
     onClose();
   };
 
-  return (
+  const modalContent = (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 12 }}
-          className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto"
         >
           {/* Header */}
           <div className="p-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
@@ -496,4 +497,6 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
       </div>
     </AnimatePresence>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : null;
 };

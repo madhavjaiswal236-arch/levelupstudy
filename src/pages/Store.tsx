@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -731,8 +732,8 @@ const Store = React.memo(function Store() {
    )}
 
    {/* Purchase Success Overlay Modal */}
-   {newPurchase && (
-     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+   {typeof document !== 'undefined' && newPurchase && createPortal(
+     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
        <motion.div
          initial={{ scale: 0.9, y: 20, opacity: 0 }}
          animate={{ scale: 1, y: 0, opacity: 1 }}
@@ -797,7 +798,8 @@ const Store = React.memo(function Store() {
            </Button>
          </div>
        </motion.div>
-     </div>
+     </div>,
+     document.body
    )}
  </motion.div>
 

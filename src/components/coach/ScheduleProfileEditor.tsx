@@ -7,6 +7,7 @@
  */
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Calendar, Clock, Moon, Sun, Save, X, Sparkles, CheckCircle2, Shield, AlertCircle } from "lucide-react";
 import { useAppContext } from "@/context/AppContext";
@@ -79,10 +80,10 @@ export function ScheduleProfileEditor({ isOpen, onClose }: ScheduleProfileEditor
     }, 800);
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
-    <div className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -220,6 +221,7 @@ export function ScheduleProfileEditor({ isOpen, onClose }: ScheduleProfileEditor
           </div>
         </form>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }

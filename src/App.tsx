@@ -35,7 +35,9 @@ import {
   X,
   HelpCircle,
   Layers,
+  Clock,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   AppProvider,
   useAppContext,
@@ -54,6 +56,7 @@ import { getAICoachFeedback } from "./lib/gemini";
 import { generateDeterministicCoachReport } from "./lib/coach/engine";
 import confetti from "canvas-confetti";
 import { Tracker360GoalBox } from "./components/backlog/Tracker360GoalBox";
+import { TimeBar } from "./components/TimeBar";
 
 import Dashboard from "./pages/Dashboard";
 const Missions = lazy(() => import("./pages/Missions"));
@@ -159,6 +162,10 @@ function AppContent() {
     showWelcomeHero,
     dismissWelcomeHero,
     backlogPlan,
+    class11EndDate,
+    totalXpGoal,
+    hasSeenReminder,
+    markReminderSeen,
   } = useAppContext();
 
   useNotificationScheduler({
@@ -258,8 +265,41 @@ function AppContent() {
 
   const effectiveLoaded = isLoaded || forceLoaded;
 
+  type MorningRoadmapStep = "welcome" | "days_left" | "metrics" | "absence" | "analysis";
+
+  const [morningStep, setMorningStep] = useState<MorningRoadmapStep | null>(() => {
+    try {
+      if (typeof window === "undefined") return null;
+      const currentLogicalDate = getLogicalDate();
+      const todayKey = getStandardDateKey(currentLogicalDate);
+      const completedToday =
+        localStorage.getItem(`morning_roadmap_completed_${todayKey}`) === "true" ||
+        sessionStorage.getItem(`morning_roadmap_completed_${todayKey}`) === "true";
+      if (completedToday) return null;
+
+      return "welcome";
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const isMorningRoadmapActiveRef = useRef(false);
+  useEffect(() => {
+    isMorningRoadmapActiveRef.current = morningStep !== null;
+  }, [morningStep]);
+
+  const targetDateStr = class11EndDate || `${new Date().getFullYear() + 1}-04-01`;
+  const morningDaysLeft = Math.max(
+    0,
+    Math.ceil((new Date(targetDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  );
+
   const handleEnterApp = () => {
-    dismissWelcomeHero();
+    if (morningStep === "welcome") {
+      setMorningStep("days_left");
+    } else {
+      dismissWelcomeHero();
+    }
     vibrate(HAPTIC_PATTERNS.SUCCESS);
   };
 
@@ -322,8 +362,10 @@ function AppContent() {
           setPendingMissedDays(gaps);
         }
       } else if ((isToday || protocolExists) && needsRollover) {
-        console.log(`[Rollover Monitor] Today protocol already completed. Clearing needsRollover.`);
-        setNeedsRollover(false, "Today protocol already completed");
+        if (!isMorningRoadmapActiveRef.current) {
+          console.log(`[Rollover Monitor] Today protocol already completed. Clearing needsRollover.`);
+          setNeedsRollover(false, "Today protocol already completed");
+        }
       }
     };
 
@@ -535,6 +577,35 @@ function AppContent() {
   );
   const [rolloverStep, setRolloverStep] = useState<number>(1);
 
+  // Prefill sleep and screen inputs with existing yesterday records if available
+  useEffect(() => {
+    if (!sleepInput && !screenInput) {
+      const yesterdayObj = getLogicalDate();
+      yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+      const yesterdayKey = getStandardDateKey(yesterdayObj);
+      const yesterdayStr = yesterdayObj.toDateString();
+
+      const yesterdayEntry = history.find(
+        (h) => isSameLogicalDay(h.date, yesterdayKey) || new Date(h.date).toDateString() === yesterdayStr,
+      );
+      const yesterdayMetric = lifeMetrics.find(
+        (m) => (m.date ? isSameLogicalDay(m.date, yesterdayKey) : m.day === yesterdayObj.getDate()),
+      );
+
+      const existingSleep = yesterdayEntry?.sleepTime ?? yesterdayMetric?.sleep;
+      const existingScreen = yesterdayEntry?.screenTime ?? yesterdayMetric?.screenTime;
+
+      if (typeof existingSleep === "number" && existingSleep > 0) {
+        setSleepInput(Math.floor(existingSleep).toString());
+        setSleepMinsInput(Math.round(((existingSleep % 1) * 60)).toString());
+      }
+      if (typeof existingScreen === "number" && existingScreen > 0) {
+        setScreenInput(Math.floor(existingScreen).toString());
+        setScreenMinsInput(Math.round(((existingScreen % 1) * 60)).toString());
+      }
+    }
+  }, [history, lifeMetrics]);
+
   useEffect(() => {
     const handleGlobalClick = (e: Event) => {
       const target = e.target as HTMLElement;
@@ -659,6 +730,97 @@ function AppContent() {
 
     completeRollover(finalSleep, finalScreen, feedback);
     setRolloverStep(2);
+
+    const yesterdayHours = yesterdayEntry.hoursStudied || 0;
+    const isUnderperformed = yesterdayHours < 2 || (streakDays <= 1 && yesterdayHours < 3);
+    const isBroken = consistencyBroken || pendingMissedDays.length > 0 || isUnderperformed;
+
+    if (morningStep === "metrics") {
+      if (isBroken) {
+        setMorningStep("absence");
+      } else {
+        setMorningStep("analysis");
+      }
+    }
+  };
+
+  const handleAbsenceContinue = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (pendingMissedDays.length > 0) {
+      const reasons = pendingMissedDays.map((dateStr) => ({
+        date: dateStr,
+        reason: missedDayInputs[dateStr] || "Unaccounted absence",
+      }));
+      submitMissedDayReasons(reasons);
+      setMissedDayInputs({});
+    }
+    setConsistencyBroken(false);
+    vibrate(HAPTIC_PATTERNS.SUCCESS);
+    setMorningStep("analysis");
+  };
+
+  const handleDaysLeftAcknowledge = () => {
+    markReminderSeen();
+    vibrate(HAPTIC_PATTERNS.SUCCESS);
+
+    const yesterdayObj = getLogicalDate();
+    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+    const yesterdayKey = getStandardDateKey(yesterdayObj);
+    const yesterdayStr = yesterdayObj.toDateString();
+
+    const yesterdayEntry = history.find(
+      (h) => isSameLogicalDay(h.date, yesterdayKey) || new Date(h.date).toDateString() === yesterdayStr,
+    );
+    const yesterdayMetric = lifeMetrics.find(
+      (m) => (m.date ? isSameLogicalDay(m.date, yesterdayKey) : m.day === yesterdayObj.getDate()),
+    );
+
+    const existingSleep = yesterdayEntry?.sleepTime ?? yesterdayMetric?.sleep;
+    const existingScreen = yesterdayEntry?.screenTime ?? yesterdayMetric?.screenTime;
+
+    if (typeof existingSleep === "number" && existingSleep > 0) {
+      setSleepInput(Math.floor(existingSleep).toString());
+      setSleepMinsInput(Math.round(((existingSleep % 1) * 60)).toString());
+    }
+    if (typeof existingScreen === "number" && existingScreen > 0) {
+      setScreenInput(Math.floor(existingScreen).toString());
+      setScreenMinsInput(Math.round(((existingScreen % 1) * 60)).toString());
+    }
+
+    const hasEnteredYesterdayMetrics = Boolean(
+      (typeof existingSleep === "number" && existingSleep > 0)
+    );
+
+    const yesterdayHours = yesterdayEntry?.hoursStudied || 0;
+    const isUnderperformed = yesterdayHours < 2 || (streakDays <= 1 && yesterdayHours < 3);
+    const isBroken = consistencyBroken || pendingMissedDays.length > 0 || isUnderperformed;
+
+    if (hasEnteredYesterdayMetrics) {
+      // User has ALREADY entered sleep and screen! Don't prompt again!
+      if (isBroken) {
+        setMorningStep("absence");
+      } else {
+        setMorningStep("analysis");
+      }
+    } else {
+      // Prompt for metrics
+      setMorningStep("metrics");
+    }
+  };
+
+  const handleCompleteMorningFlow = () => {
+    const todayKey = getStandardDateKey(getLogicalDate());
+    try {
+      localStorage.setItem(`morning_roadmap_completed_${todayKey}`, "true");
+      sessionStorage.setItem(`morning_roadmap_completed_${todayKey}`, "true");
+      localStorage.setItem(`rollover_completed_${todayKey}`, "true");
+      sessionStorage.setItem(`rollover_completed_${todayKey}`, "true");
+    } catch (e) {}
+    setNeedsRollover(false, "Morning roadmap completed");
+    closeRollover();
+    markReminderSeen();
+    setMorningStep(null);
+    vibrate(HAPTIC_PATTERNS.SUCCESS);
   };
 
   const closeRollover = () => {
@@ -1003,8 +1165,8 @@ function AppContent() {
       requiredLevel: 1,
     },
     { id: "syllabus", label: "Syllabus", icon: BookOpen, requiredLevel: 1 },
+    { id: "analytics", label: "Analytics", icon: LineChart, requiredLevel: 1 },
     { id: "history", label: "History", icon: RefreshCw, requiredLevel: 1 },
-    { id: "analytics", label: "Analytics", icon: LineChart, requiredLevel: 6 },
     { id: "quests", label: "Missions", icon: Target, requiredLevel: 3 },
     { id: "protocols", label: "Protocols", icon: Shield, requiredLevel: 4 },
     { id: "store", label: "Store", icon: ShoppingBag, requiredLevel: 8 },
@@ -1121,7 +1283,7 @@ function AppContent() {
     );
   }
 
-  if (effectiveLoaded && showWelcomeHero) {
+  if (effectiveLoaded && (showWelcomeHero || morningStep === "welcome")) {
     return (
       <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans select-none z-[10000]">
         {/* Background WebGL Shader Animation now rendered in front of the card */}
@@ -1367,10 +1529,142 @@ function AppContent() {
         document.body,
       )}
 
-      {/* Consistency Broken Modal */}
+      {/* Morning Roadmap Stage 2: Number of Days Left Page */}
       {createPortal(
         <AnimatePresence>
-          {consistencyBroken && (
+          {morningStep === "days_left" && (
+            <motion.div
+              key="morningDaysLeftPortal"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center dark:bg-black/95 bg-slate-900/95 backdrop-blur-md p-4 overflow-y-auto"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                transition={{ type: "spring", bounce: 0.3 }}
+                className="w-full max-w-2xl my-auto flex flex-col items-center"
+              >
+                <div className="w-full shadow-2xl rounded-3xl overflow-hidden">
+                  <TimeBar
+                    endDateStr={targetDateStr}
+                    requiredHours={(() => {
+                      const XP_PER_HOUR = 300;
+                      const DEEP_FOCUS_BONUS = 500;
+                      const remainingXpAtStartOfDay = Math.max(
+                        0,
+                        (totalXpGoal || 50000) - ((xp || 0) - (xpGainedToday || 0)),
+                      );
+                      const remainingDaysForCalc = Math.max(1, morningDaysLeft);
+                      const dailyXpRequired = remainingXpAtStartOfDay / remainingDaysForCalc;
+                      const adjustedDailyXp = Math.max(0, dailyXpRequired - DEEP_FOCUS_BONUS);
+                      return adjustedDailyXp / XP_PER_HOUR;
+                    })()}
+                  />
+                </div>
+
+                <Button
+                  size="lg"
+                  onClick={handleDaysLeftAcknowledge}
+                  className="bg-[#c53737] hover:bg-[#b02f2f] text-white text-base md:text-lg px-10 md:px-14 py-5 md:py-6 h-auto rounded-2xl font-black tracking-widest shadow-lg hover:shadow-xl transition-all hover:scale-105 cursor-pointer uppercase mt-6 border border-[#f87171]/40"
+                >
+                  Continue →
+                </Button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+
+      {/* Morning Roadmap Stage 4A: Consistency Broken & Absence Reason Modal */}
+      {createPortal(
+        <AnimatePresence>
+          {morningStep === "absence" && (
+            <motion.div
+              key="morningAbsencePortal"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[9999] dark:bg-black/95 bg-slate-900/95 backdrop-blur-md overflow-y-auto custom-scrollbar flex flex-col p-4"
+            >
+              <div className="w-full flex justify-center p-4 py-8 m-auto relative">
+                <motion.div
+                  initial={{ scale: 0.85, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.85, opacity: 0 }}
+                  transition={{ type: "spring", bounce: 0.4 }}
+                  className="relative z-10 max-w-2xl w-full text-center flex flex-col items-center bg-slate-950 border border-rose-500/50 p-6 sm:p-10 rounded-3xl shadow-2xl"
+                >
+                  <div className="mb-6 relative">
+                    <div className="absolute inset-0 bg-rose-500/20 rounded-full blur-xl" />
+                    <Skull className="w-20 h-20 sm:w-28 sm:h-28 text-rose-500 drop-shadow-md relative z-10 animate-pulse" />
+                  </div>
+
+                  <h1 className="text-3xl sm:text-5xl font-black text-white mb-3 uppercase tracking-widest drop-shadow-md">
+                    Consistency Broken
+                  </h1>
+
+                  <div className="space-y-3 mb-6 max-w-xl mx-auto text-left">
+                    <p className="text-base sm:text-lg text-rose-400 font-mono uppercase tracking-wider text-center font-bold">
+                      Momentum lapsed or minimum target missed.
+                    </p>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed text-center">
+                      Guilt is temporary, but lost time is permanent. The JEE competition does not pause, but true discipline is built on how fast you bounce back. Own yesterday honestly, then move forward.
+                    </p>
+                  </div>
+
+                  {pendingMissedDays.length > 0 ? (
+                    <form onSubmit={handleAbsenceContinue} className="w-full space-y-3 mb-6 text-left">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Unrecorded Days Debrief ({pendingMissedDays.length} day{pendingMissedDays.length > 1 ? "s" : ""})
+                      </label>
+                      <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                        {pendingMissedDays.map((dateStr) => (
+                          <div key={dateStr} className="bg-slate-900 border border-rose-900/40 rounded-xl p-3">
+                            <span className="text-[11px] font-mono font-bold text-rose-400 block mb-1">
+                              {new Date(dateStr).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                            </span>
+                            <input
+                              type="text"
+                              value={missedDayInputs[dateStr] || ""}
+                              onChange={(e) => setMissedDayInputs((prev) => ({ ...prev, [dateStr]: e.target.value }))}
+                              placeholder="Reason for missing study..."
+                              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white text-xs outline-none focus:border-rose-500"
+                              required
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-xl uppercase tracking-wider text-sm transition-all cursor-pointer shadow-md"
+                      >
+                        Submit Debrief & View Yesterday's Analysis
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={handleAbsenceContinue}
+                      className="bg-transparent border-2 border-rose-500 text-rose-400 hover:bg-rose-500 hover:text-white px-8 py-3.5 rounded-xl font-bold text-sm tracking-widest uppercase transition-all duration-200 cursor-pointer shadow-md"
+                    >
+                      Acknowledge & View Yesterday's Analysis
+                    </button>
+                  )}
+                </motion.div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+
+      {/* Consistency Broken Modal (Standalone fallback when not in morning flow) */}
+      {createPortal(
+        <AnimatePresence>
+          {consistencyBroken && morningStep === null && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1445,7 +1739,7 @@ function AppContent() {
       {/* Rollover Modal */}
       {createPortal(
         <AnimatePresence>
-          {needsRollover && (!firebaseUser || isCloudSyncComplete) && !showNameModal && (
+          {(morningStep === "metrics" || morningStep === "analysis" || (needsRollover && morningStep === null)) && (!firebaseUser || isCloudSyncComplete) && !showNameModal && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1457,30 +1751,30 @@ function AppContent() {
                   initial={{ scale: 0.8, y: 50, opacity: 0 }}
                   animate={{ scale: 1, y: 0, opacity: 1 }}
                   transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
-                  className={`dark:bg-slate-900 bg-white border border-cyan-500/30 p-6 sm:p-8 rounded-3xl w-full text-center shadow-md relative overflow-hidden transition-all duration-300 ${
-                    rolloverStep === 2 ? "max-w-5xl" : "max-w-2xl"
+                  className={`dark:bg-slate-900 bg-white border border-cyan-500/30 p-4 sm:p-8 rounded-2xl sm:rounded-3xl w-full text-center shadow-md relative overflow-hidden transition-all duration-300 ${
+                    (morningStep === "analysis" || (morningStep === null && rolloverStep === 2)) ? "max-w-5xl" : "max-w-2xl"
                   }`}
                 >
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
 
-                  {rolloverStep === 1 ? (
+                  {(morningStep === "metrics" || (morningStep === null && rolloverStep === 1)) ? (
                     <>
-                      <h2 className="text-3xl font-black dark:text-white text-slate-900 mb-2 uppercase tracking-widest flex items-center justify-center gap-3">
-                        <RefreshCw className="w-8 h-8 dark:text-cyan-400 text-cyan-700 animate-spin-slow" />{" "}
+                      <h2 className="text-xl sm:text-3xl font-black dark:text-white text-slate-900 mb-1.5 sm:mb-2 uppercase tracking-widest flex items-center justify-center gap-2 sm:gap-3">
+                        <RefreshCw className="w-6 h-6 sm:w-8 sm:h-8 dark:text-cyan-400 text-cyan-700 animate-spin-slow shrink-0" />{" "}
                         New Day Protocol!
                       </h2>
-                      <p className="dark:text-cyan-400 text-cyan-700/80 mb-8 font-mono text-sm">
+                      <p className="dark:text-cyan-400 text-cyan-700/80 mb-5 sm:mb-8 font-mono text-xs sm:text-sm">
                         Initialize your systems for today. Let's record
                         yesterday's recovery stats.
                       </p>
 
                       <form
                         onSubmit={handleRolloverSubmit}
-                        className="space-y-6"
+                        className="space-y-4 sm:space-y-6"
                       >
-                        <div className="grid grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8">
                           <div>
-                            <label className="block dark:text-slate-400 text-slate-600 font-mono text-sm mb-2 text-left uppercase border-b dark:border-slate-700 border-slate-300 pb-2">
+                            <label className="block dark:text-slate-400 text-slate-600 font-mono text-xs sm:text-sm mb-1.5 sm:mb-2 text-left uppercase border-b dark:border-slate-700 border-slate-300 pb-1.5 sm:pb-2">
                               Sleep Time
                             </label>
                             <div className="flex gap-2">
@@ -1491,7 +1785,7 @@ function AppContent() {
                                 value={sleepInput || ""}
                                 onChange={(e) => setSleepInput(e.target.value)}
                                 placeholder="Hrs"
-                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-3 dark:text-white text-slate-900 text-center text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
+                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-2.5 sm:p-3 dark:text-white text-slate-900 text-center text-base sm:text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
                                 required
                               />
                               <input
@@ -1503,12 +1797,12 @@ function AppContent() {
                                   setSleepMinsInput(e.target.value)
                                 }
                                 placeholder="Mins"
-                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-3 dark:text-white text-slate-900 text-center text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
+                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-2.5 sm:p-3 dark:text-white text-slate-900 text-center text-base sm:text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
                               />
                             </div>
                           </div>
                           <div>
-                            <label className="block dark:text-slate-400 text-slate-600 font-mono text-sm mb-2 text-left uppercase border-b dark:border-slate-700 border-slate-300 pb-2">
+                            <label className="block dark:text-slate-400 text-slate-600 font-mono text-xs sm:text-sm mb-1.5 sm:mb-2 text-left uppercase border-b dark:border-slate-700 border-slate-300 pb-1.5 sm:pb-2">
                               Screen Time
                             </label>
                             <div className="flex gap-2">
@@ -1519,7 +1813,7 @@ function AppContent() {
                                 value={screenInput || ""}
                                 onChange={(e) => setScreenInput(e.target.value)}
                                 placeholder="Hrs"
-                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-3 dark:text-white text-slate-900 text-center text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
+                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-2.5 sm:p-3 dark:text-white text-slate-900 text-center text-base sm:text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
                                 required
                               />
                               <input
@@ -1531,106 +1825,148 @@ function AppContent() {
                                   setScreenMinsInput(e.target.value)
                                 }
                                 placeholder="Mins"
-                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-3 dark:text-white text-slate-900 text-center text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
+                                className="w-full dark:bg-black bg-white border dark:border-slate-700 border-slate-300 rounded-xl p-2.5 sm:p-3 dark:text-white text-slate-900 text-center text-base sm:text-lg focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all"
                               />
                             </div>
                           </div>
                         </div>
                         <button
                           type="submit"
-                          className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-lg py-4 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.02]"
+                          className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-sm sm:text-base py-3 sm:py-3.5 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.01] uppercase tracking-wider"
                         >
-                          CALCULATE YESTERDAY'S REPORT
+                          Calculate Yesterday's Report
                         </button>
                       </form>
                     </>
                   ) : (
                     <>
                       {(() => {
-                        const latestEntry =
-                          history.length > 0
-                            ? history[history.length - 1]
-                            : null;
-                        const latestWithFeedback = latestEntry;
-                        if (!latestEntry)
-                          return (
-                            <div className="dark:text-white text-slate-900">
-                              Loading data...
-                            </div>
-                          );
+                        const yesterdayObj = getLogicalDate();
+                        yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+                        const yesterdayKey = getStandardDateKey(yesterdayObj);
+                        const yesterdayStr = yesterdayObj.toDateString();
+
+                        let targetEntry = history.find(
+                          (h) => isSameLogicalDay(h.date, yesterdayKey) || new Date(h.date).toDateString() === yesterdayStr,
+                        );
+                        if (!targetEntry && history.length > 0) {
+                          targetEntry = history[history.length - 1];
+                        }
+
+                        const effectiveSleep = targetEntry?.sleepTime ?? (parseFloat(sleepInput) || 7);
+                        const effectiveScreen = targetEntry?.screenTime ?? (parseFloat(screenInput) || 2);
+                        const effectiveCompleted = targetEntry?.completedTasks || (todos || []).filter((t) => t.completed);
+                        const effectivePlanned = targetEntry?.plannedTasks || targetEntry?.completedTasks || todos || [];
+                        const effectiveXp = targetEntry?.xpEarned || xpGainedToday || 0;
+                        const effectiveHours = targetEntry?.hoursStudied || hoursStudiedToday || 0;
+
+                        // Guarantee deterministic AI Coach feedback is never blank or stuck loading
+                        let feedbackText = targetEntry?.aiFeedback;
+                        if (!feedbackText || feedbackText.trim().length === 0) {
+                          try {
+                            const canonicalReport = generateDeterministicCoachReport({
+                              hours: effectiveHours,
+                              sleep: effectiveSleep,
+                              screenTime: effectiveScreen,
+                              completedTasks: effectiveCompleted,
+                              plannedTasks: effectivePlanned,
+                              practiceSessions: practiceSessions || [],
+                              xpEarned: effectiveXp,
+                              targetXp: dailyTarget || 1000,
+                              level: level || 1,
+                              streakDays: streakDays || 0,
+                              history: history.slice(Math.max(0, history.length - 7)),
+                              syllabus,
+                              accuracy,
+                              loggedTasksToday,
+                            });
+                            feedbackText = `Raw Report: ${canonicalReport.rawReport}\n\nDiagnosis: ${canonicalReport.diagnosis}\n\nVerdict: ${canonicalReport.verdict}\n\nToday's Mission: ${canonicalReport.todayMission}\n\n${canonicalReport.closing}`;
+                          } catch (err) {
+                            feedbackText = `Diagnosis: Solid foundational study logged yesterday. Focus on active numerical problem sets.\n\nVerdict: Keep consistent pace.\n\nToday's Mission: Solve 30 questions under timed exam conditions.\n\nDiscipline today determines your JEE rank tomorrow.`;
+                          }
+                        }
+
+                        const displayEntry = {
+                          xpEarned: effectiveXp,
+                          completedTasks: effectiveCompleted,
+                          plannedTasks: effectivePlanned,
+                          sleepTime: effectiveSleep,
+                          screenTime: effectiveScreen,
+                          aiFeedback: feedbackText,
+                        };
 
                         return (
-                          <div className="text-left space-y-6">
-                            <header className="text-center mb-6">
-                              <h2 className="text-3xl font-black dark:text-white text-slate-900 mb-2 uppercase tracking-widest">
+                          <div className="text-left space-y-4 sm:space-y-6">
+                            <header className="text-center mb-3 sm:mb-6">
+                              <h2 className="text-xl sm:text-2xl font-black dark:text-white text-slate-900 mb-1 uppercase tracking-widest">
                                 Yesterday's Analysis
                               </h2>
-                              <p className="dark:text-cyan-400 text-cyan-700/80 font-mono text-sm mb-4">
+                              <p className="dark:text-cyan-400 text-cyan-700/80 font-mono text-xs sm:text-sm mb-3 sm:mb-4">
                                 AI Coach Evaluation
                               </p>
                             </header>
 
                             {/* Stats Grid */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                              <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 mb-4 sm:mb-6">
+                              <div className="dark:bg-black bg-white p-2.5 sm:p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
+                                <span className="text-[10px] sm:text-xs dark:text-slate-500 text-slate-600 uppercase block mb-0.5 sm:mb-1 font-mono tracking-wider">
                                   XP Earned
                                 </span>
-                                <span className="text-xl font-bold dark:text-cyan-400 text-cyan-700">
-                                  +{latestEntry.xpEarned} XP
+                                <span className="text-base sm:text-xl font-bold dark:text-cyan-400 text-cyan-700">
+                                  +{displayEntry.xpEarned} XP
                                 </span>
                               </div>
-                              <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
+                              <div className="dark:bg-black bg-white p-2.5 sm:p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
+                                <span className="text-[10px] sm:text-xs dark:text-slate-500 text-slate-600 uppercase block mb-0.5 sm:mb-1 font-mono tracking-wider">
                                   Tasks Done
                                 </span>
-                                <span className="text-xl font-bold dark:text-emerald-400 text-emerald-700">
-                                  {latestEntry.completedTasks.length} / {Math.max(latestEntry.completedTasks.length, (latestEntry.plannedTasks || []).length || latestEntry.completedTasks.length)}
+                                <span className="text-base sm:text-xl font-bold dark:text-emerald-400 text-emerald-700">
+                                  {displayEntry.completedTasks.length} / {Math.max(displayEntry.completedTasks.length, (displayEntry.plannedTasks || []).length || displayEntry.completedTasks.length)}
                                 </span>
                               </div>
-                              <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
+                              <div className="dark:bg-black bg-white p-2.5 sm:p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
+                                <span className="text-[10px] sm:text-xs dark:text-slate-500 text-slate-600 uppercase block mb-0.5 sm:mb-1 font-mono tracking-wider">
                                   Sleep
                                 </span>
-                                <span className="text-xl font-bold dark:text-blue-400 text-blue-700">
-                                  {Math.floor(latestEntry.sleepTime || 0)}h {Math.round(((latestEntry.sleepTime || 0) % 1) * 60)}m
+                                <span className="text-base sm:text-xl font-bold dark:text-blue-400 text-blue-700">
+                                  {Math.floor(displayEntry.sleepTime || 0)}h {Math.round(((displayEntry.sleepTime || 0) % 1) * 60)}m
                                 </span>
                               </div>
-                              <div className="dark:bg-black bg-white p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
-                                <span className="text-xs dark:text-slate-500 text-slate-600 uppercase block mb-1 font-mono tracking-wider">
+                              <div className="dark:bg-black bg-white p-2.5 sm:p-4 rounded-xl border dark:border-slate-800 border-slate-200 text-center">
+                                <span className="text-[10px] sm:text-xs dark:text-slate-500 text-slate-600 uppercase block mb-0.5 sm:mb-1 font-mono tracking-wider">
                                   Screen
                                 </span>
-                                <span className="text-xl font-bold dark:text-rose-400 text-rose-700">
-                                  {Math.floor(latestEntry.screenTime || 0)}h {Math.round(((latestEntry.screenTime || 0) % 1) * 60)}m
+                                <span className="text-base sm:text-xl font-bold dark:text-rose-400 text-rose-700">
+                                  {Math.floor(displayEntry.screenTime || 0)}h {Math.round(((displayEntry.screenTime || 0) % 1) * 60)}m
                                 </span>
                               </div>
                             </div>
 
                             {/* Objectives Logged */}
                             {(() => {
-                              const completedIds = new Set((latestEntry.completedTasks || []).map((t: any) => String(t.id || t.text)));
-                              const incompletePlanned = (latestEntry.plannedTasks || []).filter(
+                              const completedIds = new Set((displayEntry.completedTasks || []).map((t: any) => String(t.id || t.text)));
+                              const incompletePlanned = (displayEntry.plannedTasks || []).filter(
                                 (t: any) => !completedIds.has(String(t.id || t.text)) && !t.completed
                               );
-                              const totalCount = (latestEntry.completedTasks || []).length + incompletePlanned.length;
+                              const totalCount = (displayEntry.completedTasks || []).length + incompletePlanned.length;
                               if (totalCount === 0) return null;
 
                               return (
-                                <div className="mb-6">
-                                  <h3 className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-widest mb-3 flex items-center justify-between">
+                                <div className="mb-4 sm:mb-6">
+                                  <h3 className="text-[11px] sm:text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-widest mb-2 sm:mb-3 flex items-center justify-between">
                                     <span>OBJECTIVES LOGGED ({totalCount})</span>
                                   </h3>
-                                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
-                                    {latestEntry.completedTasks.map((t, idx) => (
+                                  <div className="space-y-1.5 sm:space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {displayEntry.completedTasks.map((t, idx) => (
                                       <div
                                         key={t.id || `t-c-${idx}`}
-                                        className="flex items-center gap-3 p-3 dark:bg-black bg-white border dark:border-slate-800 border-slate-200 rounded-xl"
+                                        className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 dark:bg-black bg-white border dark:border-slate-800 border-slate-200 rounded-xl"
                                       >
-                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                                        <span className="dark:text-slate-200 text-slate-900 text-xs sm:text-sm flex-1 font-medium">
+                                        <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                        <span className="dark:text-slate-200 text-slate-900 text-xs sm:text-sm flex-1 font-medium truncate">
                                           {t.text}
                                         </span>
-                                        <span className="dark:text-cyan-400 text-cyan-700 text-xs font-mono font-bold">
+                                        <span className="dark:text-cyan-400 text-cyan-700 text-xs font-mono font-bold shrink-0">
                                           +{t.xpReward} XP
                                         </span>
                                       </div>
@@ -1638,13 +1974,13 @@ function AppContent() {
                                     {incompletePlanned.map((t: any, idx: number) => (
                                       <div
                                         key={t.id || `t-inc-${idx}`}
-                                        className="flex items-center gap-3 p-3 dark:bg-rose-950/20 bg-rose-50 border dark:border-rose-900/40 border-rose-200 rounded-xl"
+                                        className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 dark:bg-rose-950/20 bg-rose-50 border dark:border-rose-900/40 border-rose-200 rounded-xl"
                                       >
-                                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-                                        <span className="dark:text-rose-200 text-rose-900 text-xs sm:text-sm flex-1 font-medium">
+                                        <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-rose-500 shrink-0" />
+                                        <span className="dark:text-rose-200 text-rose-900 text-xs sm:text-sm flex-1 font-medium truncate">
                                           {t.text} <span className="opacity-75 text-[10px] font-mono uppercase tracking-wider ml-1">(Incomplete)</span>
                                         </span>
-                                        <span className="dark:text-rose-400 text-rose-700 text-xs font-mono font-bold">
+                                        <span className="dark:text-rose-400 text-rose-700 text-xs font-mono font-bold shrink-0">
                                           0 XP
                                         </span>
                                       </div>
@@ -1655,48 +1991,42 @@ function AppContent() {
                             })()}
 
                             {/* AI Coach Assessment - Single Card matching screenshot */}
-                            <div className="bg-cyan-950/20 border border-cyan-800/50 p-5 rounded-2xl mt-4 text-left">
-                              <h3 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-4 uppercase text-sm tracking-wider">
-                                <BrainCircuit className="w-5 h-5" /> AI Coach Assessment
+                            <div className="bg-cyan-950/20 border border-cyan-800/50 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl mt-3 sm:mt-4 text-left">
+                              <h3 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 sm:mb-4 uppercase text-xs sm:text-sm tracking-wider">
+                                <BrainCircuit className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> AI Coach Assessment
                               </h3>
-                              <div className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed space-y-3 font-normal">
-                                {latestWithFeedback.aiFeedback ? (
-                                  latestWithFeedback.aiFeedback.split("\n\n").map((paragraph: string, idx: number, arr: string[]) => {
-                                    const match = paragraph.match(/^(Raw Report|Diagnosis|Verdict|Today's Mission|Closing):\s*([\s\S]*)$/i);
-                                    if (match) {
-                                      return (
-                                        <p key={`idx-${idx}`} className="leading-relaxed">
-                                          <span className="font-bold dark:text-white text-slate-900">{match[1]}:</span>{" "}
-                                          <span>{match[2]}</span>
-                                        </p>
-                                      );
-                                    }
-                                    const isClosing = idx === arr.length - 1;
+                              <div className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed space-y-2 sm:space-y-3 font-normal">
+                                {displayEntry.aiFeedback.split("\n\n").map((paragraph: string, idx: number, arr: string[]) => {
+                                  const match = paragraph.match(/^(Raw Report|Diagnosis|Verdict|Today's Mission|Closing):\s*([\s\S]*)$/i);
+                                  if (match) {
                                     return (
-                                      <p
-                                        key={`idx-${idx}`}
-                                        className={
-                                          isClosing
-                                            ? "pt-2 font-medium dark:text-slate-200 text-slate-800 italic border-t dark:border-slate-800/80 border-slate-200 mt-2"
-                                            : "leading-relaxed"
-                                        }
-                                      >
-                                        {paragraph}
+                                      <p key={`idx-${idx}`} className="leading-relaxed">
+                                        <span className="font-bold dark:text-white text-slate-900">{match[1]}:</span>{" "}
+                                        <span>{match[2]}</span>
                                       </p>
                                     );
-                                  })
-                                ) : (
-                                  <div className="animate-pulse">
-                                    <p>Coach is analyzing yesterday's performance...</p>
-                                  </div>
-                                )}
+                                  }
+                                  const isClosing = idx === arr.length - 1;
+                                  return (
+                                    <p
+                                      key={`idx-${idx}`}
+                                      className={
+                                        isClosing
+                                          ? "pt-2 font-medium dark:text-slate-200 text-slate-800 italic border-t dark:border-slate-800/80 border-slate-200 mt-2"
+                                          : "leading-relaxed"
+                                      }
+                                    >
+                                      {paragraph}
+                                    </p>
+                                  );
+                                })}
                               </div>
                             </div>
                             <button
-                              onClick={closeRollover}
-                              className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-lg py-4 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.02] uppercase tracking-widest mt-6"
+                              onClick={morningStep ? handleCompleteMorningFlow : closeRollover}
+                              className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm sm:text-base py-3 sm:py-3.5 rounded-xl shadow-md hover:shadow-md transition-all hover:scale-[1.01] uppercase tracking-widest mt-4 sm:mt-6 cursor-pointer"
                             >
-                              Init Day Protocol
+                              Init Day Protocol & Enter Command Center
                             </button>
                           </div>
                         );
@@ -1714,7 +2044,7 @@ function AppContent() {
       {/* Missed Days Modal */}
       {createPortal(
         <AnimatePresence>
-          {pendingMissedDays.length > 0 && !needsRollover && (!firebaseUser || isCloudSyncComplete) && !showNameModal && (
+          {pendingMissedDays.length > 0 && !needsRollover && morningStep === null && (!firebaseUser || isCloudSyncComplete) && !showNameModal && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -2349,18 +2679,18 @@ function AppContent() {
                           req: 1,
                         },
                         {
+                          key: "A",
+                          label: "Analytics",
+                          desc: "XP charts & reports",
+                          icon: LineChart,
+                          req: 1,
+                        },
+                        {
                           key: "H",
                           label: "History",
                           desc: "Study archives & logs",
                           icon: RefreshCw,
                           req: 1,
-                        },
-                        {
-                          key: "A",
-                          label: "Analytics",
-                          desc: "XP charts & reports",
-                          icon: LineChart,
-                          req: 6,
                         },
                         {
                           key: "M",

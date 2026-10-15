@@ -279,83 +279,118 @@
     scrollbar-width: none !important;
   }
 
-  /* Premium Icon Vector Glows */
+  /* Premium Icon Vector Glows - Natural, Soft Diffusion with Vibrant Saturation */
   .icon-glow-cyan {
-    filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.75)) drop-shadow(0 0 2px rgba(34, 211, 238, 0.5));
+    filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.65)) drop-shadow(0 0 14px rgba(6, 182, 212, 0.35));
+    transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;
   }
   .icon-glow-purple {
-    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.75)) drop-shadow(0 0 2px rgba(168, 85, 247, 0.5));
+    filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.65)) drop-shadow(0 0 14px rgba(147, 51, 234, 0.35));
+    transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;
   }
   .icon-glow-yellow {
-    filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.85)) drop-shadow(0 0 2px rgba(234, 179, 8, 0.6));
+    filter: drop-shadow(0 0 6px rgba(234, 179, 8, 0.7)) drop-shadow(0 0 14px rgba(202, 138, 4, 0.35));
+    transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;
   }
   .icon-glow-amber {
-    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.75)) drop-shadow(0 0 2px rgba(245, 158, 11, 0.5));
+    filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.65)) drop-shadow(0 0 14px rgba(217, 119, 6, 0.35));
+    transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;
   }
   .icon-glow-blue {
-    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.75)) drop-shadow(0 0 2px rgba(59, 130, 246, 0.5));
+    filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.65)) drop-shadow(0 0 14px rgba(37, 99, 235, 0.35));
+    transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;
   }
   .icon-glow-rose {
-    filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.8)) drop-shadow(0 0 2px rgba(244, 63, 94, 0.55));
+    filter: drop-shadow(0 0 6px rgba(244, 63, 94, 0.7)) drop-shadow(0 0 14px rgba(225, 29, 72, 0.35));
+    transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;
   }
   .icon-glow-emerald {
-    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.75)) drop-shadow(0 0 2px rgba(16, 185, 129, 0.5));
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.65)) drop-shadow(0 0 14px rgba(5, 150, 105, 0.35));
+    transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s ease;
   }
 
-  /* Disable glows in dark mode by default */
-  .dark .icon-glow-cyan,
-  .dark .icon-glow-purple,
-  .dark .icon-glow-yellow,
-  .dark .icon-glow-amber,
-  .dark .icon-glow-blue,
-  .dark .icon-glow-rose,
+  /* Dark mode natural ambient backlight */
+  .dark .icon-glow-cyan {
+    filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.75)) drop-shadow(0 0 16px rgba(6, 182, 212, 0.45));
+  }
+  .dark .icon-glow-purple {
+    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.75)) drop-shadow(0 0 16px rgba(147, 51, 234, 0.45));
+  }
+  .dark .icon-glow-yellow {
+    filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.8)) drop-shadow(0 0 16px rgba(202, 138, 4, 0.45));
+  }
+  .dark .icon-glow-amber {
+    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.75)) drop-shadow(0 0 16px rgba(217, 119, 6, 0.45));
+  }
+  .dark .icon-glow-blue {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.75)) drop-shadow(0 0 16px rgba(37, 99, 235, 0.45));
+  }
+  .dark .icon-glow-rose {
+    filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.8)) drop-shadow(0 0 16px rgba(225, 29, 72, 0.45));
+  }
   .dark .icon-glow-emerald {
-    filter: none;
-    transition: filter 0.3s ease, transform 0.3s ease;
+    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.75)) drop-shadow(0 0 16px rgba(5, 150, 105, 0.45));
   }
 
-  /* Robust and powerful glows on hover / parent-hover for both light and dark modes */
+  /* Soft, vibrant hover escalation */
   .icon-glow-cyan:hover,
   .group:hover .icon-glow-cyan,
   .card:hover .icon-glow-cyan,
   button:hover .icon-glow-cyan {
-    filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.95)) drop-shadow(0 0 4px rgba(34, 211, 238, 0.7)) !important;
+    filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.9)) drop-shadow(0 0 22px rgba(6, 182, 212, 0.6)) !important;
   }
   .icon-glow-purple:hover,
   .group:hover .icon-glow-purple,
   .card:hover .icon-glow-purple,
   button:hover .icon-glow-purple {
-    filter: drop-shadow(0 0 14px rgba(168, 85, 247, 0.95)) drop-shadow(0 0 4px rgba(168, 85, 247, 0.7)) !important;
+    filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.9)) drop-shadow(0 0 22px rgba(147, 51, 234, 0.6)) !important;
   }
   .icon-glow-yellow:hover,
   .group:hover .icon-glow-yellow,
   .card:hover .icon-glow-yellow,
   button:hover .icon-glow-yellow {
-    filter: drop-shadow(0 0 16px rgba(234, 179, 8, 0.95)) drop-shadow(0 0 4px rgba(234, 179, 8, 0.7)) !important;
+    filter: drop-shadow(0 0 12px rgba(234, 179, 8, 0.95)) drop-shadow(0 0 24px rgba(202, 138, 4, 0.6)) !important;
   }
   .icon-glow-amber:hover,
   .group:hover .icon-glow-amber,
   .card:hover .icon-glow-amber,
   button:hover .icon-glow-amber {
-    filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.95)) drop-shadow(0 0 4px rgba(245, 158, 11, 0.7)) !important;
+    filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.9)) drop-shadow(0 0 22px rgba(217, 119, 6, 0.6)) !important;
   }
   .icon-glow-blue:hover,
   .group:hover .icon-glow-blue,
   .card:hover .icon-glow-blue,
   button:hover .icon-glow-blue {
-    filter: drop-shadow(0 0 14px rgba(59, 130, 246, 0.95)) drop-shadow(0 0 4px rgba(59, 130, 246, 0.7)) !important;
+    filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.9)) drop-shadow(0 0 22px rgba(37, 99, 235, 0.6)) !important;
   }
   .icon-glow-rose:hover,
   .group:hover .icon-glow-rose,
   .card:hover .icon-glow-rose,
   button:hover .icon-glow-rose {
-    filter: drop-shadow(0 0 14px rgba(244, 63, 94, 0.95)) drop-shadow(0 0 4px rgba(244, 63, 94, 0.7)) !important;
+    filter: drop-shadow(0 0 10px rgba(244, 63, 94, 0.9)) drop-shadow(0 0 22px rgba(225, 29, 72, 0.6)) !important;
   }
   .icon-glow-emerald:hover,
   .group:hover .icon-glow-emerald,
   .card:hover .icon-glow-emerald,
   button:hover .icon-glow-emerald {
-    filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.95)) drop-shadow(0 0 4px rgba(16, 185, 129, 0.7)) !important;
+    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.9)) drop-shadow(0 0 22px rgba(5, 150, 105, 0.6)) !important;
+  }
+
+  /* Ambient Card Glow Utilities - Natural neutral soft aura */
+  .glow-card-cyan {
+    box-shadow: 0 0 18px -2px rgba(34, 211, 238, 0.2), inset 0 0 12px -2px rgba(34, 211, 238, 0.08);
+  }
+  .glow-card-purple {
+    box-shadow: 0 0 18px -2px rgba(168, 85, 247, 0.2), inset 0 0 12px -2px rgba(168, 85, 247, 0.08);
+  }
+  .glow-card-amber {
+    box-shadow: 0 0 18px -2px rgba(245, 158, 11, 0.2), inset 0 0 12px -2px rgba(245, 158, 11, 0.08);
+  }
+  .glow-card-red {
+    box-shadow: 0 0 20px -2px rgba(239, 68, 68, 0.24), inset 0 0 12px -2px rgba(239, 68, 68, 0.1);
+  }
+  .glow-card-emerald {
+    box-shadow: 0 0 18px -2px rgba(16, 185, 129, 0.2), inset 0 0 12px -2px rgba(16, 185, 129, 0.08);
   }
 }
 .is-dragging {

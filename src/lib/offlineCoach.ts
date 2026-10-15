@@ -29,26 +29,56 @@ export async function getAICoachFeedback(metrics: {
 }
 
 export async function getDynamicInsight(metrics: {
-  hoursToday: number;
-  streak: number;
-  questionsSolved: number;
-  target: number;
-  accuracy: number;
-  pendingTasksCount: number;
-  recentTaskTypes: string;
+  hoursToday?: number;
+  streak?: number;
+  questionsSolved?: number;
+  target?: number;
+  accuracy?: number;
+  pendingTasksCount?: number;
+  recentTaskTypes?: string;
+  sleep?: number;
+  screenTime?: number;
+  history?: any[];
+  yesterdayStats?: {
+    hours?: number;
+    sleep?: number;
+    screenTime?: number;
+    completedTasksCount?: number;
+    totalPlannedCount?: number;
+    questions?: number;
+    accuracy?: number;
+    dateStr?: string;
+    feedbackText?: string;
+    xpEarned?: number;
+  };
 }): Promise<string> {
-  // Instantly generate deterministic live status lock
+  // Instantly generate deterministic live status lock grounded in yesterday's telemetry
   return generateDeterministicDynamicInsight(metrics);
 }
 
 export function getStaticDynamicInsight(metrics: {
-  hoursToday: number;
-  streak: number;
-  questionsSolved: number;
-  target: number;
-  accuracy: number;
-  pendingTasksCount: number;
-  recentTaskTypes: string;
+  hoursToday?: number;
+  streak?: number;
+  questionsSolved?: number;
+  target?: number;
+  accuracy?: number;
+  pendingTasksCount?: number;
+  recentTaskTypes?: string;
+  sleep?: number;
+  screenTime?: number;
+  history?: any[];
+  yesterdayStats?: {
+    hours?: number;
+    sleep?: number;
+    screenTime?: number;
+    completedTasksCount?: number;
+    totalPlannedCount?: number;
+    questions?: number;
+    accuracy?: number;
+    dateStr?: string;
+    feedbackText?: string;
+    xpEarned?: number;
+  };
 }): string {
   return generateDeterministicDynamicInsight(metrics);
 }

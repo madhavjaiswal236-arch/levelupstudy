@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to restore the classic Performance Insight dashboard section, remove the Full Briefing button, restore the exact single-card AI Coach Assessment layout from the reference screenshot, and ensure fresh daily data collection.",
-  "updatedAt": "2026-10-13T18:53:55.543465953Z",
+  "summary": "Implementation plan for the Daily First-Open Roadmap (4-Screen Morning Routine):\n1. Welcome Screen\n2. Days Left Countdown Page\n3. Collecting Yesterday's Metrics (Sleep & Screen Time)\n4. Consistency Broken / Absence Debrief (if applicable) transitioning directly into Yesterday's Analysis with AI Coach evaluation.\nFixes the rollover modal premature closure bug and links all existing screens into a seamless sequential daily workflow.",
+  "updatedAt": "2026-10-15T00:13:17.876743794Z",
   "requestFeedback": true,
   "userFacing": true
 }

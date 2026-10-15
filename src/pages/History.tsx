@@ -2,7 +2,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { TiltWrapper } from '../components/TiltWrapper';
 import { useAppContext, PlayHistoryEntry, Todo, getLogicalDate, getStandardDateKey, isSameLogicalDay } from '../context/AppContext';
-import { getXpForLevel, getLevelProgress } from '@/lib/utils';
+import { getXpForLevel, getLevelProgress, getLocalDateString } from '@/lib/utils';
+import { generateDeterministicCoachReport } from '@/lib/coach/engine';
 import { Calendar, Clock, Target, Zap, CheckCircle2, ChevronRight, Monitor, Activity, TrendingUp, Cpu, Award, ShieldAlert, Sparkles, Flame, Loader2, BrainCircuit } from 'lucide-react';
 import { TourStep, useTour } from '../components/TourGuide';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -110,192 +111,37 @@ const History = React.memo(function History() {
  const last3Days = history.slice(-3);
  const needsRecovery = last3Days.length === 3 && last3Days.every(d => d.hoursStudied < 3);
 
- // Behavior Pattern Detection
-  const getInsights = () => {
-    if (last10Days.length < 3) {
-      return [{
-        title: "Data Collection Phase",
-        metric: "Insufficient Data",
-        description: "Log at least 3 days of combat history to unlock the neural pattern matrix.",
-        type: "neutral"
-      }];
-    }
-    const insights = [];
-    const avgSleep = last10Days.reduce((acc, d) => acc + d.sleepTime, 0) / last10Days.length;
-    const avgHours = last10Days.reduce((acc, d) => acc + d.hoursStudied, 0) / last10Days.length;
-    const daysUnder6hSleep = last10Days.filter(d => d.sleepTime < 6);
-    if (avgSleep < 6) {
-      const hoursWhenSleepDeprived = daysUnder6hSleep.reduce((acc, d) => acc + d.hoursStudied, 0) / (daysUnder6hSleep.length || 1);
-      insights.push({
-        title: "Sleep Debt Bottleneck",
-        metric: `${avgSleep.toFixed(1)}h Avg Sleep`,
-        description: `Severe sleep deprivation is bleeding your output. On low-sleep days, your average output drops to ${hoursWhenSleepDeprived.toFixed(1)}h.`,
-        type: "danger"
-      });
-    }
-    const daysMap = { "Monday": 0, "Tuesday": 0, "Wednesday": 0, "Thursday": 0, "Friday": 0, "Saturday": 0, "Sunday": 0 };
-    const daysCount = { "Monday": 0, "Tuesday": 0, "Wednesday": 0, "Thursday": 0, "Friday": 0, "Saturday": 0, "Sunday": 0 };
-    last10Days.forEach(d => {
-      const dayName = new Date(d.date).toLocaleDateString("en-US", { weekday: "long" }) as keyof typeof daysMap;
-      if (daysMap[dayName] !== undefined) {
-        daysMap[dayName] += d.hoursStudied;
-        daysCount[dayName] += 1;
+  // Deterministic feedback resolver to ensure real coach assessment is always available
+  const getResolvedCoachFeedback = (entry: PlayHistoryEntry | null): string => {
+    if (!entry) return "";
+    let fb = entry.aiFeedback || "";
+    const isPlaceholder =
+      !fb ||
+      fb.trim().length === 0 ||
+      /generating/i.test(fb) ||
+      fb.trim() === "Generating neural feedback...";
+
+    if (isPlaceholder) {
+      try {
+        const rawDate = typeof entry?.date === 'string' ? entry.date : '';
+        const safeDate = rawDate.includes('T') ? rawDate.split('T')[0] : (rawDate || getLocalDateString());
+        const synth = generateDeterministicCoachReport({
+          date: safeDate,
+          hours: entry.hoursStudied || 0,
+          sleep: entry.sleepTime || 6.0,
+          screenTime: entry.screenTime || 2.0,
+          history: history,
+          plannedTasks: entry.plannedTasks || [],
+          practiceSessions: practiceSessions || [],
+          streakDays: streakDays || 1,
+        });
+        fb = `Raw Report: ${synth.rawReport}\n\nDiagnosis: ${synth.diagnosis}\n\nVerdict: ${synth.verdict}\n\nToday's Mission: ${synth.todayMission}\n\n${synth.closing}`;
+      } catch {
+        fb = "";
       }
-    });
-    let bestDay = "Monday", worstDay = "Monday";
-    let bestAvg = -1, worstAvg = 999;
-    Object.keys(daysMap).forEach(day => {
-      const db = day as keyof typeof daysMap;
-      if (daysCount[db] > 0) {
-        const avg = daysMap[db] / daysCount[db];
-        if (avg > bestAvg) { bestAvg = avg; bestDay = db; }
-        if (avg < worstAvg) { worstAvg = avg; worstDay = db; }
-      }
-    });
-    if (bestAvg > avgHours + 1 && bestAvg > 4) {
-      insights.push({
-        title: "Peak Momentum",
-        metric: `${bestDay}s`,
-        description: `You are consistently pulling your highest output (${bestAvg.toFixed(1)}h) on ${bestDay}s. Capitalize on this by scheduling your hardest subjects here.`,
-        type: "positive"
-      });
     }
-    if (worstAvg < avgHours - 1 && worstAvg < 3 && daysCount[worstDay as keyof typeof daysCount] > 1) {
-      insights.push({
-        title: "Vulnerability Window",
-        metric: `${worstDay}s`,
-        description: `Your execution collapses on ${worstDay}s (Avg: ${worstAvg.toFixed(1)}h). Pre-plan a lighter, high-success-rate schedule to break the friction.`,
-        type: "warning"
-      });
-    }
-    const zeroDays = last10Days.filter(d => d.hoursStudied === 0).length;
-    if (zeroDays > 0) {
-      insights.push({
-        title: "Zero-Day Bleed",
-        metric: `${zeroDays} Missed`,
-        description: `You had ${zeroDays} zero-output days recently. A 0h day kills compounding gains. Lower the bar, do 1h, but never zero.`,
-        type: "danger"
-      });
-    } else if (last10Days.length >= 7) {
-      insights.push({
-        title: "Unbreakable Chain",
-        metric: "No Zero Days",
-        description: `Zero missed days in the matrix. You have established a concrete baseline of consistency.`,
-        type: "positive"
-      });
-    }
-    const highScreenLowOutput = last10Days.filter(d => d.screenTime > 4 && d.hoursStudied < 3).length;
-    if (highScreenLowOutput >= 2) {
-      insights.push({
-        title: "Dopamine Leak",
-        metric: `${highScreenLowOutput} Drift Days`,
-        description: `High screen time is directly sabotaging your study hours. Leave the phone outside the room for the first 90-minute block.`,
-        type: "warning"
-      });
-    }
-
-    // Chronotype / Best Time of Day Analysis per Subject
-    const subjectTimeAnalysis: Record<string, Record<string, { totalXp: number, taskCount: number }>> = {};
-
-    last10Days.forEach(day => {
-      if (day.isMissed || !day.completedTasks) return;
-      day.completedTasks.forEach(task => {
-        if (!task.subject || !task.completed) return;
-        
-        let hour = -1;
-        if (task.startTime) {
-          if (task.startTime.includes('T')) {
-            hour = new Date(task.startTime).getHours();
-          } else if (task.startTime.includes(':')) {
-            hour = parseInt(task.startTime.split(':')[0], 10);
-          }
-        }
-        
-        if (hour === -1) return;
-
-        let timeOfDay = "Morning";
-        if (hour >= 5 && hour < 12) timeOfDay = "Morning";
-        else if (hour >= 12 && hour < 17) timeOfDay = "Afternoon";
-        else if (hour >= 17 && hour < 21) timeOfDay = "Evening";
-        else timeOfDay = "Night";
-
-        const sub = task.subject;
-        if (!subjectTimeAnalysis[sub]) {
-          subjectTimeAnalysis[sub] = {
-            "Morning": { totalXp: 0, taskCount: 0 },
-            "Afternoon": { totalXp: 0, taskCount: 0 },
-            "Evening": { totalXp: 0, taskCount: 0 },
-            "Night": { totalXp: 0, taskCount: 0 }
-          };
-        }
-
-        subjectTimeAnalysis[sub][timeOfDay].totalXp += task.xpReward || 0;
-        subjectTimeAnalysis[sub][timeOfDay].taskCount += 1;
-      });
-    });
-
-    const subjectRecommendations: string[] = [];
-    let bestSubjectName = "";
-    let bestTimeOfDayLabel = "";
-    let maxXpPerTask = 0;
-
-    Object.keys(subjectTimeAnalysis).forEach(sub => {
-      let bestTime = "";
-      let highestXpPerTask = 0;
-      let highestTotalXp = 0;
-      
-      Object.keys(subjectTimeAnalysis[sub]).forEach(time => {
-        const stats = subjectTimeAnalysis[sub][time];
-        if (stats.taskCount > 0) {
-          const xpPerTask = stats.totalXp / stats.taskCount;
-          if (xpPerTask > highestXpPerTask || (xpPerTask === highestXpPerTask && stats.totalXp > highestTotalXp)) {
-            highestXpPerTask = xpPerTask;
-            highestTotalXp = stats.totalXp;
-            bestTime = time;
-          }
-        }
-      });
-
-      if (bestTime && highestXpPerTask > 0) {
-        subjectRecommendations.push(
-          `${sub} is best studied in the ${bestTime} (avg. +${Math.round(highestXpPerTask)} XP/task)`
-        );
-        if (highestXpPerTask > maxXpPerTask) {
-          maxXpPerTask = highestXpPerTask;
-          bestSubjectName = sub;
-          bestTimeOfDayLabel = bestTime;
-        }
-      }
-    });
-
-    if (subjectRecommendations.length > 0) {
-      insights.push({
-        title: "Chronotype Peak Focus",
-        metric: `${bestTimeOfDayLabel} Peak`,
-        description: `Your 10-day completion patterns show subject-specific peaks: ${subjectRecommendations.join(", ")}. Aligning your heavy cognitive tasks with these windows will maximize your study flow and compound your XP gains.`,
-        type: "positive"
-      });
-    } else {
-      insights.push({
-        title: "Chronotype Calibration",
-        metric: "Awaiting Data",
-        description: "Assign subjects and start times to your scheduled calendar tasks. Once completed and logged, the system will pinpoint your peak focus times for each subject based on historical performance.",
-        type: "neutral"
-      });
-    }
-
-    if (insights.length === 0) {
-      insights.push({
-        title: "Stable Orbit",
-        metric: "Baseline Output",
-        description: `Your study patterns are stable but lack extreme high-leverage days. Consider pushing a single "Apex Day" this week.`,
-        type: "neutral"
-      });
-    }
-    return insights;
+    return fb;
   };
-
- const insights = getInsights();
 
  // Boss Day Logic (Every 7th day)
  const isBossDay = history.length > 0 && Math.floor((new Date().getTime() - new Date(history[0].date).getTime()) / (1000 * 60 * 60 * 24)) % 7 === 6;
@@ -526,13 +372,16 @@ const History = React.memo(function History() {
  ))}
  </div>
  </div>
-	{entry.aiFeedback && (
+	{(() => {
+		const resolvedFeedback = getResolvedCoachFeedback(entry);
+		if (!resolvedFeedback) return null;
+		return (
 		<div className="bg-cyan-950/20 border border-cyan-800/50 p-4 sm:p-5 rounded-2xl mt-4 text-left">
 			<h4 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 uppercase text-xs tracking-wider">
 				<BrainCircuit className="w-4 h-4" /> AI Coach Assessment
 			</h4>
 			<div className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed space-y-3 font-normal">
-				{entry.aiFeedback.split('\n\n').map((paragraph: string, idx: number, arr: string[]) => {
+				{resolvedFeedback.split('\n\n').map((paragraph: string, idx: number, arr: string[]) => {
 					const match = paragraph.match(/^(Raw Report|Diagnosis|Verdict|Today's Mission|Closing):\s*([\s\S]*)$/i);
 					if (match) {
 						return (
@@ -558,7 +407,8 @@ const History = React.memo(function History() {
 				})}
 			</div>
 		</div>
-	)}
+		);
+	})()}
  </CardContent>
  </Card>
  </TiltWrapper>
@@ -692,20 +542,24 @@ const History = React.memo(function History() {
  )}
  </div>
  </div>
- {entry.aiFeedback && (
- <div className="mt-4 pt-3 border-t dark:border-slate-800 border-slate-200/50">
- <span className="text-[10px] dark:text-indigo-400 text-indigo-600 uppercase font-mono block mb-2 flex items-center gap-1">
- <BrainCircuit className="w-3 h-3" /> Coach Verdict
- </span>
- <div className="space-y-2 dark:text-slate-400 text-slate-600 text-xs italic whitespace-pre-wrap">
- {entry.aiFeedback.split('\n\n').map((paragraph, idx, arr) => (
- <p key={`idx-${idx}`} className={idx === arr.length - 1 ? "font-bold dark:text-slate-300 text-slate-600 not-italic" : ""}>
- {paragraph}
- </p>
- ))}
- </div>
- </div>
- )}
+ {(() => {
+   const rf = getResolvedCoachFeedback(entry);
+   if (!rf) return null;
+   return (
+     <div className="mt-4 pt-3 border-t dark:border-slate-800 border-slate-200/50">
+       <span className="text-[10px] dark:text-indigo-400 text-indigo-600 uppercase font-mono block mb-2 flex items-center gap-1">
+         <BrainCircuit className="w-3 h-3" /> Coach Verdict
+       </span>
+       <div className="space-y-2 dark:text-slate-400 text-slate-600 text-xs italic whitespace-pre-wrap">
+         {rf.split('\n\n').map((paragraph, idx, arr) => (
+           <p key={`idx-${idx}`} className={idx === arr.length - 1 ? "font-bold dark:text-slate-300 text-slate-600 not-italic" : ""}>
+             {paragraph}
+           </p>
+         ))}
+       </div>
+     </div>
+   );
+ })()}
  </div>
  </motion.div>
  )}
@@ -734,38 +588,35 @@ const History = React.memo(function History() {
  </CardTitle>
  </CardHeader>
  <CardContent className="relative z-10 space-y-4">
- {latestWithFeedback ? (
- <div className="dark:bg-black bg-slate-50 border border-indigo-500/30 p-4 rounded-xl relative">
- {!latestWithFeedback.aiFeedback ? (
- <div className="flex items-center gap-3 dark:text-indigo-400 text-indigo-600">
- <Loader2 className="w-5 h-5 animate-spin" />
- <span className="text-sm font-mono animate-pulse">Generating neural feedback...</span>
- </div>
- ) : (
-  <div className="space-y-3 text-sm text-indigo-100 leading-relaxed font-normal">
-  {latestWithFeedback.aiFeedback.split('\n\n').map((paragraph: string, idx: number, arr: string[]) => {
-    const match = paragraph.match(/^(Raw Report|Diagnosis|Verdict|Today's Mission|Closing):\s*([\s\S]*)$/i);
-    if (match) {
-      return (
-        <p key={`idx-${idx}`} className="leading-relaxed">
-          <span className="font-bold text-white">{match[1]}:</span>{" "}
-          <span>{match[2]}</span>
-        </p>
-      );
-    }
-    const isClosing = idx === arr.length - 1;
-    return (
-      <p key={`idx-${idx}`} className={isClosing ? "pt-2 font-bold dark:text-white text-slate-900 italic border-t border-indigo-500/50 mt-2" : "leading-relaxed"}>
-        {paragraph}
-      </p>
-    );
-  })}
-  </div>
- )}
- </div>
- ) : (
- <p className="text-sm dark:text-slate-400 text-slate-600">Waiting for first day data...</p>
- )}
+ {(() => {
+   if (!latestWithFeedback) return <p className="text-sm dark:text-slate-400 text-slate-600">Waiting for first day data...</p>;
+   const feedbackText = getResolvedCoachFeedback(latestWithFeedback);
+   if (!feedbackText) return <p className="text-sm dark:text-slate-400 text-slate-600">Synthesizing cognitive assessment...</p>;
+
+   return (
+     <div className="dark:bg-black bg-slate-50 border border-indigo-500/30 p-4 rounded-xl relative">
+       <div className="space-y-3 text-sm text-indigo-100 leading-relaxed font-normal">
+         {feedbackText.split('\n\n').map((paragraph: string, idx: number, arr: string[]) => {
+           const match = paragraph.match(/^(Raw Report|Diagnosis|Verdict|Today's Mission|Closing):\s*([\s\S]*)$/i);
+           if (match) {
+             return (
+               <p key={`idx-${idx}`} className="leading-relaxed">
+                 <span className="font-bold text-white">{match[1]}:</span>{" "}
+                 <span>{match[2]}</span>
+               </p>
+             );
+           }
+           const isClosing = idx === arr.length - 1;
+           return (
+             <p key={`idx-${idx}`} className={isClosing ? "pt-2 font-bold dark:text-white text-slate-900 italic border-t border-indigo-500/50 mt-2" : "leading-relaxed"}>
+               {paragraph}
+             </p>
+           );
+         })}
+       </div>
+     </div>
+   );
+ })()}
 
  {needsRecovery && (
  <div className="bg-rose-950/40 border border-rose-500/50 p-4 rounded-xl flex gap-3 mt-4 group/recovery">
@@ -779,34 +630,6 @@ const History = React.memo(function History() {
  </div>
  )}
  </CardContent>
- </Card>
- </TiltWrapper>
- </motion.div>
-
- {/* Pattern Detection */}
- <motion.div variants={itemVariants}>
- <TiltWrapper tiltAmount={4}>
- <Card className="dark:bg-black bg-slate-50 border dark:border-slate-800 border-slate-200">
- <CardHeader>
- <CardTitle className="dark:text-cyan-400 text-cyan-700 uppercase tracking-widest text-sm flex items-center gap-2 group/matrix w-max">
- <motion.div whileHover={{ scale: 1.2, rotate: -15 }} className="relative">
- <Monitor className="w-4 h-4 group-hover/matrix:drop-shadow-md transition-all" />
- </motion.div> 10-Day Pattern Matrix
- </CardTitle>
- </CardHeader>
-    <CardContent>
-      <div className="grid grid-cols-1 gap-4">
-        {insights.map((insight: any, i) => (
-          <div key={`i-${i}`} className={`p-4 rounded-xl border relative overflow-hidden transition-all duration-300 hover:shadow-lg ${insight.type === "positive" ? "dark:bg-emerald-950/20 bg-emerald-50 dark:border-emerald-500/30 border-emerald-300 hover:border-emerald-500/50" : insight.type === "warning" ? "dark:bg-amber-950/20 bg-amber-50 dark:border-amber-500/30 border-amber-300 hover:border-amber-500/50" : insight.type === "danger" ? "dark:bg-rose-950/20 bg-rose-50 dark:border-rose-500/30 border-rose-300 hover:border-rose-500/50" : "dark:bg-slate-900/40 bg-slate-100 dark:border-slate-800 border-slate-300 hover:border-slate-500/50"}`}>
-            <div className="flex justify-between items-start mb-2">
-              <h4 className={`text-sm font-bold uppercase tracking-wider ${insight.type === "positive" ? "dark:text-emerald-400 text-emerald-700" : insight.type === "warning" ? "dark:text-amber-400 text-amber-700" : insight.type === "danger" ? "dark:text-rose-400 text-rose-700" : "dark:text-slate-400 text-slate-600"}`}>{insight.title}</h4>
-              <span className={`text-xs font-mono px-2 py-0.5 rounded-full border ${insight.type === "positive" ? "dark:border-emerald-500/30 border-emerald-400/50 dark:text-emerald-300 text-emerald-800 dark:bg-emerald-500/10 bg-emerald-500/20" : insight.type === "warning" ? "dark:border-amber-500/30 border-amber-400/50 dark:text-amber-300 text-amber-800 dark:bg-amber-500/10 bg-amber-500/20" : insight.type === "danger" ? "dark:border-rose-500/30 border-rose-400/50 dark:text-rose-300 text-rose-800 dark:bg-rose-500/10 bg-rose-500/20" : "dark:border-slate-700 border-slate-400/50 dark:text-slate-400 text-slate-700 dark:bg-slate-800/50 bg-slate-300/20"}`}>{insight.metric}</span>
-            </div>
-            <p className="text-sm dark:text-slate-300 text-slate-700 leading-relaxed">{insight.description}</p>
-          </div>
-        ))}
-      </div>
-    </CardContent>
  </Card>
  </TiltWrapper>
  </motion.div>
@@ -834,7 +657,7 @@ const History = React.memo(function History() {
  <motion.div whileHover={{ scale: 1.3, rotate: 15 }}><Flame className="w-3 h-3 group-hover/badge2:drop-shadow-md transition-all" /></motion.div> Apex Predator
  </div>
  )}
- {(latestEntry?.sleepTime ?? 8) < 6 && (latestEntry?.hoursStudied ?? 0) > 5 && (
+ {(latestEntry?.sleepTime ?? 6) < 6 && (latestEntry?.hoursStudied ?? 0) > 5 && (
  <div className="bg-purple-500/20 border border-purple-500/50 dark:text-purple-300 dark:text-purple-400 text-purple-700 text-xs px-3 py-1.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1.5 hover:scale-105 transition-transform cursor-default group/badge3">
  <motion.div whileHover={{ scale: 1.3, rotate: -15 }}><Activity className="w-3 h-3 group-hover/badge3:drop-shadow-md transition-all" /></motion.div> Late Night Grinder
  </div>

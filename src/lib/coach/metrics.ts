@@ -147,7 +147,7 @@ export function computeMetrics(data: NormalizedStudentData): DerivedMetrics {
     }
   }
 
-  const sleepDebtToday = Math.max(0, 7.5 - data.sleep);
+  const sleepDebtToday = Math.max(0, 6.0 - data.sleep);
   const screenDeviation = Math.max(0, data.screenTime - 3.5);
 
   return {
