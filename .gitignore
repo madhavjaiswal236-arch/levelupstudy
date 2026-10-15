@@ -11,4 +11,4 @@ coverage/
 *.cjs
 *.py
 android/app/google-services.json
-
+arcade_pass_codes.md

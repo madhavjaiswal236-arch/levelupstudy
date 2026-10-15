@@ -147,7 +147,7 @@ export const TEMPLATES: TemplatePool = {
       "VERDICT: PRACTICE IS THE NEXT REP. Attempt first, check second, analyse every mistake.",
     ],
     SUBJECT_AVOIDANCE: [
-      "VERDICT: THE WEAK SPOT NEEDS YOUR ATTENTION. Put ${neglectedSubject} first; don't wait for it to feel comfortable.",
+      "VERDICT: THE NEGLECTED TOPIC NEEDS YOUR ATTENTION. Put ${neglectedSubject} first; don't wait for it to feel comfortable.",
       "VERDICT: STOP LETTING DISCOMFORT WRITE THE TIMETABLE. Give ${neglectedSubject} a protected block tomorrow.",
     ],
     LOW_ACCURACY: [
@@ -191,6 +191,6 @@ export const TEMPLATES: TemplatePool = {
     "Mental toughness isn't pretending you're never tired or never frustrated. It's staying engaged with a difficult task, asking for help when you've made a real attempt, and returning after a setback without drama.",
     "Don't end tonight with another grand promise. Set out the book, choose the first question, decide the start time, and protect your sleep. Make tomorrow easier to begin and harder to derail.",
     "You don't need to feel fearless before you start. Start while the task is uncomfortable, work the problem honestly, and let confidence grow from evidence.",
-    "A bad day is data, not your identity. Take the lesson without carrying the shame. Tomorrow, make the first right decision early and build from there.",
+    "A bad day is data, not your identity. Take the lesson without carrying regret. Tomorrow, make the first right decision early and build from there.",
   ],
 };

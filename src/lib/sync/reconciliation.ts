@@ -40,20 +40,42 @@ export function mergeTaskArrays(
     const local = localMap.get(id);
     const cloud = cloudMap.get(id);
 
-    // If either side explicitly marked this task as deleted (tombstone), do not resurrect it
-    if (local?.isDeleted || cloud?.isDeleted || local?.deletedAt || cloud?.deletedAt) {
+    const isDeleted = Boolean(local?.isDeleted || cloud?.isDeleted);
+    const deletedAt = Math.max(local?.deletedAt || 0, cloud?.deletedAt || 0);
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+    if (isDeleted) {
+      // Retain tombstone in merged set so stale offline devices do not resurrect it
+      if (!deletedAt || Date.now() - deletedAt <= THIRTY_DAYS_MS) {
+        mergedMap.set(id, {
+          ...(cloud || {}),
+          ...(local || {}),
+          id,
+          isDeleted: true,
+          deletedAt: deletedAt || Date.now(),
+        } as any);
+      }
       continue;
     }
 
     if (local && cloud) {
+      const localUpdated = (local as any).updatedAt || (local as any).completedAt || 0;
+      const cloudUpdated = (cloud as any).updatedAt || (cloud as any).completedAt || 0;
+      const localIsNewer = localUpdated >= cloudUpdated;
+
       mergedMap.set(id, {
         ...cloud,
         ...local,
-        // CRITICAL DATA SAFETY:
-        // A task marked completed in EITHER local OR cloud remains completed
-        completed: Boolean(local.completed || cloud.completed),
-        homeworkDone: Boolean(local.homeworkDone || cloud.homeworkDone),
-        dppDone: Boolean(local.dppDone || cloud.dppDone),
+        // Completion reversibility based on newest mutation timestamp
+        completed: (localUpdated > 0 || cloudUpdated > 0)
+          ? (localIsNewer ? Boolean(local.completed) : Boolean(cloud.completed))
+          : Boolean(local.completed || cloud.completed),
+        homeworkDone: (localUpdated > 0 || cloudUpdated > 0)
+          ? (localIsNewer ? Boolean(local.homeworkDone) : Boolean(cloud.homeworkDone))
+          : Boolean(local.homeworkDone || cloud.homeworkDone),
+        dppDone: (localUpdated > 0 || cloudUpdated > 0)
+          ? (localIsNewer ? Boolean(local.dppDone) : Boolean(cloud.dppDone))
+          : Boolean(local.dppDone || cloud.dppDone),
         calendarSynced: Boolean(local.calendarSynced || cloud.calendarSynced),
         calendarEventId: local.calendarEventId || cloud.calendarEventId,
         calendarTaskId: local.calendarTaskId || cloud.calendarTaskId,
@@ -358,10 +380,13 @@ export function reconcileState(
     localState.questionsSolved || 0,
     cloudState.questionsSolved || 0
   );
-  const streakDays = Math.max(
-    localState.streakDays || 0,
-    cloudState.streakDays || 0
-  );
+  // Streak integrity: use the streak from the state with the most recent study activity / timestamp
+  const streakDays = localIsNewer
+    ? (localState.streakDays ?? cloudState.streakDays ?? 0)
+    : (cloudState.streakDays ?? localState.streakDays ?? 0);
+  const coins = localIsNewer
+    ? (localState.coins ?? cloudState.coins ?? 0)
+    : (cloudState.coins ?? localState.coins ?? 0);
   const totalSpentXp = Math.max(
     localState.totalSpentXp || 0,
     cloudState.totalSpentXp || 0
@@ -451,6 +476,7 @@ export function reconcileState(
     level,
     questionsSolved,
     streakDays,
+    coins,
     totalSpentXp,
     focusBadges,
     xpGainedToday,

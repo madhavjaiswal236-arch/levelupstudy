@@ -4,9 +4,15 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
       allow read, delete: if request.auth != null && request.auth.uid == userId;
-      allow create, update: if request.auth != null && request.auth.uid == userId
+      allow create: if request.auth != null && request.auth.uid == userId
         && request.resource.data.keys().size() <= 150
         && (!('xp' in request.resource.data) || request.resource.data.xp == null || (request.resource.data.xp is number && request.resource.data.xp >= 0 && request.resource.data.xp <= 10000000))
+        && (!('level' in request.resource.data) || request.resource.data.level == null || (request.resource.data.level is number && request.resource.data.level >= 0 && request.resource.data.level <= 200))
+        && (!('streakDays' in request.resource.data) || request.resource.data.streakDays == null || (request.resource.data.streakDays is number && request.resource.data.streakDays >= 0 && request.resource.data.streakDays <= 5000));
+
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.keys().size() <= 150
+        && (!('xp' in request.resource.data) || request.resource.data.xp == null || (request.resource.data.xp is number && request.resource.data.xp >= 0 && request.resource.data.xp <= 10000000 && (!('xp' in resource.data) || resource.data.xp == null || request.resource.data.xp - resource.data.xp <= 50000)))
         && (!('level' in request.resource.data) || request.resource.data.level == null || (request.resource.data.level is number && request.resource.data.level >= 0 && request.resource.data.level <= 200))
         && (!('streakDays' in request.resource.data) || request.resource.data.streakDays == null || (request.resource.data.streakDays is number && request.resource.data.streakDays >= 0 && request.resource.data.streakDays <= 5000));
 

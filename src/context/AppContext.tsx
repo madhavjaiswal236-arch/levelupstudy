@@ -789,13 +789,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Load state on mount with safety fallback timeout
+  const isStorageCorruptedRef = useRef<boolean>(false);
+
   useEffect(() => {
     let unmounted = false;
     const safetyTimeout = setTimeout(() => {
       if (!unmounted) {
         setIsLoaded(true);
       }
-    }, 1500);
+    }, 3000);
 
     const loadState = async () => {
       try {
@@ -941,6 +943,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         } catch (e) {
           console.error("Failed to parse local storage", e);
+          isStorageCorruptedRef.current = true;
+          if (saved) {
+            try {
+              localStorage.setItem(`${LOCAL_STORAGE_KEY}_CORRUPT_${Date.now()}`, saved);
+            } catch {}
+          }
+          // Attempt restore from backup
+          try {
+            const backupStr = typeof window !== "undefined" ? localStorage.getItem(`${LOCAL_STORAGE_KEY}_backup`) : null;
+            if (backupStr) {
+              const backupParsed = JSON.parse(backupStr);
+              setXp(backupParsed.xp || 0);
+              setLevel(backupParsed.level || 1);
+              setStreakDays(backupParsed.streakDays || 0);
+              if (backupParsed.todos) setTodos(backupParsed.todos);
+              if (backupParsed.history) setHistory(backupParsed.history);
+              isStorageCorruptedRef.current = false;
+            }
+          } catch {}
         }
       }
       } catch (err) {
@@ -961,7 +982,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Save state on change
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || isStorageCorruptedRef.current) return;
 
     const now = Date.now();
     if (isRemoteSyncingRef.current) {
@@ -1022,6 +1043,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
       } else {
         localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+        localStorage.setItem(`${LOCAL_STORAGE_KEY}_backup`, jsonString);
       }
     }, 100);
 
@@ -1583,7 +1605,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateStreak = useCallback((overrideSleep?: number, overrideScreen?: number) => {
     const todayObj = getLogicalDate();
     const today = getStandardDateKey(todayObj);
-    if (isSameLogicalDay(lastStudyDateRef.current, todayObj) && overrideSleep === undefined && overrideScreen === undefined) return; // Already studied today
+
+    if (isSameLogicalDay(lastStudyDateRef.current, todayObj)) {
+      // Already recorded for today. Do NOT re-increment streak or inflate daily target.
+      if (overrideSleep !== undefined || overrideScreen !== undefined) {
+        const yesterdayObj = getLogicalDate();
+        yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+        const yesterdayDateKey = getStandardDateKey(yesterdayObj);
+        setLifeMetrics((prev) => {
+          const dayNum = yesterdayObj.getDate();
+          return prev.map((m) =>
+            (m.day === dayNum || m.date === yesterdayDateKey)
+              ? { ...m, sleep: overrideSleep ?? m.sleep, screenTime: overrideScreen ?? m.screenTime, date: yesterdayDateKey }
+              : m,
+          );
+        });
+      }
+      return;
+    }
 
     const state = latestStateRef.current;
     if (lastStudyDateRef.current) {
@@ -1592,7 +1631,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       yesterday.setDate(yesterday.getDate() - 1);
 
       let newStreak = state.streakDays || 0;
-      if (lastDate.toDateString() === yesterday.toDateString()) {
+      if (isSameLogicalDay(lastStudyDateRef.current, yesterday)) {
         let currentTarget = state.dailyTarget || 100;
         if (state.class11EndDate) {
           const class11EndTimestamp = new Date(state.class11EndDate).getTime();
@@ -2028,18 +2067,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     difficultyTier?: 1 | 2 | 3,
     timed?: boolean,
   ) => {
-    if (attempted === 0 || chapters.length === 0) return;
-    updateStreak();
-    setQuestionsSolved((prev) => prev + attempted);
+    const validAttempted = Math.max(1, Math.floor(Math.abs(attempted || 0)));
+    const validCorrect = Math.max(0, Math.min(validAttempted, Math.floor(Math.abs(correct || 0))));
+    const validTime = Math.max(1, Math.min(1440, Math.floor(Math.abs(timeSpent || 0))));
 
-    const sessionAccuracy = Math.round((correct / attempted) * 100);
+    if (chapters.length === 0) return;
+    updateStreak();
+    setQuestionsSolved((prev) => prev + validAttempted);
+
+    const sessionAccuracy = Math.round((validCorrect / validAttempted) * 100);
     setAccuracy((prev) =>
       prev === 0
         ? sessionAccuracy
         : Math.round(prev * 0.8 + sessionAccuracy * 0.2),
     );
 
-    const minsPerQ = timeSpent / attempted;
+    const minsPerQ = validTime / validAttempted;
     const sessionSpeed = Math.max(
       0,
       Math.min(100, Math.round(100 - (minsPerQ - 1) * 25)),
@@ -2050,10 +2093,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const perChapAttempted = Math.max(
       1,
-      Math.floor(attempted / chapters.length),
+      Math.floor(validAttempted / chapters.length),
     );
-    const perChapCorrect = Math.max(0, Math.floor(correct / chapters.length));
-    const perChapTime = Math.max(1, Math.floor(timeSpent / chapters.length));
+    const perChapCorrect = Math.max(0, Math.min(perChapAttempted, Math.floor(validCorrect / chapters.length)));
+    const perChapTime = Math.max(1, Math.floor(validTime / chapters.length));
 
     const sessionDate = new Date().toISOString();
     // Update practice sessions

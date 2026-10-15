@@ -9,10 +9,52 @@ import { cn } from "../../lib/utils";
 
 const RADIUS = 2.0;
 
+const createFallbackMoonTexture = () => {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#888888";
+  ctx.fillRect(0, 0, 512, 256);
+
+  // Add random procedural craters
+  for (let i = 0; i < 200; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 256;
+    const r = Math.random() * 15 + 2;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(40, 40, 40, 0.4)";
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  return texture;
+};
+
 const RealisticMoon = ({ onClick }: { onClick?: () => void }) => {
   const meshRef = useRef<THREE.Mesh>(null);
+  const [textureError, setTextureError] = useState(false);
 
-  const colorMap = useTexture("https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg");
+  let colorMap: THREE.Texture | null = null;
+  try {
+    if (!textureError) {
+      colorMap = useTexture("https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg");
+    }
+  } catch (e) {
+    if (!textureError) setTextureError(true);
+  }
+
+  const fallbackMap = useMemo(() => createFallbackMoonTexture(), []);
+  const activeMap = colorMap || fallbackMap;
 
   useFrame((_, delta) => {
     if (meshRef.current) meshRef.current.rotation.y += delta * 0.12;
@@ -26,11 +68,11 @@ const RealisticMoon = ({ onClick }: { onClick?: () => void }) => {
       onClick={onClick}
       onPointerOver={() => { document.body.style.cursor = 'pointer'; }} 
       onPointerOut={() => { document.body.style.cursor = 'auto'; }}
-   >
+    >
       <sphereGeometry args={[RADIUS, 40, 40]} />
       <meshStandardMaterial 
-        map={colorMap} 
-        bumpMap={colorMap} 
+        map={activeMap || undefined} 
+        bumpMap={activeMap || undefined} 
         bumpScale={0.02} 
         roughness={0.8}
         metalness={0.1}
@@ -39,7 +81,7 @@ const RealisticMoon = ({ onClick }: { onClick?: () => void }) => {
   );
 };
 
-const particlesCount = 30000; 
+const particlesCount = 5000; 
 const [ringPositions, ringColors, ringRandoms] = (() => {
   const pos = new Float32Array(particlesCount * 3);
   const col = new Float32Array(particlesCount * 3);

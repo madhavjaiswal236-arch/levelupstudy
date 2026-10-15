@@ -72,11 +72,6 @@ import { NotificationToastContainer } from "./components/NotificationToastContai
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { googleSignIn } from "./lib/firebase";
 
-const LunarGravityCanvas = lazy(() =>
-  import("./components/ui/lunar-gravity-card").then((m) => ({
-    default: m.LunarGravityCanvas,
-  })),
-);
 const ShaderAnimation = lazy(() =>
   import("./components/ui/shader-animation").then((m) => ({
     default: m.ShaderAnimation,
@@ -192,6 +187,11 @@ function AppContent() {
           return;
         }
 
+        if (isMorningRoadmapActiveRef.current) {
+          // In morning roadmap flow: do not exit app
+          return;
+        }
+
         // 2. If on secondary tab, return to dashboard first
         setActiveTab((prev) => {
           if (prev !== "dashboard") {
@@ -203,7 +203,6 @@ function AppContent() {
               CapApp.exitApp();
             } else {
               lastBackPressRef.current = now;
-              // Notify user politely
               sendNotification("Press Back Again to Exit", {
                 body: "Tap back once more within 2 seconds to close LevelUp Study.",
                 silent: true,

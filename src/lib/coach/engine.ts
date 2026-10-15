@@ -234,13 +234,23 @@ export function generateDeterministicCoachReport(
 
   const canonicalReport = runCoach(adaptedInput, adaptedInput.today);
 
+  let rawReport = legacyReport.rawReport;
+  let verdict = legacyReport.verdict;
+  let todayMission = legacyReport.todayMission;
+
+  if (canonicalReport.meta?.recoveryOnly || canonicalReport.telemetry?.sleepTier === "RED") {
+    todayMission = `MISSION: ${canonicalReport.mission.title}. ${canonicalReport.mission.ifThen}`;
+    verdict = "VERDICT: CRITICAL RECOVERY PROTOCOL ACTIVE. Acute sleep deficit overrides standard study targets.";
+    rawReport = `Sleep deficit detected (${canonicalReport.telemetry?.sleepLastNight ?? 4}h sleep logged). All cognitive capacity throttled to protect neural consolidation.`;
+  }
+
   return {
-    rawReport: legacyReport.rawReport,
+    rawReport,
     diagnosis: legacyReport.diagnosis,
-    verdict: legacyReport.verdict,
-    todayMission: legacyReport.todayMission,
+    verdict,
+    todayMission,
     closing: legacyReport.closing,
-    fullFormattedText: `${legacyReport.rawReport}\n\n${legacyReport.diagnosis}\n\n${legacyReport.verdict}\n\n${legacyReport.todayMission}\n\n${legacyReport.closing}`,
+    fullFormattedText: `${rawReport}\n\n${legacyReport.diagnosis}\n\n${verdict}\n\n${todayMission}\n\n${legacyReport.closing}`,
     explanation: legacyReport.explanation,
     coachReport: canonicalReport,
   };

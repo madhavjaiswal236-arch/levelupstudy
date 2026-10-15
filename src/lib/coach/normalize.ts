@@ -137,7 +137,10 @@ export function normalizeInput(input: RawCoachInput): NormalizedStudentData {
   const sleep = sanitizeNum(input.sleep, 7, 0, 24);
   const screenTime = sanitizeNum(input.screenTime, 0, 0, 24);
 
-  const dateStr = input.date || new Date().toISOString();
+  const fallbackDate = (input.history && input.history.length > 0 && input.history[input.history.length - 1]?.date)
+    ? input.history[input.history.length - 1].date
+    : "2026-10-15T00:00:00.000Z";
+  const dateStr = input.date || fallbackDate;
   const targetDay = dateStr.slice(0, 10);
 
   const completedTasks = Array.isArray(input.completedTasks)
