@@ -72,16 +72,6 @@ import { NotificationToastContainer } from "./components/NotificationToastContai
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { googleSignIn } from "./lib/firebase";
 
-const ShaderAnimation = lazy(() =>
-  import("./components/ui/shader-animation").then((m) => ({
-    default: m.ShaderAnimation,
-  })),
-);
-const WebGLShader = lazy(() =>
-  import("./components/ui/web-gl-shader").then((m) => ({
-    default: m.WebGLShader,
-  })),
-);
 const LiquidButton = lazy(() =>
   import("./components/ui/liquid-glass-button").then((m) => ({
     default: m.LiquidButton,
@@ -1287,17 +1277,8 @@ function AppContent() {
       <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans select-none z-[10000]">
         {/* Background WebGL Shader Animation now rendered in front of the card */}
         <div
-          className="absolute inset-0 z-30 opacity-90 pointer-events-none mix-blend-screen"
-          style={{ mixBlendMode: "screen" }}
-        >
-          <ErrorBoundary>
-            <Suspense
-              fallback={<div className="absolute inset-0 bg-transparent" />}
-            >
-              <WebGLShader />
-            </Suspense>
-          </ErrorBoundary>
-        </div>
+          className="absolute inset-0 z-30 opacity-60 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-900/30 via-slate-950/80 to-black"
+        />
 
         {/* Ambient Overlay to darken background slightly and make text pop */}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/80 z-10 pointer-events-none" />

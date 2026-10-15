@@ -1,141 +1,58 @@
-# Daily First-Open Morning Roadmap & Yesterday's Analysis Flow
+# Comprehensive Audit Resolution & Remediation Plan
 
-A unified, 4-stage sequential morning protocol triggered on the first app launch of each day, connecting the Welcome Screen, the Target Countdown Page, Recovery Metrics Intake, and Consistency / Yesterday's AI Analysis.
-
----
-
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> The following architecture has been aligned based on your confirmed preferences:
-> - **Navigation Model**: Step-by-step modal sequence with explicit "Continue" / action buttons for predictable user agency.
-> - **Absence & Underperformance Flow**: If a day was missed or consistency broken, the user sees the **Absence Reason / Consistency Broken Debrief** first, followed by **Yesterday's Analysis** before entering the dashboard.
-> - **Days Left Screen**: Reuses the high-impact countdown screen with large tabular days remaining and pending backlog status.
-> - **Rollover Bug Fix**: Resolves the race condition where `needsRollover` was cleared immediately upon saving metrics, allowing Yesterday's Analysis to display reliably.
+This implementation plan resolves all newly identified regressions from commit `5e443f4` and completes all outstanding audit requirements in accordance with your preferences.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. Newly Introduced Defect Fixes
 
-When a JEE aspirant opens LevelUp Study for the first time each day, they need immediate orientation, urgency calibration, recovery logging, and objective coaching feedback. 
+### [NEW-01 | S0] Partial-Data-Loss in Backup Recovery Routine
+* **Target File**: `src/context/AppContext.tsx` (lines 953–964)
+* **Issue**: Corrupted storage recovery loaded backup JSON but only restored 5 fields (`xp`, `level`, `streakDays`, `todos`, `history`), dropping 30+ state slices (practice sessions, syllabus, habits, life metrics, goals) and immediately persisting the stripped state.
+* **Fix**: Replace partial state assignments with `applyStateSnapshot(backupParsed)` and set `latestStateRef.current = backupParsed`, matching `importLocalBackup`.
 
-Instead of disjointed popups appearing at different times or disappearing abruptly, this feature arranges the opening experience into a clear 4-step sequence:
-1. **Stage 1 (Welcome Screen)**: High-focus atmospheric briefing screen with one primary CTA to proceed.
-2. **Stage 2 (Days Left Page)**: The full countdown page showing exact days left until the target exam date, reinforcing daily focus and urgency.
-3. **Stage 3 (Metrics Collection)**: Clean intake for yesterday's sleep hours/minutes and screen time hours/minutes.
-4. **Stage 4 (Accountability & Coach Analysis)**:
-   - *If consistency broken or day missed*: Displays the Absence Reason debrief first, and upon submission flows directly into Yesterday's Analysis.
-   - *If consistent*: Displays Yesterday's Analysis immediately (XP earned, completed tasks, recovery metrics, and the deterministic AI Coach assessment: Diagnosis, Verdict, and Today's Mission).
-   - A single "Init Day Protocol / Enter Command Center" button finalizes the protocol and opens the dashboard for the day.
+### [NEW-02 | S1] Unvalidated Raw Parameters in Practice Session XP & Time Accounting
+* **Target File**: `src/context/AppContext.tsx` (lines 2143–2144)
+* **Issue**: Parameter validation created `validAttempted`, `validCorrect`, and `validTime`, but lines 2143–2144 passed raw `attempted`, `correct`, and `timeSpent` to `addXp()` and `setHoursStudiedToday()`.
+* **Fix**: Pass `validAttempted`, `validCorrect`, and `validTime` to `addXp` and `setHoursStudiedToday`.
 
----
+### [NEW-03 | S1] Conditional React Hook Violation in `lunar-gravity-card.tsx`
+* **Target File**: `src/components/ui/lunar-gravity-card.tsx` (lines 40–45)
+* **Issue**: `useRef` was conditionally called inside an `if (isMobile) { return ... }` early return, violating React Rules of Hooks and causing render crashes when window size toggled across breakpoints.
+* **Fix**: Lift all `useRef` and hook declarations to the top level of the component before any early returns.
 
-## 2. User Experience & Visual Design
-
-### Step-by-Step Flow
-
-```
-┌────────────────────────┐      ┌────────────────────────┐
-│  STAGE 1: WELCOME      │ ───> │  STAGE 2: DAYS LEFT    │
-│  - Atmospheric Canvas  │      │  - Huge Tabular Days   │
-│  - "Command Center"    │      │  - Target Date Alert   │
-│  - [ Continue / Enter] │      │  - [ Continue ]        │
-└────────────────────────┘      └────────────────────────┘
-                                            │
-                                            ▼
-┌────────────────────────┐      ┌────────────────────────┐
-│  STAGE 4: ANALYSIS     │ <─── │  STAGE 3: METRICS      │
-│  - (Absence if broken) │      │  - Sleep (Hrs / Mins)  │
-│  - Yesterday's Report  │      │  - Screen (Hrs / Mins) │
-│  - AI Coach Missions   │      │  - [ Calculate Report] │
-│  - [ Enter Dashboard ] │      └────────────────────────┘
-└────────────────────────┘
-```
-
-### Visual Specifications & Consistency
-- **Stage 1 (Welcome Screen)**:
-  - Deep black canvas (`bg-black`), WebGL shader backdrop, subtle border framing (`border-[#27272a]`), and clear "ENTER COMMAND CENTER" primary action.
-- **Stage 2 (Days Left Page)**:
-  - Red/crimson accent atmosphere (`border-red-500/30`), massive high-contrast tabular countdown numeral (`text-[8rem] md:text-[12rem] font-black font-mono`), and "Days Remaining" label.
-  - Shows pending backlog alert if tasks remain from previous days.
-  - "Continue to Daily Intake" button advances smoothly to Stage 3.
-- **Stage 3 (Metrics Intake)**:
-  - Clean dual inputs for Sleep Time and Screen Time with explicit Hours and Minutes fields.
-  - "Calculate Yesterday's Report" button triggers deterministic coaching calculations and advances to Stage 4.
-- **Stage 4A (If Consistency Broken / Missed Days)**:
-  - Rose/crimson theme (`border-rose-500/50`) with "MISSION DEBRIEF & RECOVERY" header.
-  - Input field for absence reason without guilt-tripping; submitting transitions immediately into Stage 4B (Yesterday's Analysis).
-- **Stage 4B (Yesterday's Analysis)**:
-  - 4-column metric grid: XP Earned, Tasks Done (`completed / total`), Sleep (`h m`), and Screen (`h m`).
-  - Objectives Logged itemized list showing completed vs incomplete tasks.
-  - AI Coach Assessment card rendering structured coach feedback (`Diagnosis`, `Verdict`, `Today's Mission`, `Closing`).
-  - Final CTA: "Init Day Protocol" closes the morning routine and brings the user to their active workspace.
+### [NEW-04 | S2] Task Metadata Overwrite Vulnerability in Reconciliation
+* **Target File**: `src/lib/sync/reconciliation.ts` (line 348)
+* **Issue**: During cloud sync reconciliation, updating local todo properties omitted `updatedAt`, resetting task timestamps and causing sync ping-pong loops.
+* **Fix**: Ensure local task updates inherit `local.updatedAt ?? cloud.updatedAt ?? Date.now()`.
 
 ---
 
-## 3. Key Product Decisions & Bug Fixes
+## 2. Unresolved Audit Findings & User Decisions
 
-### Bug Fix: Preserving Yesterday's Analysis Screen
-- **Root Cause**: In `App.tsx`, an automated rollover watcher hook observed `localStorage.getItem("rollover_completed_${todayKey}")`. When `completeRollover()` wrote to localStorage inside Step 3, the watcher hook detected `protocolExists === true` and instantly called `setNeedsRollover(false)` before Step 2 (Yesterday's Analysis) could render.
-- **Fix**: The morning protocol state machine will be driven by a dedicated, resilient sequence controller (`morningProtocolStep`: `welcome` | `days_left` | `metrics` | `absence` | `analysis` | `complete`). `needsRollover` will remain active until the user explicitly clicks "Init Day Protocol" at the end of Stage 4.
+### [AND-01] Android Firebase Project Alignment
+* **Target File**: `android/app/google-services.json`
+* **Issue**: `google-services.json` pointed to legacy project `waking-journey-pv7sv` while web app uses `ai-studio-levelupstudy-074a8a78-a7a7-4fca-a550-a8de54fc57c3`.
+* **Fix**: Align `project_info`, `mobilesdk_app_id`, `client_id`, and `firebase_url` to `ai-studio-levelupstudy-074a8a78-a7a7-4fca-a550-a8de54fc57c3`.
 
-### Determining "Consistency Broken" vs "Regular Study"
-- The app checks:
-  1. Any unrecorded calendar days in `pendingMissedDays` (missed days without logins).
-  2. Underperformance criteria: studied hours under minimum threshold (e.g. `< 2.0h`) or severe decline relative to the student's daily target.
-- If either condition is true: Show the Absence / Debrief screen first, then proceed to the Coach Analysis report so the student still receives their daily mission and diagnostic feedback.
+### [TST-01] `vitest` Dev Dependency Installation
+* **Action**: Install `vitest` via `install_applet_package` (`IsDevDependency: true`).
+* **Fix**: Verify test runner configuration so `npm test` runs cleanly and passes all suites.
 
----
+### [PER-01] Prune Dead 3D/Three.js Shader Assets
+* **Target Files**: `src/App.tsx`, `src/components/ui/lunar-gravity-card.tsx`, `package.json`
+* **Issue**: 502 kB unused Three.js/shader assets and imports bloated the main bundle.
+* **Fix**: Remove dead 3D asset imports and references, ensuring a lightweight, fast-loading bundle without breaking any visual card components.
 
-## 4. Technical Architecture & State Strategy
-
-### Sequential Flow State Machine
-
-```
-[ App Launch on New Day ]
-         │
-         ▼
-Is First Open of the Day? ── No ──> Normal Dashboard
-         │ Yes
-         ▼
-[ Stage 1: Welcome Screen ]
-         │ (User clicks "Enter")
-         ▼
-[ Stage 2: Days Left Modal ]
-         │ (User clicks "Continue")
-         ▼
-[ Stage 3: Sleep & Screen Intake ]
-         │ (User clicks "Calculate Yesterday's Report")
-         ▼
-Has missed days OR underperformed?
-   ├─ Yes ──> [ Stage 4A: Absence Debrief ] ──> (Submit reason) ──┐
-   └─ No ─────────────────────────────────────────────────────────┼─> [ Stage 4B: Yesterday's Analysis ]
-                                                                      │ (User clicks "Init Day Protocol")
-                                                                      ▼
-                                                            [ Workspace Dashboard ]
-                                                            (Mark day protocol as complete)
-```
-
-### Components to Update
-1. **`src/App.tsx`**:
-   - Consolidate morning modals into a single coordinated flow (`morningStep`: 1, 2, 3, 4A, 4B).
-   - Prevent the background rollover monitor from prematurely unmounting the modal after metrics submission.
-   - Re-route Stage 1 (Welcome) directly into Stage 2 (Days Left) when opened on a new day.
-2. **`src/context/AppContext.tsx`**:
-   - Ensure `sessionStorage` / `localStorage` flags for `rollover_completed` are set only after Stage 4 is finalized, or guard `needsRollover` state transition until Stage 4 completes.
-3. **`src/pages/Dashboard.tsx`**:
-   - Ensure the static "Days Remaining" reminder does not double-prompt if already viewed during the morning sequence.
+### [UI-01 & PER-02] Navigation & Re-render Optimization
+* **Target Files**: `src/App.tsx`, `src/context/AppContext.tsx`
+* **Fix**: Standardize hardware back button listener stack and optimize timer re-render state selectors to prevent unnecessary re-renders during active focus timer sessions.
 
 ---
 
-## 5. Verification Plan
+## 3. Execution & Verification Steps
 
-- **Compilation & Type Check**: Run `compile_applet` and `lint_applet` to confirm strict TypeScript compliance.
-- **Unit & Logic Tests**: Run `npm test -- --run` to ensure all 43 coach engine tests pass without regression.
-- **Flow Verification**:
-  1. Simulate new day launch -> verify Welcome screen opens.
-  2. Click Enter -> verify Days Left screen opens with countdown.
-  3. Click Continue -> verify Metrics intake opens for Sleep & Screen time.
-  4. Submit metrics -> verify Yesterday's Analysis card opens (does not vanish).
-  5. Test broken consistency path -> verify Absence reason screen appears first, followed by Yesterday's Analysis.
-  6. Click "Init Day Protocol" -> verify clean transition into the Dashboard workspace.
+1. **Dependency Installation**: Install `vitest` package as dev dependency.
+2. **Code Remediation**: Apply precise edits to `AppContext.tsx`, `reconciliation.ts`, `lunar-gravity-card.tsx`, `App.tsx`, and `google-services.json`.
+3. **Static Analysis & Compilation**: Execute `npx tsc --noEmit` and `compile_applet` to confirm zero build errors or broken imports.
+4. **Test Suite Verification**: Run automated tests to verify backup snapshot restoration, parameter validation, and reconciliation logic.

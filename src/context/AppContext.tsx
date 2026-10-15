@@ -799,6 +799,138 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 3000);
 
+    const applyParsedState = (parsed: any) => {
+      setXp(parsed.xp || 0);
+      setLevel(parsed.level || 1);
+      setQuestionsSolved(parsed.questionsSolved || 0);
+      setDailyTarget(parsed.dailyTarget || 100);
+      setAccuracy(parsed.accuracy || 0);
+      setSpeedScore(parsed.speedScore || 0);
+      setStreakDays(parsed.streakDays || 0);
+      setLastStudyDate(parsed.lastStudyDate || null);
+
+      const today = getLogicalDate();
+      const effectiveLastStudyDate = parsed.lastStudyDate || (parsed.history && parsed.history.length > 0 ? getStandardDateKey(parsed.history[parsed.history.length - 1].date) : null);
+      const isToday = isSameLogicalDay(effectiveLastStudyDate, today);
+      const protocolRecordExists = hasTodayProtocolRecord(parsed.history || [], parsed.lifeMetrics || [], today);
+
+      console.log(`[Local Storage Load] effectiveLastStudyDate: "${effectiveLastStudyDate}", TodayKey: "${getStandardDateKey(today)}", isToday: ${isToday}, protocolRecordExists: ${protocolRecordExists}`);
+
+      if (isToday || protocolRecordExists) {
+        setNeedsRollover(false, "Local storage load: today is already completed or matches lastStudyDate");
+        setLastStudyDate(getStandardDateKey(today));
+      } else if (effectiveLastStudyDate) {
+        setNeedsRollover(true, "Local storage load: lastStudyDate is from a previous day");
+
+        // Check for genuine missed days
+        const missingDates = calculateAbsenceGap(effectiveLastStudyDate, today);
+        if (missingDates.length > 0) {
+          setPendingMissedDays(missingDates);
+        }
+      }
+      setXpGainedToday(parsed.xpGainedToday || 0);
+      setSpentXpToday(parsed.spentXpToday || 0);
+      setTotalSpentXp(parsed.totalSpentXp || 0);
+      setHoursStudiedToday(parsed.hoursStudiedToday || 0);
+
+      setFocusBadges(parsed.focusBadges || 0);
+
+      const loadedSyllabus = parsed.syllabus || initialSyllabusData;
+      const mergedSyllabus: SyllabusData = { ...initialSyllabusData };
+
+      (["Physics", "Chemistry", "Mathematics"] as const).forEach(
+        (subject) => {
+          if (loadedSyllabus[subject]) {
+            const subjectChapters = [...loadedSyllabus[subject]];
+            initialSyllabusData[subject].forEach((defaultCap) => {
+              if (
+                !subjectChapters.some(
+                  (c: any) => c.name === defaultCap.name,
+                )
+              ) {
+                subjectChapters.push(defaultCap);
+              }
+            });
+            mergedSyllabus[subject] = subjectChapters;
+          }
+        },
+      );
+      setSyllabus(mergedSyllabus);
+
+      setActiveBoost(parsed.activeBoost || null);
+      const loadedEndDate = parsed.class11EndDate || null;
+      setClass11EndDate(loadedEndDate);
+      const calc8Hr = calculate8HourGoalXp(loadedEndDate, parsed.xp || 0);
+      setTotalXpGoal(parsed.totalXpGoal || calc8Hr.goalXp);
+      setIsClass11SetupDone(
+        loadedEndDate ? parsed.isClass11SetupDone || false : false,
+      );
+      setBacklogPriorities(parsed.backlogPriorities || {});
+
+      let loadedBacklogPlan: BacklogPlan | null = parsed.backlogPlan || null;
+      if (!loadedBacklogPlan && typeof window !== "undefined") {
+        try {
+          const backupPlanStr = localStorage.getItem("jee_tracker_backlog_plan");
+          if (backupPlanStr) {
+            loadedBacklogPlan = JSON.parse(backupPlanStr);
+          }
+        } catch (e) {
+          console.warn("Failed to load backlog plan from backup key:", e);
+        }
+      }
+
+      const loadedTodos = parsed.todos || [];
+      if (!loadedBacklogPlan && loadedTodos.length > 0) {
+        loadedBacklogPlan = reconstructPlanFromTodos(loadedTodos);
+      }
+      setBacklogPlan(loadedBacklogPlan);
+      setHasSeenRules(parsed.hasSeenRules || false);
+      setTodos(
+        Array.from(
+          new Map(loadedTodos.map((t: Todo) => [t.id, t])).values(),
+        ) as Todo[],
+      );
+      const loadedLoggedTasks = parsed.loggedTasksToday || [];
+      setLoggedTasksToday(
+        Array.from(
+          new Map(loadedLoggedTasks.map((t: Todo) => [t.id, t])).values(),
+        ) as Todo[],
+      );
+      const loadedPendingTasks = parsed.pendingTasks || [];
+      setPendingTasks(
+        Array.from(
+          new Map(loadedPendingTasks.map((t: Todo) => [t.id, t])).values(),
+        ) as Todo[],
+      );
+      let loadedHistory = parsed.history || [];
+      setHistory(loadedHistory);
+      setPracticeSessions(parsed.practiceSessions || []);
+      setPlayerName(parsed.playerName || "Player 1");
+      setHabits(parsed.habits || []);
+      let loadMetrics = parsed.lifeMetrics;
+      if (!loadMetrics || loadMetrics.length < 31) {
+        loadMetrics = Array.from({ length: 31 }, (_, i) => {
+          const ext = (parsed.lifeMetrics || []).find(
+            (m: any) => m.day === i + 1,
+          );
+          return ext || { day: i + 1, sleep: 0, screenTime: 0 };
+        });
+      }
+      setLifeMetrics(loadMetrics);
+      setMonthlyGoals(parsed.monthlyGoals || []);
+
+      setLastBossDayDate(parsed.lastBossDayDate || null);
+      setBossDayTargetXp(parsed.bossDayTargetXp || null);
+      setBossDayCompleted(parsed.bossDayCompleted || false);
+      setEquippedTitle(parsed.equippedTitle || "");
+      setEquippedAura(parsed.equippedAura || "");
+      setUnlockedItems(parsed.unlockedItems || []);
+      setOngoingChapters(parsed.ongoingChapters || {});
+      if (parsed.notificationSettings) {
+        setNotificationSettings(parsed.notificationSettings);
+      }
+    };
+
     const loadState = async () => {
       try {
         let saved: string | null = null;
@@ -812,135 +944,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          setXp(parsed.xp || 0);
-          setLevel(parsed.level || 1);
-          setQuestionsSolved(parsed.questionsSolved || 0);
-          setDailyTarget(parsed.dailyTarget || 100);
-          setAccuracy(parsed.accuracy || 0);
-          setSpeedScore(parsed.speedScore || 0);
-          setStreakDays(parsed.streakDays || 0);
-          setLastStudyDate(parsed.lastStudyDate || null);
-
-          const today = getLogicalDate();
-          const effectiveLastStudyDate = parsed.lastStudyDate || (parsed.history && parsed.history.length > 0 ? getStandardDateKey(parsed.history[parsed.history.length - 1].date) : null);
-          const isToday = isSameLogicalDay(effectiveLastStudyDate, today);
-          const protocolRecordExists = hasTodayProtocolRecord(parsed.history || [], parsed.lifeMetrics || [], today);
-
-          console.log(`[Local Storage Load] effectiveLastStudyDate: "${effectiveLastStudyDate}", TodayKey: "${getStandardDateKey(today)}", isToday: ${isToday}, protocolRecordExists: ${protocolRecordExists}`);
-
-          if (isToday || protocolRecordExists) {
-            setNeedsRollover(false, "Local storage load: today is already completed or matches lastStudyDate");
-            setLastStudyDate(getStandardDateKey(today));
-          } else if (effectiveLastStudyDate) {
-            setNeedsRollover(true, "Local storage load: lastStudyDate is from a previous day");
-
-            // Check for genuine missed days
-            const missingDates = calculateAbsenceGap(effectiveLastStudyDate, today);
-            if (missingDates.length > 0) {
-              setPendingMissedDays(missingDates);
-            }
-          }
-          setXpGainedToday(parsed.xpGainedToday || 0);
-          setSpentXpToday(parsed.spentXpToday || 0);
-          setTotalSpentXp(parsed.totalSpentXp || 0);
-          setHoursStudiedToday(parsed.hoursStudiedToday || 0);
-
-          setFocusBadges(parsed.focusBadges || 0);
-
-          const loadedSyllabus = parsed.syllabus || initialSyllabusData;
-          const mergedSyllabus: SyllabusData = { ...initialSyllabusData };
-
-          (["Physics", "Chemistry", "Mathematics"] as const).forEach(
-            (subject) => {
-              if (loadedSyllabus[subject]) {
-                const subjectChapters = [...loadedSyllabus[subject]];
-                initialSyllabusData[subject].forEach((defaultCap) => {
-                  if (
-                    !subjectChapters.some(
-                      (c: any) => c.name === defaultCap.name,
-                    )
-                  ) {
-                    subjectChapters.push(defaultCap);
-                  }
-                });
-                mergedSyllabus[subject] = subjectChapters;
-              }
-            },
-          );
-          setSyllabus(mergedSyllabus);
-
-          setActiveBoost(parsed.activeBoost || null);
-          const loadedEndDate = parsed.class11EndDate || null;
-          setClass11EndDate(loadedEndDate);
-          const calc8Hr = calculate8HourGoalXp(loadedEndDate, parsed.xp || 0);
-          setTotalXpGoal(parsed.totalXpGoal || calc8Hr.goalXp);
-          setIsClass11SetupDone(
-            loadedEndDate ? parsed.isClass11SetupDone || false : false,
-          );
-          setBacklogPriorities(parsed.backlogPriorities || {});
-
-          let loadedBacklogPlan: BacklogPlan | null = parsed.backlogPlan || null;
-          if (!loadedBacklogPlan && typeof window !== "undefined") {
-            try {
-              const backupPlanStr = localStorage.getItem("jee_tracker_backlog_plan");
-              if (backupPlanStr) {
-                loadedBacklogPlan = JSON.parse(backupPlanStr);
-              }
-            } catch (e) {
-              console.warn("Failed to load backlog plan from backup key:", e);
-            }
-          }
-
-          const loadedTodos = parsed.todos || [];
-          if (!loadedBacklogPlan && loadedTodos.length > 0) {
-            loadedBacklogPlan = reconstructPlanFromTodos(loadedTodos);
-          }
-          setBacklogPlan(loadedBacklogPlan);
-          setHasSeenRules(parsed.hasSeenRules || false);
-          setTodos(
-            Array.from(
-              new Map(loadedTodos.map((t: Todo) => [t.id, t])).values(),
-            ) as Todo[],
-          );
-          const loadedLoggedTasks = parsed.loggedTasksToday || [];
-          setLoggedTasksToday(
-            Array.from(
-              new Map(loadedLoggedTasks.map((t: Todo) => [t.id, t])).values(),
-            ) as Todo[],
-          );
-          const loadedPendingTasks = parsed.pendingTasks || [];
-          setPendingTasks(
-            Array.from(
-              new Map(loadedPendingTasks.map((t: Todo) => [t.id, t])).values(),
-            ) as Todo[],
-          );
-          let loadedHistory = parsed.history || [];
-          setHistory(loadedHistory);
-          setPracticeSessions(parsed.practiceSessions || []);
-          setPlayerName(parsed.playerName || "Player 1");
-          setHabits(parsed.habits || []);
-          let loadMetrics = parsed.lifeMetrics;
-          if (!loadMetrics || loadMetrics.length < 31) {
-            loadMetrics = Array.from({ length: 31 }, (_, i) => {
-              const ext = (parsed.lifeMetrics || []).find(
-                (m: any) => m.day === i + 1,
-              );
-              return ext || { day: i + 1, sleep: 0, screenTime: 0 };
-            });
-          }
-          setLifeMetrics(loadMetrics);
-          setMonthlyGoals(parsed.monthlyGoals || []);
-
-          setLastBossDayDate(parsed.lastBossDayDate || null);
-          setBossDayTargetXp(parsed.bossDayTargetXp || null);
-          setBossDayCompleted(parsed.bossDayCompleted || false);
-          setEquippedTitle(parsed.equippedTitle || "");
-          setEquippedAura(parsed.equippedAura || "");
-          setUnlockedItems(parsed.unlockedItems || []);
-          setOngoingChapters(parsed.ongoingChapters || {});
-          if (parsed.notificationSettings) {
-            setNotificationSettings(parsed.notificationSettings);
-          }
+          applyParsedState(parsed);
         } catch (e) {
           console.error("Failed to parse local storage", e);
           isStorageCorruptedRef.current = true;
@@ -954,11 +958,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const backupStr = typeof window !== "undefined" ? localStorage.getItem(`${LOCAL_STORAGE_KEY}_backup`) : null;
             if (backupStr) {
               const backupParsed = JSON.parse(backupStr);
-              setXp(backupParsed.xp || 0);
-              setLevel(backupParsed.level || 1);
-              setStreakDays(backupParsed.streakDays || 0);
-              if (backupParsed.todos) setTodos(backupParsed.todos);
-              if (backupParsed.history) setHistory(backupParsed.history);
+              applyParsedState(backupParsed);
+              latestStateRef.current = backupParsed;
               isStorageCorruptedRef.current = false;
             }
           } catch {}
@@ -2140,8 +2141,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     // Add XP: 10 per question, 5 per correct
-    addXp(attempted * 10 + correct * 5);
-    setHoursStudiedToday((prev) => Math.min(24, prev + timeSpent / 60));
+    addXp(validAttempted * 10 + validCorrect * 5);
+    setHoursStudiedToday((prev) => Math.min(24, prev + validTime / 60));
   }, [updateStreak, syllabus, updateChapterStats, addXp]);
 
   const logFocusSession = useCallback((durationMins: number, isDeepFocus: boolean) => {

@@ -63,9 +63,9 @@ export function mergeTaskArrays(
       const cloudUpdated = (cloud as any).updatedAt || (cloud as any).completedAt || 0;
       const localIsNewer = localUpdated >= cloudUpdated;
 
+      const baseTask = localIsNewer ? { ...cloud, ...local } : { ...local, ...cloud };
       mergedMap.set(id, {
-        ...cloud,
-        ...local,
+        ...baseTask,
         // Completion reversibility based on newest mutation timestamp
         completed: (localUpdated > 0 || cloudUpdated > 0)
           ? (localIsNewer ? Boolean(local.completed) : Boolean(cloud.completed))

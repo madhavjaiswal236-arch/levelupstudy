@@ -42,18 +42,15 @@ const createFallbackMoonTexture = () => {
 
 const RealisticMoon = ({ onClick }: { onClick?: () => void }) => {
   const meshRef = useRef<THREE.Mesh>(null);
-  const [textureError, setTextureError] = useState(false);
-
+  const fallbackMap = useMemo(() => createFallbackMoonTexture(), []);
+  
   let colorMap: THREE.Texture | null = null;
   try {
-    if (!textureError) {
-      colorMap = useTexture("https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg");
-    }
+    colorMap = useTexture("https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg");
   } catch (e) {
-    if (!textureError) setTextureError(true);
+    colorMap = null;
   }
 
-  const fallbackMap = useMemo(() => createFallbackMoonTexture(), []);
   const activeMap = colorMap || fallbackMap;
 
   useFrame((_, delta) => {
