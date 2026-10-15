@@ -996,81 +996,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastSyncTimestampRef.current = now;
     }
 
-    const stateToSave = {
-      xp,
-      xpGainedToday,
-      spentXpToday,
-      totalSpentXp,
-      hoursStudiedToday,
-      level,
-      questionsSolved,
-      dailyTarget,
-      accuracy,
-      speedScore,
-      streakDays,
-      lastStudyDate,
-      focusBadges,
-      syllabus,
-      activeBoost,
-      class11EndDate,
-      isClass11SetupDone,
-      backlogPriorities,
-      backlogPlan,
-      todos,
-      loggedTasksToday,
-      pendingTasks,
-      history,
-      practiceSessions,
-      playerName,
-      hasSeenRules,
-      habits,
-      lifeMetrics,
-      monthlyGoals,
-      lastBossDayDate,
-      bossDayTargetXp,
-      bossDayCompleted,
-      equippedTitle,
-      equippedAura,
-      unlockedItems,
-      notificationSettings,
-      totalXpGoal,
-      ongoingChapters,
-      lastSyncTimestamp: lastSyncTimestampRef.current || now,
-    };
-    const jsonString = JSON.stringify(stateToSave);
+    // Debounce state serialization and disk/cloud save to keep UI renders 60-120fps smooth
+    const saveTimeoutId = setTimeout(() => {
+      const stateToSave = {
+        xp,
+        xpGainedToday,
+        spentXpToday,
+        totalSpentXp,
+        hoursStudiedToday,
+        level,
+        questionsSolved,
+        dailyTarget,
+        accuracy,
+        speedScore,
+        streakDays,
+        lastStudyDate,
+        focusBadges,
+        syllabus,
+        activeBoost,
+        class11EndDate,
+        isClass11SetupDone,
+        backlogPriorities,
+        backlogPlan,
+        todos,
+        loggedTasksToday,
+        pendingTasks,
+        history,
+        practiceSessions,
+        playerName,
+        hasSeenRules,
+        habits,
+        lifeMetrics,
+        monthlyGoals,
+        lastBossDayDate,
+        bossDayTargetXp,
+        bossDayCompleted,
+        equippedTitle,
+        equippedAura,
+        unlockedItems,
+        notificationSettings,
+        totalXpGoal,
+        ongoingChapters,
+        lastSyncTimestamp: lastSyncTimestampRef.current || now,
+      };
 
-    const localTimeoutId = setTimeout(() => {
+      const jsonString = JSON.stringify(stateToSave);
+
       if (Capacitor.isNativePlatform()) {
         Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
       } else {
         localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
         localStorage.setItem(`${LOCAL_STORAGE_KEY}_backup`, jsonString);
       }
-    }, 100);
 
-    // Batch state updates into a 1000ms debounce to prevent exhausting the Firestore write stream
-    const cloudDelay = 1000;
-
-    const cloudTimeoutId = setTimeout(async () => {
-      if (
-        firebaseUser?.uid &&
-        isCloudSyncComplete
-      ) {
+      if (firebaseUser?.uid && isCloudSyncComplete) {
         if (jsonString !== lastSavedCloudJsonRef.current) {
           lastSavedCloudJsonRef.current = jsonString;
-          const ok = await saveUserDataToCloud(firebaseUser.uid, stateToSave, false);
-          if (ok) {
-            hasUnsavedLocalChangesRef.current = false;
-          }
+          saveUserDataToCloud(firebaseUser.uid, stateToSave, false).then((ok) => {
+            if (ok) {
+              hasUnsavedLocalChangesRef.current = false;
+            }
+          });
         } else {
           hasUnsavedLocalChangesRef.current = false;
         }
       }
-    }, cloudDelay);
+    }, 250);
 
     return () => {
-      clearTimeout(localTimeoutId);
-      clearTimeout(cloudTimeoutId);
+      clearTimeout(saveTimeoutId);
     };
   }, [
     isLoaded,

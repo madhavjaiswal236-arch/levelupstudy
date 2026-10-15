@@ -252,6 +252,32 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Instant dynamic tab preloading during browser idle time
+  useEffect(() => {
+    const preloadRoutes = () => {
+      import("./pages/Missions");
+      import("./pages/Store");
+      import("./pages/Settings");
+      import("./pages/Analytics");
+      import("./pages/Syllabus");
+      import("./pages/Protocols");
+      import("./pages/Rivals");
+      import("./pages/BacklogHQ");
+      import("./pages/Profile");
+      import("./pages/History");
+    };
+
+    if (typeof window !== "undefined") {
+      if ("requestIdleCallback" in window) {
+        const idleId = (window as any).requestIdleCallback(preloadRoutes, { timeout: 1200 });
+        return () => (window as any).cancelIdleCallback(idleId);
+      } else {
+        const timerId = setTimeout(preloadRoutes, 600);
+        return () => clearTimeout(timerId);
+      }
+    }
+  }, []);
+
   const effectiveLoaded = isLoaded || forceLoaded;
 
   type MorningRoadmapStep = "welcome" | "days_left" | "metrics" | "absence" | "analysis";
