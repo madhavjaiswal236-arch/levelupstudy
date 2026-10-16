@@ -1051,9 +1051,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (firebaseUser?.uid && isCloudSyncComplete) {
         if (jsonString !== lastSavedCloudJsonRef.current) {
-          lastSavedCloudJsonRef.current = jsonString;
+          hasUnsavedLocalChangesRef.current = true;
           saveUserDataToCloud(firebaseUser.uid, stateToSave, false).then((ok) => {
             if (ok) {
+              lastSavedCloudJsonRef.current = jsonString;
               hasUnsavedLocalChangesRef.current = false;
             }
           });
@@ -1125,14 +1126,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (
         firebaseUser?.uid &&
         isCloudSyncComplete &&
-        currentJson !== lastSavedCloudJsonRef.current
+        (hasUnsavedLocalChangesRef.current || currentJson !== lastSavedCloudJsonRef.current)
       ) {
-        lastSavedCloudJsonRef.current = currentJson;
         saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
           if (ok) {
+            lastSavedCloudJsonRef.current = currentJson;
             hasUnsavedLocalChangesRef.current = false;
           }
         });
+      }
+    };
+
+    let lastFocusCheckTime = 0;
+    const pullLatestCloudState = async () => {
+      if (!firebaseUser?.uid || !isCloudSyncComplete || isRemoteSyncingRef.current) return;
+      const now = Date.now();
+      if (now - lastFocusCheckTime < 3000) return;
+      lastFocusCheckTime = now;
+      try {
+        const cloudData = await loadUserDataFromCloud(firebaseUser.uid);
+        if (!cloudData || (cloudData as any).__docExists === false) return;
+        const currentLocal = latestStateRef.current;
+        const { mergedState, needsCloudUpload } = reconcileState(currentLocal, cloudData);
+        isRemoteSyncingRef.current = true;
+        applyStateSnapshot(mergedState);
+        isRemoteSyncingRef.current = false;
+        lastSavedCloudJsonRef.current = JSON.stringify(mergedState);
+        if (needsCloudUpload && firebaseUser?.uid) {
+          saveUserDataToCloud(firebaseUser.uid, mergedState, true).catch(() => {});
+        }
+      } catch (err) {
+        console.warn("[Firestore] Auto-sync on focus/resume:", err);
       }
     };
 
@@ -1143,10 +1167,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         flushCurrentState();
+      } else if (document.visibilityState === "visible") {
+        pullLatestCloudState();
       }
     };
 
+    const handleWindowFocus = () => {
+      pullLatestCloudState();
+    };
+
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     let isMounted = true;
@@ -1156,6 +1187,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!state.isActive) {
           flushCurrentState();
         } else {
+          pullLatestCloudState();
           // App resumed from background: check if date shifted past 3 AM
           const today = getLogicalDate();
           const todayKey = getStandardDateKey(today);
@@ -1177,12 +1209,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (capAppStateListener) {
         capAppStateListener.remove();
       }
     };
-  }, [isLoaded, firebaseUser, isCloudSyncComplete]);
+  }, [isLoaded, firebaseUser, isCloudSyncComplete, applyStateSnapshot]);
 
   // Initial Cloud Data Fetch on Auth to ensure cloud state is single source of truth
   useEffect(() => {
@@ -1523,7 +1556,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTodos((prev) => {
       updatedTodosList = prev.map((t) => {
         if (String(t.id) === String(id)) {
-          const enriched = { ...t, ...updates };
+          const enriched = { ...t, ...updates, updatedAt: Date.now() };
           if (updates.completed === true && !t.completed) {
             enriched.completedAt = Date.now();
             enriched.completedDate = getLocalDateString();

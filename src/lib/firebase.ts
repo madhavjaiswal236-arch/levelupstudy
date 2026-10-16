@@ -270,7 +270,7 @@ export const saveUserDataToCloud = async (userId: string, data: any, immediate: 
       userSaveTimers.delete(userId);
       const result = await processSaveQueue(userId);
       resolve(result);
-    }, 1200);
+    }, 400);
     userSaveTimers.set(userId, timer);
   });
 };

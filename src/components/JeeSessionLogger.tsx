@@ -105,6 +105,7 @@ export default function JeeSessionLogger({
     ATTENTIONAL_SLIP: 0,
     TRANSFER_FAILURE: 0,
   });
+  const [isErrorBreakdownOpen, setIsErrorBreakdownOpen] = useState(false);
 
   // DPP Status Modal State
   const [showDppModal, setShowDppModal] = useState(false);
@@ -856,131 +857,163 @@ export default function JeeSessionLogger({
                       </div>
                     </div>
 
-                    {/* 4-Counter Error Quick-Tag Sheet (Shown when accuracy < 100%) */}
+                    {/* Mistake Diagnostic Breakdown (Optional, Collapsed by default) */}
                     {parseInt(String(questions || 0)) > 0 && accuracy < 100 && (
-                      <div className="p-4 rounded-2xl dark:bg-slate-900/90 bg-slate-50 border dark:border-slate-800 border-slate-200 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                              Cognitive Error Diagnostics
+                      <div className="p-3.5 rounded-2xl dark:bg-slate-900/80 bg-slate-50 border dark:border-slate-800 border-slate-200 space-y-2.5 transition-all">
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsErrorBreakdownOpen((prev) => !prev)}
+                            className="flex items-center gap-2 text-left group flex-1 focus:outline-none"
+                          >
+                            <span className="text-xs font-bold dark:text-slate-200 text-slate-800 group-hover:text-cyan-400 transition-colors flex items-center gap-1.5 flex-wrap">
+                              <span>Why were questions missed?</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                Optional
+                              </span>
                             </span>
-                            <p className="text-[11px] text-slate-400">
-                              Tag root causes for the ~
+                            <span className="text-[11px] font-semibold text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-md border border-cyan-800/40 ml-auto sm:ml-0">
+                              {isErrorBreakdownOpen ? "Hide ▲" : "Categorize ▼"}
+                            </span>
+                          </button>
+
+                          {(errorCounts.KNOWLEDGE_DEFICIT +
+                            errorCounts.PROCEDURAL_FLAW +
+                            errorCounts.ATTENTIONAL_SLIP +
+                            errorCounts.TRANSFER_FAILURE > 0) && (
+                            <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-md border border-cyan-800/40 shrink-0">
+                              Tagged:{" "}
+                              {errorCounts.KNOWLEDGE_DEFICIT +
+                                errorCounts.PROCEDURAL_FLAW +
+                                errorCounts.ATTENTIONAL_SLIP +
+                                errorCounts.TRANSFER_FAILURE}
+                              /
+                              {Math.max(
+                                1,
+                                Math.round(
+                                  parseInt(String(questions)) * (1 - accuracy / 100),
+                                ),
+                              )}
+                            </span>
+                          )}
+                        </div>
+
+                        {!isErrorBreakdownOpen && (
+                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                            Tap to optionally categorize silly mistakes, forgotten formulas, or math slips (~{Math.max(
+                              1,
+                              Math.round(
+                                parseInt(String(questions)) * (1 - accuracy / 100),
+                              ),
+                            )} missed questions).
+                          </p>
+                        )}
+
+                        {isErrorBreakdownOpen && (
+                          <div className="space-y-3 pt-1">
+                            <p className="text-[11px] text-slate-400 leading-relaxed">
+                              Optional breakdown: Tag what caused the ~
                               {Math.max(
                                 1,
                                 Math.round(
                                   parseInt(String(questions)) * (1 - accuracy / 100),
                                 ),
                               )}{" "}
-                              missed question(s). Weight feeds BKT mastery.
+                              missed question(s). Helps calibrate your revision recommendations.
                             </p>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                              {[
+                                {
+                                  key: "KNOWLEDGE_DEFICIT" as const,
+                                  label: "Forgot Formula / Theory",
+                                  sub: "Didn't know concept",
+                                  color: "rose",
+                                },
+                                {
+                                  key: "PROCEDURAL_FLAW" as const,
+                                  label: "Calculation / Step Error",
+                                  sub: "Math or algebra mistake",
+                                  color: "amber",
+                                },
+                                {
+                                  key: "ATTENTIONAL_SLIP" as const,
+                                  label: "Silly Mistake / Misread",
+                                  sub: "Misread / units / sign",
+                                  color: "blue",
+                                },
+                                {
+                                  key: "TRANSFER_FAILURE" as const,
+                                  label: "Couldn't Find Approach",
+                                  sub: "Stuck on which method to use",
+                                  color: "purple",
+                                },
+                              ].map((err) => {
+                                const totalWrong = Math.max(
+                                  1,
+                                  Math.round(
+                                    parseInt(String(questions)) * (1 - accuracy / 100),
+                                  ),
+                                );
+                                const currentSum =
+                                  errorCounts.KNOWLEDGE_DEFICIT +
+                                  errorCounts.PROCEDURAL_FLAW +
+                                  errorCounts.ATTENTIONAL_SLIP +
+                                  errorCounts.TRANSFER_FAILURE;
+                                const count = errorCounts[err.key];
+
+                                return (
+                                  <div
+                                    key={err.key}
+                                    className="p-2.5 rounded-xl dark:bg-black bg-white border dark:border-slate-800 border-slate-200 flex flex-col justify-between"
+                                  >
+                                    <div>
+                                      <span className="text-[11px] font-bold block dark:text-slate-200 text-slate-800 leading-tight">
+                                        {err.label}
+                                      </span>
+                                      <span className="text-[9px] text-slate-500 block truncate">
+                                        {err.sub}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between mt-2 pt-2 border-t dark:border-slate-850 border-slate-100">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setErrorCounts((prev) => ({
+                                            ...prev,
+                                            [err.key]: Math.max(0, prev[err.key] - 1),
+                                          }))
+                                        }
+                                        disabled={count === 0}
+                                        className="w-6 h-6 rounded bg-slate-800 text-slate-300 font-bold flex items-center justify-center hover:bg-slate-700 disabled:opacity-30"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="font-mono text-sm font-bold text-cyan-400">
+                                        {count}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (currentSum < totalWrong) {
+                                            setErrorCounts((prev) => ({
+                                              ...prev,
+                                              [err.key]: prev[err.key] + 1,
+                                            }));
+                                          }
+                                        }}
+                                        disabled={currentSum >= totalWrong}
+                                        className="w-6 h-6 rounded bg-slate-800 text-slate-300 font-bold flex items-center justify-center hover:bg-slate-700 disabled:opacity-30"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                          <span className="text-xs font-mono text-cyan-400 bg-cyan-950/40 px-2.5 py-1 rounded-md border border-cyan-800/40">
-                            Tagged:{" "}
-                            {errorCounts.KNOWLEDGE_DEFICIT +
-                              errorCounts.PROCEDURAL_FLAW +
-                              errorCounts.ATTENTIONAL_SLIP +
-                              errorCounts.TRANSFER_FAILURE}
-                            /
-                            {Math.max(
-                              1,
-                              Math.round(
-                                parseInt(String(questions)) * (1 - accuracy / 100),
-                              ),
-                            )}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                          {[
-                            {
-                              key: "KNOWLEDGE_DEFICIT" as const,
-                              label: "Concept Deficit",
-                              sub: "Formula / theory missing",
-                              color: "rose",
-                            },
-                            {
-                              key: "PROCEDURAL_FLAW" as const,
-                              label: "Procedural Flaw",
-                              sub: "Algebra / step error",
-                              color: "amber",
-                            },
-                            {
-                              key: "ATTENTIONAL_SLIP" as const,
-                              label: "Attentional Slip",
-                              sub: "Misread / units / sign",
-                              color: "blue",
-                            },
-                            {
-                              key: "TRANSFER_FAILURE" as const,
-                              label: "Transfer Failure",
-                              sub: "Wrong model chosen",
-                              color: "purple",
-                            },
-                          ].map((err) => {
-                            const totalWrong = Math.max(
-                              1,
-                              Math.round(
-                                parseInt(String(questions)) * (1 - accuracy / 100),
-                              ),
-                            );
-                            const currentSum =
-                              errorCounts.KNOWLEDGE_DEFICIT +
-                              errorCounts.PROCEDURAL_FLAW +
-                              errorCounts.ATTENTIONAL_SLIP +
-                              errorCounts.TRANSFER_FAILURE;
-                            const count = errorCounts[err.key];
-
-                            return (
-                              <div
-                                key={err.key}
-                                className="p-2.5 rounded-xl dark:bg-black bg-white border dark:border-slate-800 border-slate-200 flex flex-col justify-between"
-                              >
-                                <div>
-                                  <span className="text-[11px] font-bold block dark:text-slate-200 text-slate-800 leading-tight">
-                                    {err.label}
-                                  </span>
-                                  <span className="text-[9px] text-slate-500 block truncate">
-                                    {err.sub}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between mt-2 pt-2 border-t dark:border-slate-850 border-slate-100">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setErrorCounts((prev) => ({
-                                        ...prev,
-                                        [err.key]: Math.max(0, prev[err.key] - 1),
-                                      }))
-                                    }
-                                    disabled={count === 0}
-                                    className="w-6 h-6 rounded bg-slate-800 text-slate-300 font-bold flex items-center justify-center hover:bg-slate-700 disabled:opacity-30"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="font-mono text-sm font-bold text-cyan-400">
-                                    {count}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (currentSum < totalWrong) {
-                                        setErrorCounts((prev) => ({
-                                          ...prev,
-                                          [err.key]: prev[err.key] + 1,
-                                        }));
-                                      }
-                                    }}
-                                    disabled={currentSum >= totalWrong}
-                                    className="w-6 h-6 rounded bg-slate-800 text-slate-300 font-bold flex items-center justify-center hover:bg-slate-700 disabled:opacity-30"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>
