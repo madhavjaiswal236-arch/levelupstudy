@@ -150,6 +150,9 @@ export function StudyCalendar({
   const hasMovedRef = useRef(false);
   const justDraggedRef = useRef(false);
   const visualSelectionRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingRef = useRef(false);
+  const autoSyncTimerRef = useRef<any>(null);
+  const inFlightTaskIdsRef = useRef<Set<string | number>>(new Set());
 
   // Computed Days & Background Sync
   useEffect(() => {
@@ -350,11 +353,36 @@ export function StudyCalendar({
     // 3. Final unified list deduplicated by time & summary
     const combined = [...localEvents, ...externalGoogleEvents];
     const finalSeen = new Set<string>();
-    return combined.filter((ev) => {
+    const deduplicatedCombined = combined.filter((ev) => {
       const key = `${ev.title?.trim().toLowerCase()}_${ev.start.getTime()}`;
       if (finalSeen.has(key)) return false;
       finalSeen.add(key);
       return true;
+    });
+
+    // 4. During scheduled lecture time slots, clear all other things in the calendar
+    const isLecItem = (ev: (typeof combined)[0]) => {
+      const title = (ev.title || "").toLowerCase();
+      const type = (ev.todo?.type || "").toLowerCase();
+      const backlogType = (ev.todo?.backlogTaskType || "").toLowerCase();
+      return (
+        type === "lecture" ||
+        backlogType === "lecture" ||
+        ev.todo?.lectureNumber !== undefined ||
+        /lecture|lec\s*\d+|class|session/i.test(title)
+      );
+    };
+
+    const scheduledLecturesInList = deduplicatedCombined.filter(isLecItem);
+
+    return deduplicatedCombined.filter((ev) => {
+      if (isLecItem(ev)) return true;
+      const s = ev.start.getTime();
+      const e = ev.end.getTime();
+      const hasConflict = scheduledLecturesInList.some(
+        (lec) => lec.id !== ev.id && s < lec.end.getTime() && e > lec.start.getTime()
+      );
+      return !hasConflict;
     });
   }, [todos, activeCalendars, googleEvents]);
 
@@ -594,73 +622,203 @@ export function StudyCalendar({
   };
 
   const handleCalendarSync = async (isManual: boolean = false) => {
+    // Prevent duplicate concurrent sync operations
+    if (isSyncingRef.current) {
+      console.log("Calendar sync already active, skipping duplicate call");
+      return;
+    }
+    isSyncingRef.current = true;
     setIsSyncing(true);
+
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+      autoSyncTimerRef.current = null;
+    }
 
     let allSuccess = true;
     let errorMessage = "";
     try {
-      const hasAuth = await ensureCalendarAuth(isManual);
-      if (!hasAuth) {
-        setIsSyncing(false);
-        return;
+      let hasAuth = false;
+      try {
+        hasAuth = await ensureCalendarAuth(isManual);
+      } catch (authErr) {
+        console.warn("Calendar auth check note:", authErr);
       }
 
-      // Step 0: Auto-Deduplicate local preview tasks and remote duplicate Google Calendar events
+      // Step 1: Fetch Google Calendar events in range if authenticated (-14 days to +30 days)
+      let gcalEvents: any[] = [];
+      if (hasAuth) {
+        try {
+          gcalEvents = await fetchGoogleCalendarEvents(
+            addDays(new Date(), -14),
+            addDays(new Date(), 30)
+          );
+        } catch (fetchErr) {
+          console.warn("Error fetching Google Calendar events:", fetchErr);
+        }
+      }
+
+      // Step 2: LECTURE OVERLAP CLEARING:
+      // While applying timeline, delete all other things in the calendar during the time when a lecture is scheduled.
+      const isLecture = (item: { text?: string; type?: string; backlogTaskType?: string; lectureNumber?: number; summary?: string }) => {
+        const text = (item.text || item.summary || "").toLowerCase();
+        const type = (item.type || "").toLowerCase();
+        const backlogType = (item.backlogTaskType || "").toLowerCase();
+        return (
+          type === "lecture" ||
+          backlogType === "lecture" ||
+          item.lectureNumber !== undefined ||
+          /lecture|lec\s*\d+|class|session/i.test(text)
+        );
+      };
+
+      const scheduledLectures = todos.filter(
+        (t) =>
+          !t.isDeleted &&
+          t.startTime &&
+          t.endTime &&
+          isLecture(t)
+      );
+
+      const lectureIntervals: Array<{ start: number; end: number; sourceId?: string | number; gcalId?: string; title: string }> = [];
+
+      scheduledLectures.forEach((l) => {
+        lectureIntervals.push({
+          start: new Date(l.startTime!).getTime(),
+          end: new Date(l.endTime!).getTime(),
+          sourceId: l.id,
+          gcalId: l.calendarEventId,
+          title: l.text || "",
+        });
+      });
+
+      if (gcalEvents && gcalEvents.length > 0) {
+        gcalEvents.forEach((ge) => {
+          if (!ge.start?.dateTime || !ge.end?.dateTime) return;
+          if (isLecture(ge)) {
+            const geStart = new Date(ge.start.dateTime).getTime();
+            const geEnd = new Date(ge.end.dateTime).getTime();
+            const alreadyMapped = lectureIntervals.some(
+              (li) => Math.abs(li.start - geStart) <= 5 * 60 * 1000 && (li.gcalId === ge.id || li.title.toLowerCase() === (ge.summary || "").toLowerCase())
+            );
+            if (!alreadyMapped) {
+              lectureIntervals.push({
+                start: geStart,
+                end: geEnd,
+                gcalId: ge.id,
+                title: ge.summary || "",
+              });
+            }
+          }
+        });
+      }
+
+      const conflictingLocalTaskIdsToDelete = new Set<string | number>();
+      const conflictingGoogleEventIdsToDelete = new Set<string>();
+
+      for (const lec of lectureIntervals) {
+        const lStart = lec.start;
+        const lEnd = lec.end;
+        const lecTitleNorm = (lec.title || "").trim().toLowerCase();
+
+        // 2A: Detect conflicting other local tasks during this lecture's scheduled duration
+        todos.forEach((t) => {
+          if (t.isDeleted || !t.startTime || !t.endTime) return;
+          if (lec.sourceId !== undefined && t.id === lec.sourceId) return; // Keep the lecture itself
+          if (lec.gcalId && t.calendarEventId === lec.gcalId) return; // Keep the lecture's local mirror
+          
+          const tTitleNorm = (t.text || "").trim().toLowerCase();
+          if (tTitleNorm === lecTitleNorm && isLecture(t)) return; // Don't delete same lecture here (dedupe handles)
+
+          const tStart = new Date(t.startTime).getTime();
+          const tEnd = new Date(t.endTime).getTime();
+          // Check if time intervals overlap: delete all other things during the lecture!
+          if (tStart < lEnd && tEnd > lStart) {
+            conflictingLocalTaskIdsToDelete.add(t.id);
+            if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+              conflictingGoogleEventIdsToDelete.add(t.calendarEventId);
+            }
+          }
+        });
+
+        // 2B: Detect conflicting Google Calendar events during this lecture's scheduled duration
+        if (gcalEvents && gcalEvents.length > 0) {
+          for (const ge of gcalEvents) {
+            if (!ge.start?.dateTime || !ge.end?.dateTime) continue;
+            if (lec.gcalId && ge.id === lec.gcalId) continue; // Keep the lecture's own event
+            const geSummary = (ge.summary || "").trim().toLowerCase();
+            if (geSummary === lecTitleNorm && isLecture(ge)) {
+              continue; // Do not delete this lecture's own event
+            }
+
+            const geStart = new Date(ge.start.dateTime).getTime();
+            const geEnd = new Date(ge.end.dateTime).getTime();
+            if (geStart < lEnd && geEnd > lStart) {
+              conflictingGoogleEventIdsToDelete.add(ge.id);
+            }
+          }
+        }
+      }
+
+      // Step 3: DEDUPLICATION:
+      // While syncing, if user applies changes twice or as many times, prevent creating duplicate tasks or events
       const seenIds = new Set<string | number>();
       const seenGoogleIds = new Set<string>();
-      const seenContentKeys = new Set<string>();
+      const seenSlots = new Set<string>();
       const duplicatesToDelete = new Set<string | number>();
       const duplicateGoogleEventIdsToDelete: string[] = [];
 
       todos.forEach((t) => {
-        if (t.isDeleted) return;
+        if (t.isDeleted || conflictingLocalTaskIdsToDelete.has(t.id)) return;
 
-        let isDup = false;
-        // 1. By ID
+        // 1. Deduplicate by unique task ID
         if (seenIds.has(t.id)) {
-          isDup = true;
-        } else {
-          seenIds.add(t.id);
+          duplicatesToDelete.add(t.id);
+          return;
         }
+        seenIds.add(t.id);
 
-        // 2. By Google Calendar Event ID
+        // 2. Deduplicate by Google Calendar Event ID
         if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
           if (seenGoogleIds.has(t.calendarEventId)) {
-            isDup = true;
+            duplicatesToDelete.add(t.id);
             duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
-          } else {
-            seenGoogleIds.add(t.calendarEventId);
+            return;
           }
+          seenGoogleIds.add(t.calendarEventId);
         }
 
-        // 3. By text + start time
-        if (t.startTime && t.text) {
-          const contentKey = `${(t.subject || "").trim().toLowerCase()}_${t.text.trim().toLowerCase()}_${new Date(t.startTime).getTime()}`;
-          if (seenContentKeys.has(contentKey)) {
-            isDup = true;
+        // 3. Deduplicate by text + time slot (15-minute window) or chapter + lecture number
+        const normTitle = (t.text || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
+        if (t.startTime && normTitle) {
+          const sMs = new Date(t.startTime).getTime();
+          const slotBucket = Math.round(sMs / (15 * 60 * 1000));
+          const slotKey = `${(t.subject || "").trim().toLowerCase()}_${normTitle}_${slotBucket}`;
+          if (seenSlots.has(slotKey)) {
+            duplicatesToDelete.add(t.id);
             if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
               duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
             }
-          } else {
-            seenContentKeys.add(contentKey);
+            return;
           }
-        }
-
-        if (isDup) {
-          duplicatesToDelete.add(t.id);
+          seenSlots.add(slotKey);
+        } else if (t.chapter && t.lectureNumber !== undefined) {
+          const chapKey = `${(t.subject || "").trim().toLowerCase()}_${t.chapter.toLowerCase()}_lec${t.lectureNumber}_${t.type}`;
+          if (seenSlots.has(chapKey)) {
+            duplicatesToDelete.add(t.id);
+            return;
+          }
+          seenSlots.add(chapKey);
         }
       });
 
-      // Also clean up any multiple Google Calendar events that share identical summary and time
-      const gcalEvents = await fetchGoogleCalendarEvents(
-        addDays(new Date(), -14),
-        addDays(new Date(), 30)
-      );
-      if (gcalEvents && gcalEvents.length > 0) {
+      // Also clean up remote Google Calendar duplicate events with identical title & start time
+      if (hasAuth && gcalEvents && gcalEvents.length > 0) {
         const seenGcalSignatures = new Set<string>();
         for (const ge of gcalEvents) {
           if (!ge.start?.dateTime || !ge.summary) continue;
-          const sig = `${ge.summary.trim().toLowerCase()}_${new Date(ge.start.dateTime).getTime()}`;
+          if (conflictingGoogleEventIdsToDelete.has(ge.id)) continue;
+          const sig = `${ge.summary.trim().toLowerCase().replace(/^\[done\]\s*/i, "")}_${Math.round(new Date(ge.start.dateTime).getTime() / (15 * 60 * 1000))}`;
           if (seenGcalSignatures.has(sig)) {
             duplicateGoogleEventIdsToDelete.push(ge.id);
           } else {
@@ -669,85 +827,136 @@ export function StudyCalendar({
         }
       }
 
-      // Delete remote duplicate events from Google Calendar
-      for (const gid of duplicateGoogleEventIdsToDelete) {
-        try {
-          await deleteCalendarEvent(gid);
-        } catch (e) {
-          console.warn("Failed to delete duplicate calendar event", gid, e);
+      // Execute Google Calendar remote deletions for lecture conflicts & duplicates
+      const allGoogleIdsToDelete = new Set([
+        ...Array.from(conflictingGoogleEventIdsToDelete),
+        ...duplicateGoogleEventIdsToDelete,
+      ]);
+      if (hasAuth && allGoogleIdsToDelete.size > 0) {
+        for (const gid of allGoogleIdsToDelete) {
+          try {
+            await deleteCalendarEvent(gid);
+          } catch (e) {
+            console.warn("Failed to delete event from Google Calendar:", gid, e);
+          }
         }
+        // Immediately remove deleted events from React state so UI updates instantly
+        setGoogleEvents((prev) => prev.filter((ge) => !allGoogleIdsToDelete.has(ge.id)));
       }
 
-      // Clean duplicate tasks from todos state & cloud storage
-      let cleanTodos = todos;
-      if (duplicatesToDelete.size > 0) {
-        cleanTodos = todos.filter((t) => !duplicatesToDelete.has(t.id));
+      // Clean local tasks
+      const allLocalIdsToDelete = new Set([
+        ...Array.from(conflictingLocalTaskIdsToDelete),
+        ...Array.from(duplicatesToDelete),
+      ]);
+
+      let cleanTodos = todos.filter((t) => !allLocalIdsToDelete.has(t.id));
+      if (allLocalIdsToDelete.size > 0) {
         setCalendarTodos(cleanTodos);
       }
 
-      // Update existing Google Calendar events (excluding local- placeholder IDs)
-      const eventsToUpdate = cleanTodos
-        .filter(
+      if (hasAuth) {
+        // Step 4: Reschedule existing Google Calendar events
+        const eventsToUpdate = cleanTodos
+          .filter(
+            (t) =>
+              !t.isDeleted &&
+              t.calendarEventId &&
+              !t.calendarEventId.startsWith("local-") &&
+              t.startTime &&
+              t.endTime
+          )
+          .map((t) => ({
+            eventId: t.calendarEventId!,
+            startTime: new Date(t.startTime!),
+            endTime: new Date(t.endTime!),
+          }));
+        if (eventsToUpdate.length > 0) {
+          const updateSuccess = await rescheduleCalendarEvents(eventsToUpdate);
+          if (!updateSuccess) allSuccess = false;
+        }
+
+        // Step 5: Create new events on Google Calendar for unsynced tasks with in-flight lock & deduplication
+        const eventsToCreate = cleanTodos.filter(
           (t) =>
             !t.isDeleted &&
-            t.calendarEventId &&
-            !t.calendarEventId.startsWith("local-") &&
+            (!t.calendarEventId || t.calendarEventId.startsWith("local-")) &&
             t.startTime &&
-            t.endTime,
-        )
-        .map((t) => ({
-          eventId: t.calendarEventId!,
-          startTime: new Date(t.startTime!),
-          endTime: new Date(t.endTime!),
-        }));
-      if (eventsToUpdate.length > 0) {
-        const updateSuccess = await rescheduleCalendarEvents(eventsToUpdate);
-        if (!updateSuccess) allSuccess = false;
-      }
+            t.endTime &&
+            !inFlightTaskIdsRef.current.has(t.id)
+        );
 
-      // Create new events on Google Calendar for unsynced or local-only tasks
-      const eventsToCreate = cleanTodos.filter(
-        (t) =>
-          !t.isDeleted &&
-          (!t.calendarEventId || t.calendarEventId.startsWith("local-")) &&
-          t.startTime &&
-          t.endTime,
-      );
-      if (eventsToCreate.length > 0) {
-        const createdEventIds: { id: string | number; calendarEventId: string }[] = [];
-        for (const t of eventsToCreate) {
-          try {
-            const durationMinutes = Math.round(
-              (new Date(t.endTime!).getTime() -
-                new Date(t.startTime!).getTime()) /
-                60000,
-            );
-            const result = await createCalendarEvent(
-              t.text,
-              durationMinutes,
-              t.type || "Lecture",
-              false,
-              cleanTodos,
-              new Date(t.startTime!),
-              new Date(t.endTime!),
-            );
-            if (result && result.id && !result.id.startsWith("local-")) {
-              createdEventIds.push({ id: t.id, calendarEventId: result.id });
+        if (eventsToCreate.length > 0) {
+          const createdEventIds: { id: string | number; calendarEventId: string }[] = [];
+          for (const t of eventsToCreate) {
+            inFlightTaskIdsRef.current.add(t.id);
+            try {
+              const tStart = new Date(t.startTime!);
+              const tEnd = new Date(t.endTime!);
+              const durationMinutes = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
+              
+              // First, check if gcalEvents already contains an event with this title and time (reusing existing event to prevent duplicates)
+              const normTitle = (t.text || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
+              const existingMatch = gcalEvents.find((ge: any) => {
+                if (!ge.start?.dateTime || !ge.id) return false;
+                const geStart = new Date(ge.start.dateTime).getTime();
+                const geSummaryNorm = (ge.summary || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
+                return (
+                  (geSummaryNorm === normTitle || geSummaryNorm.includes(normTitle) || normTitle.includes(geSummaryNorm)) &&
+                  Math.abs(geStart - tStart.getTime()) <= 15 * 60 * 1000
+                );
+              });
+
+              if (existingMatch && existingMatch.id) {
+                createdEventIds.push({ id: t.id, calendarEventId: existingMatch.id });
+                const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
+                if (idx !== -1) {
+                  cleanTodos[idx] = {
+                    ...cleanTodos[idx],
+                    calendarEventId: existingMatch.id,
+                    calendarSynced: true,
+                  };
+                }
+                continue;
+              }
+
+              const result = await createCalendarEvent(
+                t.text,
+                durationMinutes,
+                t.type || "Lecture",
+                false,
+                cleanTodos,
+                tStart,
+                tEnd
+              );
+              if (result && result.id && !result.id.startsWith("local-")) {
+                createdEventIds.push({ id: t.id, calendarEventId: result.id });
+                const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
+                if (idx !== -1) {
+                  cleanTodos[idx] = {
+                    ...cleanTodos[idx],
+                    calendarEventId: result.id,
+                    calendarSynced: true,
+                  };
+                }
+              }
+            } catch (e) {
+              console.error("Error creating Google Calendar event:", e);
+              allSuccess = false;
+            } finally {
+              inFlightTaskIdsRef.current.delete(t.id);
             }
-          } catch (e) {
-            console.error("Error creating Google Calendar event:", e);
-            allSuccess = false;
           }
-        }
-        if (createdEventIds.length > 0) {
-          setTodos((prev) =>
-            prev.map((t) => {
-              const match = createdEventIds.find((c) => c.id === t.id);
-              return match
-                ? { ...t, calendarEventId: match.calendarEventId }
-                : t;
-            }),
-          );
+          if (createdEventIds.length > 0) {
+            setCalendarTodos((prev) =>
+              prev.map((t) => {
+                const match = createdEventIds.find((c) => c.id === t.id);
+                return match
+                  ? { ...t, calendarEventId: match.calendarEventId, calendarSynced: true }
+                  : t;
+              })
+            );
+          }
         }
       }
     } catch (e: any) {
@@ -755,28 +964,34 @@ export function StudyCalendar({
       allSuccess = false;
       errorMessage =
         e.message || "Failed to apply all changes to Google Calendar.";
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
     }
+
     if (allSuccess) {
-      showToast("Timeline applied & duplicate tasks cleared!", "success");
+      showToast("Timeline applied! All conflicts during lectures cleared & synced.", "success");
       setUnsyncedChanges(false);
     } else if (isManual) {
       showToast(
         errorMessage || "Failed to apply all changes to Google Calendar.",
-        "error",
+        "error"
       );
     }
-    setIsSyncing(false);
   };
 
-  // Auto-sync changes to Google Calendar
+  // Auto-sync changes to Google Calendar with debounce
   useEffect(() => {
-    if (unsyncedChanges && !isSyncing) {
-      const timer = setTimeout(() => {
+    if (unsyncedChanges && !isSyncingRef.current) {
+      if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
+      autoSyncTimerRef.current = setTimeout(() => {
         handleCalendarSync();
       }, 1500);
-      return () => clearTimeout(timer);
+      return () => {
+        if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
+      };
     }
-  }, [unsyncedChanges, todos, isSyncing]);
+  }, [unsyncedChanges, todos]);
 
   const handleScheduleSingle = async (task: Todo) => {
     let latestEnd = new Date();
@@ -1586,31 +1801,37 @@ export function StudyCalendar({
                               (finalEnd.getTime() - finalStart.getTime()) /
                                 60000,
                             );
-                            createCalendarEvent(
-                              ev.title,
-                              durationMins,
-                              (ev as any).type || "Lecture",
-                              false,
-                              todos,
-                              finalStart,
-                              finalEnd,
-                            )
-                              .then((res) => {
-                                if (
-                                  res &&
-                                  res.id &&
-                                  !res.id.startsWith("local-")
-                                ) {
-                                  setCalendarTodos((prev) =>
-                                    prev.map((t) =>
-                                      t.id === ev.id
-                                        ? { ...t, calendarEventId: res.id }
-                                        : t,
-                                    ),
-                                  );
-                                }
-                              })
-                              .catch(console.error);
+                            if (!inFlightTaskIdsRef.current.has(ev.id)) {
+                              inFlightTaskIdsRef.current.add(ev.id);
+                              createCalendarEvent(
+                                ev.title,
+                                durationMins,
+                                (ev as any).type || "Lecture",
+                                false,
+                                todos,
+                                finalStart,
+                                finalEnd,
+                              )
+                                .then((res) => {
+                                  if (
+                                    res &&
+                                    res.id &&
+                                    !res.id.startsWith("local-")
+                                  ) {
+                                    setCalendarTodos((prev) =>
+                                      prev.map((t) =>
+                                        t.id === ev.id
+                                          ? { ...t, calendarEventId: res.id, calendarSynced: true }
+                                          : t,
+                                      ),
+                                    );
+                                  }
+                                })
+                                .catch(console.error)
+                                .finally(() => {
+                                  inFlightTaskIdsRef.current.delete(ev.id);
+                                });
+                            }
                           }
                         }
                       };
@@ -1640,7 +1861,7 @@ export function StudyCalendar({
                       left: `calc(${dayIndex * (100 / visibleDays.length)}% + 3px)`,
                       width: `calc(${100 / visibleDays.length}% - 6px)`,
                       top: `${displayStartHour * 80}px`,
-                      height: `${Math.max(28, displayDuration * 80 - 2)}px`,
+                      height: `${Math.max(38, displayDuration * 80 - 2)}px`,
                     }}
                   >
                     {/* Delete button (prominent hover/touch area) */}
@@ -1720,7 +1941,7 @@ export function StudyCalendar({
                           </button>
 
                           <p
-                            className={`text-[11px] font-bold leading-none truncate pointer-events-none ${ev.completed ? "line-through opacity-60" : ""}`}
+                            className={`text-xs sm:text-[13px] font-bold leading-tight break-words pointer-events-none ${ev.completed ? "line-through opacity-60" : ""}`}
                           >
                             {ev.title}
                           </p>
@@ -1803,7 +2024,7 @@ export function StudyCalendar({
                                 )}
                               </button>
                               <p
-                                className={`text-[11px] font-bold leading-tight line-clamp-2 pointer-events-none ${ev.completed ? "line-through opacity-60" : ""}`}
+                                className={`text-xs sm:text-[13px] md:text-sm font-bold leading-snug break-words pointer-events-none ${ev.completed ? "line-through opacity-60" : ""}`}
                               >
                                 {ev.title}
                               </p>
@@ -2058,31 +2279,37 @@ export function StudyCalendar({
                             const durationMins = Math.round(
                               (finalEnd.getTime() - ev.start.getTime()) / 60000,
                             );
-                            createCalendarEvent(
-                              ev.title,
-                              durationMins,
-                              (ev as any).type || "Lecture",
-                              false,
-                              todos,
-                              ev.start,
-                              finalEnd,
-                            )
-                              .then((res) => {
-                                if (
-                                  res &&
-                                  res.id &&
-                                  !res.id.startsWith("local-")
-                                ) {
-                                  setCalendarTodos((prev) =>
-                                    prev.map((t) =>
-                                      t.id === ev.id
-                                        ? { ...t, calendarEventId: res.id }
-                                        : t,
-                                    ),
-                                  );
-                                }
-                              })
-                              .catch(console.error);
+                            if (!inFlightTaskIdsRef.current.has(ev.id)) {
+                              inFlightTaskIdsRef.current.add(ev.id);
+                              createCalendarEvent(
+                                ev.title,
+                                durationMins,
+                                (ev as any).type || "Lecture",
+                                false,
+                                todos,
+                                ev.start,
+                                finalEnd,
+                              )
+                                .then((res) => {
+                                  if (
+                                    res &&
+                                    res.id &&
+                                    !res.id.startsWith("local-")
+                                  ) {
+                                    setCalendarTodos((prev) =>
+                                      prev.map((t) =>
+                                        t.id === ev.id
+                                          ? { ...t, calendarEventId: res.id, calendarSynced: true }
+                                          : t,
+                                      ),
+                                    );
+                                  }
+                                })
+                                .catch(console.error)
+                                .finally(() => {
+                                  inFlightTaskIdsRef.current.delete(ev.id);
+                                });
+                            }
                           }
                         };
 
@@ -2213,7 +2440,7 @@ export function StudyCalendar({
                   {dayEvents.slice(0, 3).map((ev) => (
                     <div
                       key={ev.id}
-                      className={`text-[9px] px-1.5 py-0.5 rounded truncate ${COLORS[ev.subject] || COLORS["Default"]}`}
+                      className={`text-[10px] sm:text-xs font-semibold px-1.5 py-0.5 rounded break-words leading-tight ${COLORS[ev.subject] || COLORS["Default"]}`}
                     >
                       {ev.title}
                     </div>

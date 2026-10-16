@@ -163,10 +163,18 @@ export function recalculateRoadmap(
 
   // Combine: keep all COMPLETED todos and non-backlog todos, replace incomplete backlog todos with reconciled fresh ones
   const preservedTodos = currentTodos.filter(
-    t => !t.isBacklogTask || t.backlogPlanId !== plan.id || t.completed
+    t => (!t.isBacklogTask && !t.backlogChapterId) || t.completed
   );
 
-  const mergedTodos = [...preservedTodos, ...reconciledFreshTasks];
+  const seenFreshSigs = new Set<string>();
+  const deduplicatedFresh = reconciledFreshTasks.filter(fresh => {
+    const sig = getTaskSignature(fresh);
+    if (seenFreshSigs.has(sig)) return false;
+    seenFreshSigs.add(sig);
+    return true;
+  });
+
+  const mergedTodos = [...preservedTodos, ...deduplicatedFresh];
 
   // Daily diff calculations
   const oldDailyMins = plan.metrics.requiredDailyMinutes || plan.settings.targetDailyMinutes;

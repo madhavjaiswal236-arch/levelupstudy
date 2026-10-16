@@ -88,7 +88,38 @@ export function mergeTaskArrays(
     }
   }
 
-  return Array.from(mergedMap.values());
+  // Deduplicate tasks: drop duplicate Google calendar events and duplicate scheduled slots
+  const deduplicated: Todo[] = [];
+  const seenGoogleEventIds = new Set<string>();
+  const seenSlotSignatures = new Set<string>();
+
+  for (const t of mergedMap.values()) {
+    if (t.isDeleted) {
+      deduplicated.push(t);
+      continue;
+    }
+
+    if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+      if (seenGoogleEventIds.has(t.calendarEventId)) {
+        continue; // duplicate task referencing same Google Calendar event
+      }
+      seenGoogleEventIds.add(t.calendarEventId);
+    }
+
+    if (t.text && t.startTime) {
+      const sMs = new Date(t.startTime).getTime();
+      const roundedSlot = Math.round(sMs / (20 * 60 * 1000));
+      const sig = `${(t.subject || "").trim().toLowerCase()}_${t.text.trim().toLowerCase().replace(/^\[done\]\s*/i, "")}_${roundedSlot}`;
+      if (seenSlotSignatures.has(sig)) {
+        continue; // duplicate task in identical slot
+      }
+      seenSlotSignatures.add(sig);
+    }
+
+    deduplicated.push(t);
+  }
+
+  return deduplicated;
 }
 
 export function mergeHistoryEntries(

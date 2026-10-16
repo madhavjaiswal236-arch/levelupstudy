@@ -8,7 +8,8 @@ import {
   generateRoadmap,
   generateTodosFromRoadmap,
   calculateDateDiffDays,
-  addDaysToDate
+  addDaysToDate,
+  getTaskSignaturesWithLegacy
 } from '@/lib/backlog/engine';
 import { BacklogPlan, FeasibilityStatus } from '@/lib/backlog/types';
 
@@ -184,21 +185,24 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
     const newFutureTodos = generateTodosFromRoadmap(newRoadmap, updatedPlan.id);
 
     // Keep completed tasks, replace incomplete backlog tasks without duplicating
-    const completedBacklog = todos.filter(t => t.isBacklogTask && t.completed);
-    const completedSignatures = new Set(
-      completedBacklog.map(t => `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`)
-    );
-
-    const freshTasks = newFutureTodos.filter(t => {
-      const sig = `${t.backlogChapterId || t.chapter}_${t.backlogTaskType || t.type}_${t.lectureNumber || 0}`;
-      return !completedSignatures.has(sig);
+    const nonBacklog = todos.filter(t => !t.isBacklogTask && !t.backlogChapterId);
+    const completedBacklog = todos.filter(t => (t.isBacklogTask || t.backlogChapterId) && t.completed);
+    const completedSignatures = new Set<string>();
+    completedBacklog.forEach(t => {
+      getTaskSignaturesWithLegacy(t).forEach(sig => completedSignatures.add(sig));
     });
 
-    const preservedTodos = todos.filter(
-      t => !t.isBacklogTask || t.backlogPlanId !== updatedPlan.id || t.completed
-    );
+    const seenFreshSigs = new Set<string>();
+    const deduplicatedFresh = newFutureTodos.filter(t => {
+      const sigs = getTaskSignaturesWithLegacy(t);
+      if (sigs.some(s => completedSignatures.has(s))) return false;
+      const primarySig = sigs[0] || `${t.id}`;
+      if (seenFreshSigs.has(primarySig)) return false;
+      seenFreshSigs.add(primarySig);
+      return true;
+    });
 
-    const mergedTodos = [...preservedTodos, ...freshTasks];
+    const mergedTodos = [...nonBacklog, ...completedBacklog, ...deduplicatedFresh];
 
     setBacklogPlan(updatedPlan);
     if (typeof window !== "undefined") {

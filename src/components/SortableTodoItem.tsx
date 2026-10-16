@@ -54,7 +54,7 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center justify-between p-2 sm:p-2.5 md:p-3 rounded-xl border relative overflow-hidden ${
+      className={`group flex items-center justify-between p-3 sm:p-3.5 md:p-4 rounded-xl border relative overflow-hidden ${
         isDragging
           ? "opacity-60 border-cyan-500 bg-cyan-950/60 shadow-2xl scale-[1.01] cursor-grabbing"
           : "transition-colors duration-200 " +
@@ -85,33 +85,33 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
         )}
       </AnimatePresence>
 
-      <div className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 relative z-10 pr-1">
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 relative z-10 pr-1 sm:pr-2">
         {/* Drag Handle */}
         {!todo.completed && (
           <div
             {...attributes}
             {...listeners}
-            className="p-0.5 sm:p-1 cursor-grab active:cursor-grabbing text-slate-500 hover:text-cyan-400 transition-colors shrink-0"
+            className="p-1 cursor-grab active:cursor-grabbing text-slate-500 hover:text-cyan-400 transition-colors shrink-0"
             title="Drag to reorder"
           >
-            <GripVertical className="w-3 h-3 sm:w-4 sm:h-4" />
+            <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
         )}
 
         <button
           onClick={() => toggleTodo(todo.id)}
-          className="flex items-center gap-1.5 sm:gap-2.5 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg p-0.5 min-w-0"
+          className="flex items-start sm:items-center gap-2.5 sm:gap-3 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg p-0.5 min-w-0"
         >
           <NeonCheckbox
             checked={todo.completed}
             onChange={() => {}} // Click handled by parent button's onClick
             color={checkboxColor}
-            className="pointer-events-none shrink-0 scale-90 sm:scale-100"
+            className="pointer-events-none shrink-0 mt-0.5 sm:mt-0"
           />
           
           <div className="flex flex-col min-w-0 flex-1">
             <span
-              className={`text-xs sm:text-sm md:text-base font-bold tracking-wide transition-all duration-300 line-clamp-1 sm:line-clamp-2 leading-tight break-words ${
+              className={`text-base sm:text-base md:text-lg font-bold tracking-normal transition-all duration-300 leading-snug break-words ${
                 todo.completed
                   ? "dark:text-slate-500 text-slate-600 line-through decoration-slate-500/50"
                   : "dark:text-slate-100 text-slate-900 group-hover:text-cyan-50"
@@ -119,10 +119,10 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
             >
               {todo.text}
             </span>
-            <div className="flex flex-wrap gap-1 items-center mt-1 min-w-0 max-w-full">
+            <div className="flex flex-wrap gap-1 sm:gap-1.5 items-center mt-1.5 min-w-0 max-w-full">
               {todo.priority && (
                 <span
-                  className={`text-[7.5px] sm:text-[9.5px] font-mono px-1 sm:px-1.5 py-0.5 rounded border uppercase tracking-tight leading-none transition-colors shrink-0 ${
+                  className={`text-[11px] sm:text-xs font-mono font-semibold px-2 py-0.5 rounded border uppercase tracking-wider leading-none transition-colors shrink-0 ${
                     todo.completed
                       ? "dark:text-slate-500 text-slate-600 dark:bg-slate-800 bg-slate-100/50 dark:border-slate-700 border-slate-300/50"
                       : todo.priority === "High"
@@ -136,7 +136,7 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
                 </span>
               )}
               <span
-                className={`text-[7.5px] sm:text-[9.5px] font-mono px-1 sm:px-1.5 py-0.5 rounded border uppercase tracking-tight leading-none transition-colors shrink-0 max-w-[120px] sm:max-w-none truncate ${
+                className={`text-[11px] sm:text-xs font-mono font-semibold px-2 py-0.5 rounded border uppercase tracking-wider leading-none transition-colors shrink-0 ${
                   todo.completed
                     ? "dark:text-slate-500 text-slate-600 dark:bg-slate-800 bg-slate-100/50 dark:border-slate-700 border-slate-300/50"
                     : "dark:text-cyan-300 dark:text-cyan-400 text-cyan-700 bg-cyan-950/50 border-cyan-800/50 shadow-xs"
@@ -175,41 +175,41 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
                 if (!durationStr) return null;
                 return (
                   <span
-                    className={`text-[7.5px] sm:text-[9.5px] font-mono px-1 sm:px-1.5 py-0.5 rounded border uppercase tracking-tight leading-none transition-colors flex items-center gap-0.5 shrink-0 ${
+                    className={`text-[11px] sm:text-xs font-mono font-semibold px-2 py-0.5 rounded border uppercase tracking-wider leading-none transition-colors flex items-center gap-1 shrink-0 ${
                       todo.completed
                         ? "dark:text-slate-500 text-slate-600 dark:bg-slate-800 bg-slate-100/50 dark:border-slate-700 border-slate-300/50"
                         : "dark:text-emerald-400 text-emerald-700 bg-emerald-950/50 border-emerald-800/50 shadow-xs font-bold"
                     }`}
                   >
-                    <Clock className="w-2 h-2 sm:w-2.5 sm:h-2.5 shrink-0" />
+                    <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0" />
                     {durationStr}
                   </span>
                 );
               })()}
               {!todo.completed && todo.xpReward > 0 && (
-                <span className="flex items-center gap-0.5 text-[7.5px] sm:text-[9.5px] font-mono dark:text-amber-400 text-amber-700 bg-amber-500/10 border border-amber-500/20 px-1 sm:px-1.5 py-0.5 rounded shadow-xs transition-opacity shrink-0 leading-none">
-                  <Target className="w-2 h-2 sm:w-2.5 sm:h-2.5 shrink-0" />
+                <span className="flex items-center gap-1 text-[11px] sm:text-xs font-mono font-semibold dark:text-amber-400 text-amber-700 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded shadow-xs transition-opacity shrink-0 leading-none">
+                  <Target className="w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0" />
                   +{todo.xpReward} XP
                 </span>
               )}
               {todo.calendarSynced && (
                 <span
                   title="Scheduled in Google Calendar"
-                  className="flex items-center text-[7.5px] sm:text-[9.5px] dark:text-blue-400 text-blue-700 bg-blue-500/10 border border-blue-500/20 px-0.5 sm:px-1 py-0.5 rounded shadow-xs shrink-0 leading-none"
+                  className="flex items-center text-[11px] sm:text-xs dark:text-blue-400 text-blue-700 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded shadow-xs shrink-0 leading-none"
                 >
-                  <Calendar className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                  <Calendar className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 </span>
               )}
               {isDifferentDate && scheduledDate && (
                 <span 
-                  className={`text-[7.5px] sm:text-[9.5px] font-mono font-bold px-1 sm:px-1.5 py-0.5 rounded border flex items-center gap-0.5 sm:gap-1 shrink-0 leading-none ${
+                  className={`text-[11px] sm:text-xs font-mono font-semibold px-2 py-0.5 rounded border flex items-center gap-1 shrink-0 leading-none ${
                     scheduledDate < todayStr
                       ? "dark:text-amber-400 text-amber-700 bg-amber-500/10 dark:bg-amber-950/40 border-amber-500/30"
                       : "dark:text-cyan-400 text-cyan-700 bg-cyan-500/10 dark:bg-cyan-950/40 border-cyan-500/30"
                   }`}
                   title={`Scheduled for ${scheduledDate}`}
                 >
-                  <span className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full shrink-0 ${scheduledDate < todayStr ? 'bg-amber-400' : 'bg-cyan-400'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${scheduledDate < todayStr ? 'bg-amber-400' : 'bg-cyan-400'}`} />
                   {todo.backlogDayIndex ? `Day ${todo.backlogDayIndex}` : scheduledDate}
                 </span>
               )}
@@ -218,7 +218,7 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
         </button>
       </div>
 
-      <div className="flex items-center gap-0.5 sm:gap-1 relative z-10 shrink-0">
+      <div className="flex items-center gap-1 sm:gap-1.5 relative z-10 shrink-0">
         {!todo.completed && onMoveToToday && (todo.isBacklogTask || (scheduledDate && scheduledDate < todayStr)) && (
           <button
             type="button"
@@ -227,9 +227,9 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
               onMoveToToday(todo);
             }}
             title="Move this task into today's active study plan"
-            className="flex items-center gap-1 p-1 sm:px-2 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-mono font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:border-amber-500/60 transition-all hover:scale-105 active:scale-95 shadow-xs"
+            className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:border-amber-500/60 transition-all hover:scale-105 active:scale-95 shadow-xs"
           >
-            <ArrowUpRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            <ArrowUpRight className="w-3.5 h-3.5" />
             <span className="hidden md:inline">To Today</span>
           </button>
         )}
@@ -243,15 +243,15 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
               );
             }}
             title="Start Deep Focus on this task"
-            className="flex items-center gap-1 p-1 sm:px-2.5 sm:py-1.5 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-mono font-bold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30 hover:border-cyan-500/60 transition-all hover:scale-105 active:scale-95 shadow-xs"
+            className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30 hover:border-cyan-500/60 transition-all hover:scale-105 active:scale-95 shadow-xs"
           >
-            <Play className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-current" />
+            <Play className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-current" />
             <span className="hidden md:inline">Focus</span>
           </button>
         )}
         <button
           onClick={() => deleteTodo(todo.id)}
-          className="p-1 sm:p-1.5 dark:text-slate-500 text-slate-600 hover:dark:text-rose-400 text-rose-700 transition-colors rounded-md sm:rounded-lg hover:bg-rose-500/10 group/trash focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+          className="p-1.5 sm:p-2 dark:text-slate-500 text-slate-600 hover:dark:text-rose-400 text-rose-700 transition-colors rounded-lg hover:bg-rose-500/10 group/trash focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
           title="Delete task"
         >
           <motion.div

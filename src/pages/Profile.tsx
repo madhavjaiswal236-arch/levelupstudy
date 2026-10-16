@@ -10,7 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { getRankInfo } from '@/lib/utils';
 import { initAuth, googleSignIn, logout, getAccessToken } from '@/lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
-import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask } from '@/lib/calendar';
+import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask, deleteCalendarEvent } from '@/lib/calendar';
 import { Todo } from '@/context/AppContext';
 import { format } from 'date-fns';
 
@@ -377,7 +377,52 @@ const Profile = React.memo(function Profile() {
  }
  }
  
- setTodos(newTodos);
+ // Clear any other tasks during scheduled lectures and deduplicate
+ const isLecture = (t: any) => {
+ const text = (t.text || "").toLowerCase();
+ const type = (t.type || "").toLowerCase();
+ const backlogType = (t.backlogTaskType || "").toLowerCase();
+ return (
+ type === "lecture" ||
+ backlogType === "lecture" ||
+ t.lectureNumber !== undefined ||
+ /lecture|lec\s*\d+|class|session/i.test(text)
+ );
+ };
+
+ const scheduledLectures = newTodos.filter(t => !t.isDeleted && t.startTime && t.endTime && isLecture(t));
+ const conflictingIdsToDelete = new Set<string | number>();
+ for (const l of scheduledLectures) {
+ const lStart = new Date(l.startTime!).getTime();
+ const lEnd = new Date(l.endTime!).getTime();
+ newTodos.forEach(t => {
+ if (t.id === l.id || t.isDeleted || !t.startTime || !t.endTime) return;
+ const tStart = new Date(t.startTime).getTime();
+ const tEnd = new Date(t.endTime).getTime();
+ if (tStart < lEnd && tEnd > lStart) {
+ conflictingIdsToDelete.add(t.id);
+ if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+ deleteCalendarEvent(t.calendarEventId).catch(console.error);
+ }
+ }
+ });
+ }
+
+ const seenIds = new Set<string | number>();
+ const seenSlots = new Set<string>();
+ const cleanTodos = newTodos.filter(t => {
+ if (conflictingIdsToDelete.has(t.id) || t.isDeleted) return false;
+ if (seenIds.has(t.id)) return false;
+ seenIds.add(t.id);
+ if (t.startTime && t.text) {
+ const slotKey = `${(t.subject || "").toLowerCase()}_${t.text.trim().toLowerCase()}_${Math.round(new Date(t.startTime).getTime() / (15 * 60 * 1000))}`;
+ if (seenSlots.has(slotKey)) return false;
+ seenSlots.add(slotKey);
+ }
+ return true;
+ });
+
+ setTodos(cleanTodos);
 
  if (allSuccess) {
  showToast("Timeline applied successfully to Google Calendar!", "success");
