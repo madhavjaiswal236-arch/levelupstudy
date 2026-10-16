@@ -3678,9 +3678,9 @@ const Dashboard = React.memo(function Dashboard() {
 
               {/* Contextual Status Banner */}
               {studyPlanFilter === "today" && allTodos.length > todayTodos.length && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-cyan-500/5 dark:bg-cyan-950/20 border border-cyan-500/20 text-xs text-slate-600 dark:text-slate-400 mb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 px-3 py-2 rounded-lg bg-cyan-500/5 dark:bg-cyan-950/20 border border-cyan-500/20 text-xs text-slate-600 dark:text-slate-400 mb-4">
                   <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
                     <span>
                       Showing <strong>Today's Tasks</strong> ({todayTodos.length} {todayTodos.length === 1 ? "task" : "tasks"}). {allTodos.length - todayTodos.length} upcoming tasks scheduled in your full roadmap.
                     </span>
@@ -3688,7 +3688,7 @@ const Dashboard = React.memo(function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setStudyPlanFilter("all")}
-                    className="text-cyan-600 dark:text-cyan-400 font-bold hover:underline ml-2 whitespace-nowrap"
+                    className="text-cyan-600 dark:text-cyan-400 font-bold hover:underline sm:ml-2 whitespace-nowrap self-end sm:self-auto"
                   >
                     View All &rarr;
                   </button>
@@ -3696,14 +3696,14 @@ const Dashboard = React.memo(function Dashboard() {
               )}
 
               {studyPlanFilter === "all" && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 text-xs text-slate-600 dark:text-slate-400 mb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 px-3 py-2 rounded-lg bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 text-xs text-slate-600 dark:text-slate-400 mb-4">
                   <span>
                     Viewing full roadmap ({allTodos.length} total tasks across all days).
                   </span>
                   <button
                     type="button"
                     onClick={() => setStudyPlanFilter("today")}
-                    className="text-amber-600 dark:text-amber-400 font-bold hover:underline ml-2 whitespace-nowrap"
+                    className="text-amber-600 dark:text-amber-400 font-bold hover:underline sm:ml-2 whitespace-nowrap self-end sm:self-auto"
                   >
                     Switch to Today Only &rarr;
                   </button>

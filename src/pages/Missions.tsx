@@ -63,21 +63,21 @@ const Missions = React.memo(function Missions() {
  </motion.header>
 
  {pendingTasks.filter(t => t.subject !== 'Personal').length > 0 && (
- <motion.div variants={itemVariants} className="space-y-4 mb-8">
- <h2 className="text-xl font-bold flex items-center gap-2 dark:text-rose-400 text-rose-700 uppercase tracking-widest">
- <AlertTriangle className="w-5 h-5" />
+ <motion.div variants={itemVariants} className="space-y-3 mb-6 sm:mb-8">
+ <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2 dark:text-rose-400 text-rose-700 uppercase tracking-widest">
+ <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
  Pending Backlog
  </h2>
- <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
  {pendingTasks.filter(t => t.subject !== 'Personal').map((task) => (
- <Card key={`backlog-${task.id}`} className="border-rose-500/20 bg-rose-950/10">
- <CardContent className="p-4 flex gap-4">
- <AlertTriangle className="w-5 h-5 dark:text-rose-400 text-rose-700 shrink-0 opacity-50" />
- <div>
- <p className="dark:text-slate-300 text-slate-600 font-medium mb-1 line-through decoration-rose-500/50">{task.text}</p>
- <div className="flex gap-2">
- <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-rose-500/10 dark:text-rose-400 text-rose-700 border border-rose-500/20">{task.type}</span>
- <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-orange-500/10 dark:text-orange-400 text-orange-600 border border-orange-500/20">Missed</span>
+ <Card key={`backlog-${task.id}`} className="border-rose-500/20 bg-rose-950/10 rounded-xl">
+ <CardContent className="p-3 sm:p-4 flex gap-3 items-start">
+ <AlertTriangle className="w-4 h-4 dark:text-rose-400 text-rose-700 shrink-0 opacity-50 mt-0.5" />
+ <div className="min-w-0 flex-1">
+ <p className="dark:text-slate-300 text-slate-600 text-xs sm:text-sm font-medium mb-1 line-through decoration-rose-500/50 truncate">{task.text}</p>
+ <div className="flex gap-1.5">
+ <span className="text-[9px] sm:text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-rose-500/10 dark:text-rose-400 text-rose-700 border border-rose-500/20">{task.type}</span>
+ <span className="text-[9px] sm:text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-orange-500/10 dark:text-orange-400 text-orange-600 border border-orange-500/20">Missed</span>
  </div>
  </div>
  </CardContent>
@@ -87,23 +87,23 @@ const Missions = React.memo(function Missions() {
  </motion.div>
  )}
 
- <motion.div variants={containerVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+ <motion.div variants={containerVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
  {/* Daily Quests */}
  <TourStep
  id="missions-intro"
  title="Daily Missions"
  description="These are the specific tasks you set up from the dashboard. Check them off as you complete them to earn XP and progress towards your daily goal."
  position="right"
- className="lg:col-span-2 space-y-4"
+ className="lg:col-span-2 space-y-3 sm:space-y-4"
  >
- <motion.div variants={itemVariants} className="space-y-4">
- <h2 className="text-xl font-bold flex items-center gap-2 dark:text-slate-200 text-slate-900">
- <Target className="w-5 h-5 dark:text-cyan-400 text-cyan-700" />
+ <motion.div variants={itemVariants} className="space-y-3 sm:space-y-4">
+ <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2 dark:text-slate-200 text-slate-900">
+ <Target className="w-4 h-4 sm:w-5 sm:h-5 dark:text-cyan-400 text-cyan-700" />
  TODAY'S TARGETS
  </h2>
  {todos.filter(t => t.subject !== 'Personal' && !t.isDeleted && isCurrentDayTask(t, getLocalDateString())).length === 0 ? (
- <Card className="dark:border-white/10 border-black/10 dark:bg-black bg-slate-50">
- <CardContent className="p-8 text-center dark:text-slate-400 text-slate-600">
+ <Card className="dark:border-white/10 border-black/10 dark:bg-black bg-slate-50 rounded-xl">
+ <CardContent className="p-6 sm:p-8 text-center text-xs sm:text-sm dark:text-slate-400 text-slate-600">
  No tasks scheduled for today. Add some from the Dashboard!
  </CardContent>
  </Card>
@@ -115,7 +115,7 @@ const Missions = React.memo(function Missions() {
  animate={{ opacity: 1, y: 0 }}
  >
  <Card 
- className={`group cursor-pointer transition-all duration-300 relative overflow-hidden ${
+ className={`group cursor-pointer transition-all duration-300 relative overflow-hidden rounded-xl ${
  quest.completed ? 'border-green-500/30 bg-green-500/5' : 'dark:border-white/10 border-black/10 dark:bg-black bg-slate-50 hover:border-cyan-500/50'
  }`}
  onClick={() => toggleQuest(quest.id)}
@@ -132,24 +132,24 @@ const Missions = React.memo(function Missions() {
  />
  )}
  </AnimatePresence>
- <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
- <div className="flex items-start sm:items-center gap-4">
+ <CardContent className="p-3 sm:p-4 flex items-center justify-between gap-3 relative z-10">
+ <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
  <NeonCheckbox
  checked={quest.completed}
  onChange={() => {}} // Controlled by the parent Card's onClick
  color={quest.completed ? "green" : quest.priority === "High" ? "rose" : quest.priority === "Medium" ? "amber" : "cyan"}
- className="pointer-events-none shrink-0 mt-1 sm:mt-0"
+ className="pointer-events-none shrink-0"
  />
- <div>
- <span className={`text-lg font-medium block ${quest.completed ? 'text-slate-500 line-through' : 'dark:text-slate-200 text-slate-900'}`}>
+ <div className="min-w-0 flex-1">
+ <span className={`text-xs sm:text-sm md:text-base font-semibold block leading-snug truncate ${quest.completed ? 'text-slate-500 line-through' : 'dark:text-slate-200 text-slate-900'}`}>
  {quest.text}
  </span>
- <span className={`text-xs font-mono px-2 py-0.5 rounded-md mt-2 inline-block ${quest.completed ? 'opacity-50 grayscale' : ''} dark:text-cyan-400 text-cyan-700 bg-cyan-400/10`}>
+ <span className={`text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded mt-1 inline-block ${quest.completed ? 'opacity-50 grayscale' : ''} dark:text-cyan-400 text-cyan-700 bg-cyan-400/10`}>
  [{quest.type}]
  </span>
  </div>
  </div>
- <span className={`font-mono px-3 py-1 rounded-full text-sm font-bold shrink-0 ${quest.completed ? 'dark:text-green-400 text-green-700/50 bg-green-500/10' : 'dark:text-cyan-400 text-cyan-700 bg-cyan-400/10'}`}>
+ <span className={`font-mono px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-bold shrink-0 ${quest.completed ? 'dark:text-green-400 text-green-700/50 bg-green-500/10' : 'dark:text-cyan-400 text-cyan-700 bg-cyan-400/10'}`}>
  +{quest.xpReward} XP
  </span>
  </CardContent>

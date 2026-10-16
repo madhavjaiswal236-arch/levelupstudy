@@ -308,30 +308,30 @@ const Store = React.memo(function Store() {
  <div className="space-y-8 pb-12">
  <motion.header variants={itemVariants} initial="hidden" animate="show" className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
  <div>
- <h1 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-amber-500 to-orange-500">
+ <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-amber-500 to-orange-500">
  REWARD CENTER
  </h1>
- <p className="dark:text-amber-400 text-amber-700 font-mono text-sm mt-1 flex items-center gap-2">
- <BrainCircuit className="w-4 h-4" />
+ <p className="dark:text-amber-400 text-amber-700 font-mono text-xs sm:text-sm mt-1 flex items-center gap-2">
+ <BrainCircuit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
  HEALTHY HABITS TRACKER
  </p>
  </div>
- <div className="flex gap-4">
+ <div className="grid grid-cols-2 gap-2 sm:gap-4 w-full md:w-auto">
  <Card className="bg-amber-500/10 border-amber-500/30 shadow-md">
- <CardContent className="p-4 flex items-center gap-4">
- <ShoppingCart className="w-6 h-6 dark:text-amber-400 text-amber-700" />
+ <CardContent className="p-2.5 sm:p-3.5 md:p-4 flex items-center gap-2.5 sm:gap-4">
+ <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6 dark:text-amber-400 text-amber-700 shrink-0" />
  <div>
- <p className="text-xs dark:text-amber-400 text-amber-700/80 font-mono uppercase tracking-wider">Daily XP</p>
- <p className="text-2xl font-bold font-mono dark:text-white text-slate-900">{spendableXP.toLocaleString()}</p>
+ <p className="text-[10px] sm:text-xs dark:text-amber-400 text-amber-700/80 font-mono uppercase tracking-wider">Daily XP</p>
+ <p className="text-lg sm:text-2xl font-bold font-mono dark:text-white text-slate-900">{spendableXP.toLocaleString()}</p>
  </div>
  </CardContent>
  </Card>
  <Card className="bg-purple-500/10 border-purple-500/30 shadow-md">
- <CardContent className="p-4 flex items-center gap-4">
- <Coins className="w-6 h-6 dark:text-purple-400 text-purple-700" />
+ <CardContent className="p-2.5 sm:p-3.5 md:p-4 flex items-center gap-2.5 sm:gap-4">
+ <Coins className="w-5 h-5 sm:w-6 sm:h-6 dark:text-purple-400 text-purple-700 shrink-0" />
  <div>
- <p className="text-xs dark:text-purple-400 text-purple-700/80 font-mono uppercase tracking-wider">Total XP</p>
- <p className="text-2xl font-bold font-mono dark:text-white text-slate-900">{spendableTotalXP.toLocaleString()}</p>
+ <p className="text-[10px] sm:text-xs dark:text-purple-400 text-purple-700/80 font-mono uppercase tracking-wider">Total XP</p>
+ <p className="text-lg sm:text-2xl font-bold font-mono dark:text-white text-slate-900">{spendableTotalXP.toLocaleString()}</p>
  </div>
  </CardContent>
  </Card>
@@ -344,18 +344,18 @@ const Store = React.memo(function Store() {
  description="Exchange your hard-earned XP for breaks and rewards. High-stimulation rewards cost more and have cooldowns to protect your dopamine levels for studying."
  position="bottom"
  >
- <motion.div variants={itemVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 mb-8 flex items-start gap-4 space-y-0">
- <AlertTriangle className="w-8 h-8 dark:text-amber-400 text-amber-700 shrink-0 mt-1" />
+ <motion.div variants={itemVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 sm:p-5 mb-6 sm:mb-8 flex items-start gap-3 sm:gap-4 space-y-0">
+ <AlertTriangle className="w-6 h-6 sm:w-8 sm:h-8 dark:text-amber-400 text-amber-700 shrink-0 mt-0.5" />
  <div>
- <h2 className="text-lg font-bold dark:text-amber-400 text-amber-700 mb-1 uppercase tracking-wider">Mindful Breaks Enabled</h2>
- <p className="text-sm dark:text-slate-300 text-slate-600">
+ <h2 className="text-sm sm:text-base font-bold dark:text-amber-400 text-amber-700 mb-1 uppercase tracking-wider">Mindful Breaks Enabled</h2>
+ <p className="text-xs sm:text-sm dark:text-slate-300 text-slate-600 leading-relaxed">
  Taking breaks is important, but balancing them with deep work is key. High-stimulation activities cost more XP to encourage mindful consumption and maintain your focus for IIT JEE.
  </p>
  </div>
  </motion.div>
  </TourStep>
 
- <motion.div variants={containerVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+ <motion.div variants={containerVariants} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-50px" }} className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 md:gap-5">
  {items.map((item) => {
  const Icon = item.icon;
  const currentCost = Math.floor(item.baseCost * Math.pow(1.5, item.uses));
@@ -368,48 +368,48 @@ const Store = React.memo(function Store() {
  <motion.div
  key={item.id}
  >
- <TiltWrapper tiltAmount={8} className="h-full">
- <Card className={`h-full flex flex-col relative overflow-hidden ${
+ <TiltWrapper tiltAmount={6} className="h-full">
+ <Card className={`h-full flex flex-col relative overflow-hidden rounded-xl border ${
  isOnCooldown ? 'dark:border-slate-700 border-slate-300 dark:bg-slate-900/50 bg-white opacity-75' :
  isHighStimulation ? 'border-amber-500/20 bg-amber-500/5 hover:border-amber-500/50' : 'border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/50'
  }`}>
  {isOnCooldown && (
- <div className="absolute inset-0 dark:bg-black bg-slate-50 backdrop- z-10 flex flex-col items-center justify-center text-center p-4">
- <Clock className="w-8 h-8 dark:text-amber-400 text-amber-700 mb-2" />
- <span className="font-bold dark:text-amber-400 text-amber-700 uppercase tracking-wider text-sm">Cooldown Active</span>
- <span className="font-mono dark:text-white text-slate-900 mt-1">{timeLeft}</span>
+ <div className="absolute inset-0 dark:bg-black/90 bg-slate-50/90 backdrop-blur-xs z-10 flex flex-col items-center justify-center text-center p-2 sm:p-3">
+ <Clock className="w-5 h-5 sm:w-6 sm:h-6 dark:text-amber-400 text-amber-700 mb-1" />
+ <span className="font-bold dark:text-amber-400 text-amber-700 uppercase tracking-wider text-[10px] sm:text-xs">Cooldown Active</span>
+ <span className="font-mono dark:text-white text-slate-900 text-xs sm:text-sm mt-0.5">{timeLeft}</span>
  </div>
  )}
- <CardHeader className="pb-2">
- <div className="flex justify-between items-start">
- <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${
- isHighStimulation ? 'bg-amber-500/20 dark:text-amber-400 text-amber-700 shadow-md' : 'bg-emerald-500/20 dark:text-emerald-400 text-emerald-700'
+ <CardHeader className="p-2.5 sm:p-4 pb-1 sm:pb-2">
+ <div className="flex justify-between items-start mb-1.5 sm:mb-3">
+ <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center ${
+ isHighStimulation ? 'bg-amber-500/20 dark:text-amber-400 text-amber-700 shadow-sm' : 'bg-emerald-500/20 dark:text-emerald-400 text-emerald-700'
  }`}>
- <Icon className="w-6 h-6" />
+ <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
  </div>
  {isHighStimulation && item.uses > 0 && (
- <span className="text-xs font-mono font-bold bg-amber-500/20 dark:text-amber-400 text-amber-700 px-2 py-1 rounded">
- Used: {item.uses}/3
+ <span className="text-[9px] sm:text-[10px] font-mono font-bold bg-amber-500/20 dark:text-amber-400 text-amber-700 px-1 sm:px-1.5 py-0.5 rounded leading-none">
+ {item.uses}/3
  </span>
  )}
  </div>
- <CardTitle className="text-lg dark:text-slate-100 text-slate-900">{item.title}</CardTitle>
- <CardDescription className="text-xs mt-2 dark:text-slate-400 text-slate-600">{item.desc}</CardDescription>
+ <CardTitle className="text-xs sm:text-base font-bold dark:text-slate-100 text-slate-900 leading-tight line-clamp-1">{item.title}</CardTitle>
+ <CardDescription className="text-[10px] sm:text-xs mt-1 dark:text-slate-400 text-slate-600 line-clamp-2 min-h-[26px] sm:min-h-[34px] leading-tight">{item.desc}</CardDescription>
  </CardHeader>
- <CardContent className="mt-auto pt-4">
- <div className="flex items-center justify-between mb-4">
- <span className="text-sm dark:text-slate-400 text-slate-600">Current Cost</span>
- <span className={`font-mono font-bold text-lg ${isHighStimulation ? 'dark:text-amber-400 text-amber-700' : 'dark:text-emerald-400 text-emerald-700'}`}>
+ <CardContent className="mt-auto p-2.5 sm:p-4 pt-1.5 sm:pt-3">
+ <div className="flex items-center justify-between mb-2 sm:mb-3">
+ <span className="text-[10px] sm:text-xs dark:text-slate-400 text-slate-600">Cost</span>
+ <span className={`font-mono font-bold text-xs sm:text-base ${isHighStimulation ? 'dark:text-amber-400 text-amber-700' : 'dark:text-emerald-400 text-emerald-700'}`}>
  {currentCost} XP
  </span>
  </div>
  <Button 
- className={`w-full font-bold tracking-wider ${isHighStimulation ? 'bg-amber-600 hover:bg-amber-500 dark:text-white text-slate-900' : 'bg-emerald-600 hover:bg-emerald-500 dark:text-white text-slate-900'}`}
+ className={`w-full font-bold tracking-tight sm:tracking-wider text-[10px] sm:text-xs py-1.5 sm:py-2.5 px-1 h-auto ${isHighStimulation ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
  variant="default"
  disabled={!isAffordable || isOnCooldown}
  onClick={() => handlePurchase(item.id)}
  >
- {!isAffordable && !isOnCooldown ? 'INSUFFICIENT XP' : 'PURCHASE'}
+ {!isAffordable && !isOnCooldown ? 'NO XP' : 'BUY'}
  </Button>
  </CardContent>
  </Card>
@@ -571,7 +571,7 @@ const Store = React.memo(function Store() {
 
    {/* Tab Content: Purchase Passes */}
    {activeArcadeSection === 'passes' && (
-     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+     <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4 md:gap-5">
        {ARCADE_PASSES.map((pass) => {
          const isAffordable = spendableXP >= pass.cost;
          const isBronze = pass.duration === 10;
@@ -590,33 +590,33 @@ const Store = React.memo(function Store() {
 
          return (
            <TiltWrapper key={pass.id} tiltAmount={6} className="h-full">
-             <Card className="h-full flex flex-col relative overflow-hidden border border-cyan-500/10 dark:bg-slate-950/40 bg-white hover:border-cyan-500/30 transition-all duration-300">
-               <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${
+             <Card className="h-full flex flex-col relative overflow-hidden rounded-xl border border-cyan-500/10 dark:bg-slate-950/40 bg-white hover:border-cyan-500/30 transition-all duration-300">
+               <div className={`absolute top-0 left-0 right-0 h-1 sm:h-1.5 bg-gradient-to-r ${
                  isBronze ? 'from-orange-500 to-amber-600' : isSilver ? 'from-cyan-400 to-blue-500' : 'from-yellow-400 via-amber-500 to-yellow-600'
                }`} />
-               <CardHeader>
+               <CardHeader className="p-2.5 sm:p-5 pb-1 sm:pb-2">
                  <div className="flex justify-between items-start">
-                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 text-white bg-gradient-to-br ${gradientClass} shadow-md`}>
-                     <Gamepad2 className={`w-6 h-6 ${textGlowClass}`} />
+                   <div className={`w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-4 text-white bg-gradient-to-br ${gradientClass} shadow-md`}>
+                     <Gamepad2 className={`w-4 h-4 sm:w-6 sm:h-6 ${textGlowClass}`} />
                    </div>
-                   <span className="text-xs font-mono font-bold bg-cyan-500/10 dark:text-cyan-400 text-cyan-700 px-2.5 py-1 rounded-full border border-cyan-500/20">
+                   <span className="text-[8.5px] sm:text-xs font-mono font-bold bg-cyan-500/10 dark:text-cyan-400 text-cyan-700 px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-cyan-500/20">
                      {pass.tag}
                    </span>
                  </div>
-                 <CardTitle className="text-xl dark:text-slate-100 text-slate-900">{pass.title}</CardTitle>
-                 <CardDescription className="text-xs mt-2 dark:text-slate-400 text-slate-600 min-h-[40px]">
+                 <CardTitle className="text-xs sm:text-base md:text-xl font-bold dark:text-slate-100 text-slate-900 line-clamp-1">{pass.title}</CardTitle>
+                 <CardDescription className="text-[9.5px] sm:text-xs mt-1 dark:text-slate-400 text-slate-600 line-clamp-2 min-h-[26px] sm:min-h-[40px] leading-tight">
                    {pass.desc}
                  </CardDescription>
                </CardHeader>
-               <CardContent className="mt-auto pt-4 border-t dark:border-white/5 border-black/5 bg-slate-50/50 dark:bg-black/20">
-                 <div className="flex items-center justify-between mb-4">
-                   <span className="text-xs font-mono dark:text-slate-400 text-slate-600 uppercase">Cost</span>
-                   <span className="font-mono font-black text-lg dark:text-cyan-400 text-cyan-700">
+               <CardContent className="mt-auto p-2.5 sm:p-4 pt-2 sm:pt-4 border-t dark:border-white/5 border-black/5 bg-slate-50/50 dark:bg-black/20">
+                 <div className="flex items-center justify-between mb-2 sm:mb-4">
+                   <span className="text-[10px] sm:text-xs font-mono dark:text-slate-400 text-slate-600 uppercase">Cost</span>
+                   <span className="font-mono font-black text-xs sm:text-lg dark:text-cyan-400 text-cyan-700">
                      {pass.cost.toLocaleString()} XP
                    </span>
                  </div>
                  <Button
-                   className={`w-full font-bold tracking-wider text-xs py-5 ${
+                   className={`w-full font-bold tracking-tight sm:tracking-wider text-[9px] sm:text-xs py-2 sm:py-3.5 px-1 h-auto ${
                      isAffordable 
                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20' 
                        : 'bg-slate-100 dark:bg-slate-900 text-slate-400 border border-slate-200 dark:border-slate-800'
@@ -625,7 +625,17 @@ const Store = React.memo(function Store() {
                    disabled={!isAffordable}
                    onClick={() => handlePurchaseArcadePass(pass)}
                  >
-                   {isAffordable ? 'PURCHASE & GET CODE' : 'INSUFFICIENT DAILY XP'}
+                   {isAffordable ? (
+                     <>
+                       <span className="sm:hidden">GET PASS</span>
+                       <span className="hidden sm:inline">PURCHASE & GET CODE</span>
+                     </>
+                   ) : (
+                     <>
+                       <span className="sm:hidden">NO XP</span>
+                       <span className="hidden sm:inline">INSUFFICIENT DAILY XP</span>
+                     </>
+                   )}
                  </Button>
                </CardContent>
              </Card>
@@ -814,7 +824,7 @@ const Store = React.memo(function Store() {
  </p>
  </div>
 
- <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+ <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:gap-5">
  {EPIC_ITEMS.map((item) => {
  const Icon = item.icon;
  const isOwned = unlockedItems.includes(item.id);
@@ -823,29 +833,29 @@ const Store = React.memo(function Store() {
 
  return (
  <TiltWrapper key={item.id} tiltAmount={5} className="h-full">
- <Card className={`h-full flex flex-col relative overflow-hidden border ${isOwned ? 'border-purple-500/50 bg-purple-900/10' : 'dark:border-slate-800 border-slate-200 dark:bg-slate-900/50 bg-white'} hover:border-purple-500/70 transition-colors`}>
+ <Card className={`h-full flex flex-col relative overflow-hidden rounded-xl border ${isOwned ? 'border-purple-500/50 bg-purple-900/10' : 'dark:border-slate-800 border-slate-200 dark:bg-slate-900/50 bg-white'} hover:border-purple-500/70 transition-colors`}>
  {isOwned && (
- <div className="absolute top-4 right-4 px-3 py-1 bg-purple-500/20 dark:text-purple-400 text-purple-700 text-xs font-bold font-mono rounded-full border border-purple-500/30">
+ <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-purple-500/20 dark:text-purple-400 text-purple-700 text-[8px] sm:text-[10px] font-bold font-mono rounded-full border border-purple-500/30">
  OWNED
  </div>
  )}
- <CardHeader>
- <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-purple-500/20 dark:text-purple-400 text-purple-700 shadow-md">
- <Icon className="w-6 h-6" />
+ <CardHeader className="p-2.5 sm:p-5 pb-1 sm:pb-2">
+ <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 bg-purple-500/20 dark:text-purple-400 text-purple-700 shadow-md">
+ <Icon className="w-4 h-4 sm:w-6 sm:h-6" />
  </div>
- <CardTitle className="text-xl dark:text-slate-100 text-slate-900">{item.title}</CardTitle>
- <CardDescription className="text-sm mt-2 dark:text-slate-400 text-slate-600">{item.desc}</CardDescription>
+ <CardTitle className="text-xs sm:text-base md:text-lg font-bold dark:text-slate-100 text-slate-900 line-clamp-1">{item.title}</CardTitle>
+ <CardDescription className="text-[9.5px] sm:text-xs mt-0.5 sm:mt-1 dark:text-slate-400 text-slate-600 line-clamp-2 min-h-[24px] sm:min-h-[34px] leading-tight">{item.desc}</CardDescription>
  </CardHeader>
- <CardContent className="mt-auto pt-6">
- <div className="flex items-center justify-between mb-6">
- <span className="text-sm dark:text-slate-400 text-slate-600">Cost</span>
- <span className="font-mono font-bold text-xl dark:text-purple-400 text-purple-700">
+ <CardContent className="mt-auto p-2.5 sm:p-5 pt-1.5 sm:pt-2">
+ <div className="flex items-center justify-between mb-2 sm:mb-4">
+ <span className="text-[10px] sm:text-xs dark:text-slate-400 text-slate-600">Cost</span>
+ <span className="font-mono font-bold text-xs sm:text-lg dark:text-purple-400 text-purple-700">
  {item.cost.toLocaleString()} XP
  </span>
  </div>
  {isOwned ? (
  <Button 
- className={`w-full font-bold tracking-wider ${isEquipped ? 'bg-slate-700 hover:bg-slate-600 dark:text-white text-slate-900' : 'bg-purple-600 hover:bg-purple-500 dark:text-white text-slate-900'}`}
+ className={`w-full font-bold tracking-tight sm:tracking-wider text-[9px] sm:text-xs py-1.5 sm:py-2.5 px-1 h-auto ${isEquipped ? 'bg-slate-700 hover:bg-slate-600 dark:text-white text-slate-900' : 'bg-purple-600 hover:bg-purple-500 dark:text-white text-slate-900'}`}
  variant="default"
  onClick={() => handleEquip(item)}
  >
@@ -853,12 +863,22 @@ const Store = React.memo(function Store() {
  </Button>
  ) : (
  <Button 
- className="w-full font-bold tracking-wider dark:bg-slate-800 bg-slate-100 hover:bg-purple-900 text-white border border-purple-500/30 hover:border-purple-500"
+ className="w-full font-bold tracking-tight sm:tracking-wider text-[9px] sm:text-xs py-1.5 sm:py-2.5 px-1 h-auto dark:bg-slate-800 bg-slate-100 hover:bg-purple-900 text-white border border-purple-500/30 hover:border-purple-500"
  variant="outline"
  disabled={!isAffordable}
  onClick={() => handleEpicPurchase(item)}
  >
- {!isAffordable ? 'INSUFFICIENT XP' : 'UNLOCK PERMANENTLY'}
+ {!isAffordable ? (
+   <>
+     <span className="sm:hidden">NO XP</span>
+     <span className="hidden sm:inline">INSUFFICIENT XP</span>
+   </>
+ ) : (
+   <>
+     <span className="sm:hidden">UNLOCK</span>
+     <span className="hidden sm:inline">UNLOCK PERMANENTLY</span>
+   </>
+ )}
  </Button>
  )}
  </CardContent>
@@ -880,7 +900,7 @@ const Store = React.memo(function Store() {
  </p>
  </div>
 
- <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+ <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:gap-5">
  {LEGENDARY_ITEMS.map((item) => {
  const Icon = item.icon;
  const isOwned = unlockedItems.includes(item.id);
@@ -889,29 +909,29 @@ const Store = React.memo(function Store() {
 
  return (
  <TiltWrapper key={item.id} tiltAmount={5} className="h-full">
- <Card className={`h-full flex flex-col relative overflow-hidden border ${isOwned ? 'border-yellow-500/50 bg-yellow-900/10' : 'dark:border-slate-800 border-slate-200 dark:bg-slate-900/50 bg-white'} hover:border-yellow-500/70 transition-colors`}>
+ <Card className={`h-full flex flex-col relative overflow-hidden rounded-xl border ${isOwned ? 'border-yellow-500/50 bg-yellow-900/10' : 'dark:border-slate-800 border-slate-200 dark:bg-slate-900/50 bg-white'} hover:border-yellow-500/70 transition-colors`}>
  {isOwned && (
- <div className="absolute top-4 right-4 px-3 py-1 bg-yellow-500/20 dark:text-yellow-400 text-yellow-700 text-xs font-bold font-mono rounded-full border border-yellow-500/30">
+ <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-yellow-500/20 dark:text-yellow-400 text-yellow-700 text-[8px] sm:text-[10px] font-bold font-mono rounded-full border border-yellow-500/30">
  OWNED
  </div>
  )}
- <CardHeader>
- <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-yellow-500/20 dark:text-yellow-400 text-yellow-700 shadow-md">
- <Icon className="w-6 h-6" />
+ <CardHeader className="p-2.5 sm:p-5 pb-1 sm:pb-2">
+ <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 bg-yellow-500/20 dark:text-yellow-400 text-yellow-700 shadow-md">
+ <Icon className="w-4 h-4 sm:w-6 sm:h-6" />
  </div>
- <CardTitle className="text-xl dark:text-slate-100 text-slate-900">{item.title}</CardTitle>
- <CardDescription className="text-sm mt-2 dark:text-slate-400 text-slate-600">{item.desc}</CardDescription>
+ <CardTitle className="text-xs sm:text-base md:text-lg font-bold dark:text-slate-100 text-slate-900 line-clamp-1">{item.title}</CardTitle>
+ <CardDescription className="text-[9.5px] sm:text-xs mt-0.5 sm:mt-1 dark:text-slate-400 text-slate-600 line-clamp-2 min-h-[24px] sm:min-h-[34px] leading-tight">{item.desc}</CardDescription>
  </CardHeader>
- <CardContent className="mt-auto pt-6">
- <div className="flex items-center justify-between mb-6">
- <span className="text-sm dark:text-slate-400 text-slate-600">Cost</span>
- <span className="font-mono font-bold text-xl dark:text-yellow-400 text-yellow-700">
+ <CardContent className="mt-auto p-2.5 sm:p-5 pt-1.5 sm:pt-2">
+ <div className="flex items-center justify-between mb-2 sm:mb-4">
+ <span className="text-[10px] sm:text-xs dark:text-slate-400 text-slate-600">Cost</span>
+ <span className="font-mono font-bold text-xs sm:text-lg dark:text-yellow-400 text-yellow-700">
  {item.cost.toLocaleString()} XP
  </span>
  </div>
  {isOwned ? (
  <Button 
- className={`w-full font-bold tracking-wider ${isEquipped ? 'bg-slate-700 hover:bg-slate-600 dark:text-white text-slate-900' : 'bg-yellow-600 hover:bg-yellow-500 text-black'}`}
+ className={`w-full font-bold tracking-tight sm:tracking-wider text-[9px] sm:text-xs py-1.5 sm:py-2.5 px-1 h-auto ${isEquipped ? 'bg-slate-700 hover:bg-slate-600 dark:text-white text-slate-900' : 'bg-yellow-600 hover:bg-yellow-500 text-black'}`}
  variant="default"
  onClick={() => handleEquip(item)}
  >
@@ -919,12 +939,22 @@ const Store = React.memo(function Store() {
  </Button>
  ) : (
  <Button 
- className="w-full font-bold tracking-wider dark:bg-slate-800 bg-slate-100 hover:bg-yellow-900 text-white border border-yellow-500/30 hover:border-yellow-500"
+ className="w-full font-bold tracking-tight sm:tracking-wider text-[9px] sm:text-xs py-1.5 sm:py-2.5 px-1 h-auto dark:bg-slate-800 bg-slate-100 hover:bg-yellow-900 text-white border border-yellow-500/30 hover:border-yellow-500"
  variant="outline"
  disabled={!isAffordable}
  onClick={() => handleEpicPurchase(item)}
  >
- {!isAffordable ? 'INSUFFICIENT XP' : 'UNLOCK PERMANENTLY'}
+ {!isAffordable ? (
+   <>
+     <span className="sm:hidden">NO XP</span>
+     <span className="hidden sm:inline">INSUFFICIENT XP</span>
+   </>
+ ) : (
+   <>
+     <span className="sm:hidden">UNLOCK</span>
+     <span className="hidden sm:inline">UNLOCK PERMANENTLY</span>
+   </>
+ )}
  </Button>
  )}
  </CardContent>

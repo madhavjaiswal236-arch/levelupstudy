@@ -58,12 +58,19 @@ export function WebGLShader() {
         float gx = p.x;
         float bx = p.x * (1.0 - d);
 
-        float r = 0.05 / abs(p.y + sin((rx + time) * xScale) * yScale);
-        float g = 0.05 / abs(p.y + sin((gx + time) * xScale) * yScale);
-        float b = 0.05 / abs(p.y + sin((bx + time) * xScale) * yScale);
+        float waveR = sin((rx + time * 0.8) * xScale) * yScale;
+        float waveG = sin((gx + time * 0.8) * xScale) * yScale;
+        float waveB = sin((bx + time * 0.8) * xScale) * yScale;
+
+        // Sleek, narrow, high-intensity glowing line with sharp falloff
+        float r = 0.022 / pow(abs(p.y - waveR) + 0.0025, 1.25);
+        float g = 0.022 / pow(abs(p.y - waveG) + 0.0025, 1.25);
+        float b = 0.022 / pow(abs(p.y - waveB) + 0.0025, 1.25);
         
+        vec3 color = vec3(r, g, b);
         float alpha = clamp(max(r, max(g, b)), 0.0, 1.0);
-        gl_FragColor = vec4(r, g, b, alpha);
+
+        gl_FragColor = vec4(color, alpha);
       }
     `
 
@@ -72,8 +79,21 @@ export function WebGLShader() {
       try {
         const width = window.innerWidth
         const height = window.innerHeight
+        refs.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
         refs.renderer.setSize(width, height, false)
         refs.uniforms.resolution.value = [width, height]
+        
+        // Dynamically tune wave geometry across mobile, tablet, and desktop
+        if (width < 640) {
+          refs.uniforms.xScale.value = 1.0
+          refs.uniforms.yScale.value = 0.28
+        } else if (width < 1024) {
+          refs.uniforms.xScale.value = 1.1
+          refs.uniforms.yScale.value = 0.32
+        } else {
+          refs.uniforms.xScale.value = 1.2
+          refs.uniforms.yScale.value = 0.35
+        }
       } catch (e) {
         // ignore resize error
       }
@@ -82,23 +102,24 @@ export function WebGLShader() {
     const initScene = (): boolean => {
       try {
         refs.scene = new THREE.Scene()
-        refs.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false })
+        refs.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true })
         
         if (!refs.renderer || !refs.renderer.capabilities) {
           return false
         }
 
-        refs.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+        refs.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
         refs.renderer.setClearColor(0x000000, 0.0)
 
         refs.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, -1)
 
+        const initialWidth = window.innerWidth
         refs.uniforms = {
-          resolution: { value: [window.innerWidth, window.innerHeight] },
+          resolution: { value: [initialWidth, window.innerHeight] },
           time: { value: 0.0 },
-          xScale: { value: 1.0 },
-          yScale: { value: 0.5 },
-          distortion: { value: 0.05 },
+          xScale: { value: initialWidth < 640 ? 1.0 : initialWidth < 1024 ? 1.1 : 1.2 },
+          yScale: { value: initialWidth < 640 ? 0.28 : initialWidth < 1024 ? 0.32 : 0.35 },
+          distortion: { value: 0.08 },
         }
 
         const position = [
@@ -120,6 +141,7 @@ export function WebGLShader() {
           uniforms: refs.uniforms,
           side: THREE.DoubleSide,
           transparent: true,
+          blending: THREE.AdditiveBlending,
         })
 
         refs.mesh = new THREE.Mesh(geometry, material)

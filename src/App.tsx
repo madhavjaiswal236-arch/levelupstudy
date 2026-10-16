@@ -77,6 +77,11 @@ const LiquidButton = lazy(() =>
     default: m.LiquidButton,
   })),
 );
+const WebGLShader = lazy(() =>
+  import("./components/ui/web-gl-shader").then((m) => ({
+    default: m.WebGLShader,
+  })),
+);
 import { TextReveal } from "./components/ui/text-reveal";
 import { PageSkeleton } from "./components/PageSkeleton";
 
@@ -1301,13 +1306,15 @@ function AppContent() {
   if (effectiveLoaded && (showWelcomeHero || morningStep === "welcome")) {
     return (
       <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans select-none z-[10000]">
-        {/* Background WebGL Shader Animation now rendered in front of the card */}
-        <div
-          className="absolute inset-0 z-30 opacity-60 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-900/30 via-slate-950/80 to-black"
-        />
+        {/* Background WebGL Shader Animation */}
+        <div className="absolute inset-0 z-0 opacity-100 pointer-events-none overflow-hidden">
+          <Suspense fallback={null}>
+            <WebGLShader />
+          </Suspense>
+        </div>
 
-        {/* Ambient Overlay to darken background slightly and make text pop */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/80 z-10 pointer-events-none" />
+        {/* Ambient Overlay to darken background edges slightly while leaving center glowing bright */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60 z-10 pointer-events-none" />
 
         {/* Foreground Content container */}
         <motion.div

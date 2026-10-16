@@ -299,12 +299,12 @@ const Syllabus = React.memo(function Syllabus() {
       </motion.div>
 
       {/* Subject Navigation */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
         {(["Physics", "Chemistry", "Mathematics"] as const).map((subject) => (
           <button
             key={subject}
             onClick={() => setActiveSubject(subject)}
-            className={`px-6 py-3 rounded-lg font-bold tracking-wider transition-all whitespace-nowrap ${
+            className={`px-4 py-2 sm:px-6 sm:py-2.5 rounded-lg text-xs sm:text-sm font-bold tracking-wider transition-all whitespace-nowrap ${
               activeSubject === subject
                 ? "bg-slate-100 text-slate-900 shadow-md"
                 : "dark:bg-black bg-slate-50 dark:text-slate-400 text-slate-600 border dark:border-white/10 border-black/10 hover:bg-white"
@@ -327,7 +327,7 @@ const Syllabus = React.memo(function Syllabus() {
           initial="hidden"
           whileInView="show"
           viewport={{ once: true, margin: "-50px" }}
-          className="grid grid-cols-1 md:grid-cols-2 gap-6"
+          className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-5"
         >
           {syllabus[activeSubject].map((chapter, idx) => (
             <motion.div
@@ -337,21 +337,21 @@ const Syllabus = React.memo(function Syllabus() {
               transition={{ delay: Math.min(idx * 0.05, 0.5) }}
             >
               <Card
-                className={`border ${getStatusColor(chapter.status)} overflow-hidden relative h-full flex flex-col transition-all duration-300 cursor-pointer hover:shadow-md hover:-translate-y-1`}
+                className={`border ${getStatusColor(chapter.status)} overflow-hidden relative h-full flex flex-col rounded-xl transition-all duration-300 cursor-pointer hover:shadow-md hover:-translate-y-0.5`}
                 onClick={() => setSelectedChapterDetail(chapter)}
               >
                 {chapter.status === "red" && (
                   <div className="absolute -top-10 -right-10 w-48 h-48 bg-red-500/10 rounded-full blur-[60px] pointer-events-none" />
                 )}
-                <CardContent className="p-6 flex-1 flex flex-col">
-                  <div className="flex justify-between items-start mb-6">
-                    <div>
-                      <h3 className="text-xl font-bold dark:text-slate-100 text-slate-900">
+                <CardContent className="p-3.5 sm:p-5 flex-1 flex flex-col">
+                  <div className="flex justify-between items-start mb-3 sm:mb-4 gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-base sm:text-lg font-bold dark:text-slate-100 text-slate-900 leading-tight">
                         {chapter.name}
                       </h3>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                         <span
-                          className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded ${
                             chapter.tier === "S"
                               ? "bg-red-500/20 dark:text-red-400 text-red-700 border border-red-500/50"
                               : chapter.tier === "A"
@@ -363,24 +363,24 @@ const Syllabus = React.memo(function Syllabus() {
                         >
                           TIER {chapter.tier}
                         </span>
-                        <span className="text-xs dark:text-slate-400 text-slate-600 font-mono">
+                        <span className="text-[10px] sm:text-xs dark:text-slate-400 text-slate-600 font-mono">
                           LVL {chapter.mastery}
                         </span>
                         {ongoingChapters[activeSubject] === chapter.name && (
-                          <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse flex-shrink-0">
+                          <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider animate-pulse flex-shrink-0">
                             Ongoing
                           </span>
                         )}
                       </div>
                     </div>
                     <span
-                      className={`text-xs font-mono px-2 py-1 rounded border ${getStatusColor(chapter.status)}`}
+                      className={`text-[10px] sm:text-xs font-mono px-1.5 sm:px-2 py-0.5 sm:py-1 rounded border shrink-0 ${getStatusColor(chapter.status)}`}
                     >
                       {chapter.confidence.toUpperCase()}
                     </span>
                   </div>
 
-                  <div className="space-y-5 flex-1">
+                  <div className="space-y-3 sm:space-y-4 flex-1">
                     <div>
                       <div className="flex justify-between text-sm mb-1">
                         <span className="dark:text-slate-400 text-slate-600 flex items-center gap-2">
