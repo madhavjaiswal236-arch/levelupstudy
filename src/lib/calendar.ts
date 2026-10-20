@@ -105,6 +105,11 @@ export async function createCalendarEvent(title: string, durationMinutes: number
     endTime = new Date(slot.endTime);
   }
 
+  // Defensive validation: ensure endTime is strictly after startTime across midnight
+  if (startTime && endTime && endTime.getTime() <= startTime.getTime()) {
+    endTime = new Date(startTime.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
+  }
+
   const hasConflict = await checkCalendarConflicts(startTime, endTime);
 
   if (!token) {
@@ -196,12 +201,16 @@ export async function createCalendarEvent(title: string, durationMinutes: number
 }
 
 export async function checkCalendarConflicts(startTime: Date, endTime: Date): Promise<boolean> {
- let token = await getAccessToken();
- if (!token) return false;
+  let token = await getAccessToken();
+  if (!token) return false;
 
- try {
- const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startTime.toISOString())}&timeMax=${encodeURIComponent(endTime.toISOString())}&singleEvents=true`;
- const res = await fetchGoogleApi(url, 'GET');
+  const safeEndTime = endTime.getTime() <= startTime.getTime()
+    ? new Date(startTime.getTime() + 60 * 60 * 1000)
+    : endTime;
+
+  try {
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startTime.toISOString())}&timeMax=${encodeURIComponent(safeEndTime.toISOString())}&singleEvents=true`;
+    const res = await fetchGoogleApi(url, 'GET');
 
  if (!res.ok) return false;
  

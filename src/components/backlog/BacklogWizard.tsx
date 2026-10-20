@@ -38,6 +38,7 @@ import {
 import { ChapterLectureModal } from './ChapterLectureModal';
 import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
 import { getLocalDateString } from '@/lib/utils';
+import { formatTime12h } from '@/lib/studyBlock';
 
 interface BacklogWizardProps {
   onComplete: () => void;
@@ -1320,12 +1321,14 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
             </p>
 
             {/* Presets */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {[
-                { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM" },
-                { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM" },
-                { label: "Early Morning", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM" },
-                { label: "Night Owl", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM" },
+                { label: "Night Owl (Overnight)", start: "23:00", end: "08:00", icon: "🌌", desc: "11:00 PM – 8:00 AM (9 hrs, 2 days)" },
+                { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM (16 hrs)" },
+                { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM (8 hrs)" },
+                { label: "Late Evening", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM (8 hrs)" },
+                { label: "Early Bird", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM (8 hrs)" },
+                { label: "Deep Night", start: "22:00", end: "06:00", icon: "✨", desc: "10:00 PM – 6:00 AM (8 hrs, 2 days)" },
               ].map((p) => {
                 const isSelected = studyBlockStart === p.start && studyBlockEnd === p.end;
                 return (
@@ -1364,7 +1367,7 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
                   type="time"
                   value={studyBlockStart}
                   onChange={(e) => setStudyBlockStart(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-400 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-xs font-bold focus:border-amber-400 focus:outline-none"
                 />
               </div>
 
@@ -1376,10 +1379,40 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
                   type="time"
                   value={studyBlockEnd}
                   onChange={(e) => setStudyBlockEnd(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-400 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-xs font-bold focus:border-amber-400 focus:outline-none"
                 />
               </div>
             </div>
+
+            {/* Dynamic Multi-day / Overnight Schedule Indicator */}
+            {(() => {
+              const [sH, sM] = (studyBlockStart || "06:00").split(":").map(Number);
+              const [eH, eM] = (studyBlockEnd || "22:00").split(":").map(Number);
+              const sTot = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+              let eTot = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
+              const isOvernight = eTot <= sTot;
+              if (isOvernight) eTot += 24 * 60;
+              const diffHours = ((eTot - sTot) / 60).toFixed(1).replace(/\.0$/, "");
+
+              return (
+                <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 text-xs font-mono ${
+                  isOvernight
+                    ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300"
+                    : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                }`}>
+                  {isOvernight ? <span className="text-base">🌙</span> : <span className="text-base">⏱️</span>}
+                  <div className="flex-1">
+                    <span className="font-bold">
+                      {isOvernight ? "2-Day Overnight Schedule" : "Daily Study Window"}:
+                    </span>{" "}
+                    <span>{diffHours} hours total ({formatTime12h(studyBlockStart)} to {isOvernight ? "next morning " : ""}{formatTime12h(studyBlockEnd)})</span>
+                    {isOvernight && (
+                      <span className="block text-[10px] text-indigo-400 mt-0.5">Tasks seamlessly span across midnight without errors or conflicts.</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Academic Settings & Health Status */}

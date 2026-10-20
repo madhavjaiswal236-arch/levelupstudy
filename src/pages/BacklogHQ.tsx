@@ -1274,12 +1274,14 @@ export default function BacklogHQ() {
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
                   Quick Preset Blocks
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
-                    { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM" },
-                    { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM" },
-                    { label: "Early Bird", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM" },
-                    { label: "Night Owl", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM" },
+                    { label: "Night Owl (Overnight)", start: "23:00", end: "08:00", icon: "🌌", desc: "11:00 PM – 8:00 AM (9 hrs, 2 days)" },
+                    { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM (16 hrs)" },
+                    { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM (8 hrs)" },
+                    { label: "Late Evening", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM (8 hrs)" },
+                    { label: "Early Bird", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM (8 hrs)" },
+                    { label: "Deep Night", start: "22:00", end: "06:00", icon: "✨", desc: "10:00 PM – 6:00 AM (8 hrs, 2 days)" },
                   ].map((p) => {
                     const isSel = modalBlockStart === p.start && modalBlockEnd === p.end;
                     return (
@@ -1335,6 +1337,36 @@ export default function BacklogHQ() {
                   />
                 </div>
               </div>
+
+              {/* Dynamic Multi-day / Overnight Schedule Indicator */}
+              {(() => {
+                const [sH, sM] = (modalBlockStart || "06:00").split(":").map(Number);
+                const [eH, eM] = (modalBlockEnd || "22:00").split(":").map(Number);
+                const sTot = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+                let eTot = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
+                const isOvernight = eTot <= sTot;
+                if (isOvernight) eTot += 24 * 60;
+                const diffHours = ((eTot - sTot) / 60).toFixed(1).replace(/\.0$/, "");
+
+                return (
+                  <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 text-xs font-mono ${
+                    isOvernight
+                      ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300"
+                      : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                  }`}>
+                    {isOvernight ? <span className="text-base">🌙</span> : <span className="text-base">⏱️</span>}
+                    <div className="flex-1">
+                      <span className="font-bold">
+                        {isOvernight ? "2-Day Overnight Schedule" : "Daily Study Window"}:
+                      </span>{" "}
+                      <span>{diffHours} hours total ({formatTime12h(modalBlockStart)} to {isOvernight ? "next morning " : ""}{formatTime12h(modalBlockEnd)})</span>
+                      {isOvernight && (
+                        <span className="block text-[10px] text-indigo-400 mt-0.5">Tasks seamlessly span across midnight without errors or conflicts.</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Realignment Option */}
               <label className="flex items-start gap-3 p-3 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 cursor-pointer">

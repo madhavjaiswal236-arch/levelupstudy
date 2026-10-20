@@ -451,32 +451,41 @@ export function generateTodosFromRoadmap(
 ): Todo[] {
   const todos: Todo[] = [];
 
-  let startH = parseInt((studyBlockStart || "06:00").split(":")[0], 10);
-  let endH = parseInt((studyBlockEnd || "22:00").split(":")[0], 10);
-  if (isNaN(startH)) startH = 6;
-  if (isNaN(endH)) endH = 22;
-  if (endH <= startH) endH = startH + 12;
+  const [sH, sM] = (studyBlockStart || "06:00").split(":").map(Number);
+  const [eH, eM] = (studyBlockEnd || "22:00").split(":").map(Number);
 
-  const totalBlockHours = Math.max(2, endH - startH);
+  const startMins = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+  let endMins = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
+  if (endMins <= startMins) {
+    endMins += 24 * 60; // Cross-midnight 2-day block
+  }
+
+  const totalWindowMins = Math.max(60, endMins - startMins);
 
   roadmap.forEach(day => {
+    const [y, m, d] = day.date.split("-").map(Number);
+    const dayBase = new Date(y, m - 1, d, 0, 0, 0, 0);
+
     const taskCount = day.tasks.length;
-    const intervalHours = taskCount > 1 ? Math.min(3, totalBlockHours / taskCount) : 2;
+    const intervalMins = taskCount > 1 ? Math.min(180, Math.floor(totalWindowMins / taskCount)) : 120;
 
     day.tasks.forEach((task, idx) => {
-      const startHourNum = Math.min(endH - 1, Math.floor(startH + idx * intervalHours));
-      const startHourStr = String(startHourNum).padStart(2, '0') + ':00';
+      const taskDur = task.durationMinutes || 90;
+      const taskStartOffset = Math.min(endMins - taskDur, startMins + idx * intervalMins);
+      const taskEndOffset = taskStartOffset + taskDur;
 
-      const durHours = Math.max(1, Math.round(task.durationMinutes / 60));
-      const endHourNum = Math.min(23, startHourNum + durHours);
-      const endHourStr = String(endHourNum).padStart(2, '0') + ':00';
+      const startDateObj = new Date(dayBase.getTime() + taskStartOffset * 60 * 1000);
+      const endDateObj = new Date(dayBase.getTime() + taskEndOffset * 60 * 1000);
+
+      const startISO = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, "0")}-${String(startDateObj.getDate()).padStart(2, "0")}T${String(startDateObj.getHours()).padStart(2, "0")}:${String(startDateObj.getMinutes()).padStart(2, "0")}:00`;
+      const endISO = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, "0")}-${String(endDateObj.getDate()).padStart(2, "0")}T${String(endDateObj.getHours()).padStart(2, "0")}:${String(endDateObj.getMinutes()).padStart(2, "0")}:00`;
 
       const capitalizedType =
         task.type === 'lecture' ? 'Lecture' :
         task.type === 'practice' ? 'Practice' :
         task.type === 'revision' ? 'Revision' : 'Test';
 
-      const xp = Math.max(60, Math.round(task.durationMinutes * 1.5));
+      const xp = Math.max(60, Math.round(taskDur * 1.5));
 
       todos.push({
         id: generateUniqueTaskId(`bl_${task.chapterId.slice(0, 6)}`),
@@ -488,14 +497,15 @@ export function generateTodosFromRoadmap(
         subject: task.subject,
         chapter: task.chapter,
         lectureNumber: task.lectureNumber,
-        startTime: `${day.date}T${startHourStr}`,
-        endTime: `${day.date}T${endHourStr}`,
-        durationMinutes: task.durationMinutes,
+        startTime: startISO,
+        endTime: endISO,
+        durationMinutes: taskDur,
         backlogPlanId: planId,
         backlogChapterId: task.chapterId,
         backlogDayIndex: day.dayIndex,
         backlogTaskType: task.type,
         isBacklogTask: true,
+        calendarSynced: true,
         dateScheduled: day.date
       });
     });

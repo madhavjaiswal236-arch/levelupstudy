@@ -1368,15 +1368,54 @@ export function StudyCalendar({
             </div>
           ))}
 
-          {/* Active Study Block Visual Highlight Zone */}
+          {/* Active Study Block Visual Highlight Zone(s) */}
             {(() => {
               const sHour = parseInt(activeStudyBlockStart.split(":")[0], 10) || 6;
               const sMin = parseInt(activeStudyBlockStart.split(":")[1] || "0", 10);
-              let eHour = parseInt(activeStudyBlockEnd.split(":")[0], 10) || 22;
+              const eHour = parseInt(activeStudyBlockEnd.split(":")[0], 10) || 22;
               const eMin = parseInt(activeStudyBlockEnd.split(":")[1] || "0", 10);
-              if (eHour <= sHour) eHour = sHour + 12;
-              const topPx = (sHour + sMin / 60) * 80;
-              const heightPx = Math.max(80, (eHour + eMin / 60 - (sHour + sMin / 60)) * 80);
+
+              const sTotalMins = sHour * 60 + sMin;
+              const eTotalMins = eHour * 60 + eMin;
+              const isCrossDay = eTotalMins <= sTotalMins;
+
+              if (isCrossDay) {
+                // 2-day cross-midnight block: render evening section (start -> 24:00) and morning section (00:00 -> end)
+                const eveningTopPx = (sTotalMins / 60) * 80;
+                const eveningHeightPx = ((1440 - sTotalMins) / 60) * 80;
+                const morningTopPx = 0;
+                const morningHeightPx = (eTotalMins / 60) * 80;
+
+                return (
+                  <>
+                    {/* Evening segment (Part 1, e.g. 11 PM to Midnight) */}
+                    <div
+                      className="absolute w-full pointer-events-none z-[10] border-t border-amber-500/30 bg-amber-500/[0.04] dark:bg-amber-400/[0.03] transition-all"
+                      style={{ top: `${eveningTopPx}px`, height: `${eveningHeightPx}px` }}
+                    >
+                      <div className="sticky left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold tracking-tight shadow-xs backdrop-blur-xs">
+                        <Clock className="w-3 h-3 text-amber-500" />
+                        <span>STUDY BLOCK (Part 1): {formatTime12h(activeStudyBlockStart)} – midnight 🌙</span>
+                      </div>
+                    </div>
+
+                    {/* Morning segment (Part 2, e.g. Midnight to 8 AM next day) */}
+                    <div
+                      className="absolute w-full pointer-events-none z-[10] border-b border-amber-500/30 bg-amber-500/[0.04] dark:bg-amber-400/[0.03] transition-all"
+                      style={{ top: `${morningTopPx}px`, height: `${morningHeightPx}px` }}
+                    >
+                      <div className="sticky left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold tracking-tight shadow-xs backdrop-blur-xs">
+                        <Clock className="w-3 h-3 text-amber-500" />
+                        <span>STUDY BLOCK (Part 2): midnight – {formatTime12h(activeStudyBlockEnd)} 🌅</span>
+                      </div>
+                    </div>
+                  </>
+                );
+              }
+
+              // Normal same-day block
+              const topPx = (sTotalMins / 60) * 80;
+              const heightPx = Math.max(60, ((eTotalMins - sTotalMins) / 60) * 80);
 
               return (
                 <div
@@ -1617,50 +1656,57 @@ export function StudyCalendar({
               />
             )}
 
-            {/* Events */}
-            {scheduledEvents
-              .filter((ev) => visibleDays.some((vd) => isSameDay(vd, ev.start)))
-              .map((ev) => {
-                const dayIndex = visibleDays.findIndex((vd) =>
-                  isSameDay(vd, ev.start),
-                );
-                if (dayIndex === -1) return null;
+            {/* Events - Supports full multi-day / cross-midnight overnight schedules across 2 days */}
+            {visibleDays.flatMap((vd, colIndex) => {
+              const dayStart = new Date(vd.getFullYear(), vd.getMonth(), vd.getDate(), 0, 0, 0, 0);
+              const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-                const startHour =
-                  ev.start.getHours() + ev.start.getMinutes() / 60;
-                const duration =
-                  (ev.end.getTime() - ev.start.getTime()) / 3600000;
-                const colorClass = COLORS[ev.subject] || COLORS["Default"];
+              return scheduledEvents
+                .filter((ev) => ev.start.getTime() < dayEnd.getTime() && ev.end.getTime() > dayStart.getTime())
+                .map((ev) => {
+                  const dayIndex = colIndex;
+                  const segStartMs = Math.max(dayStart.getTime(), ev.start.getTime());
+                  const segEndMs = Math.min(dayEnd.getTime(), ev.end.getTime());
+                  const segStartDate = new Date(segStartMs);
+                  const segEndDate = new Date(segEndMs);
 
-                // High-performance display calculations using local drag/resize offsets
-                let displayStart = ev.start;
-                let displayEnd = ev.end;
-                let displayStartHour = startHour;
-                let displayDuration = duration;
+                  const startHour = segStartDate.getHours() + segStartDate.getMinutes() / 60;
+                  const duration = Math.max(0.2, (segEndMs - segStartMs) / 3600000);
+                  const colorClass = COLORS[ev.subject] || COLORS["Default"];
 
-                if (dragEventId === ev.id) {
-                  displayStart = new Date(
-                    ev.start.getTime() + liveDragOffsetMins * 60000,
-                  );
-                  displayEnd = new Date(
-                    ev.end.getTime() + liveDragOffsetMins * 60000,
-                  );
-                  displayStartHour =
-                    displayStart.getHours() + displayStart.getMinutes() / 60;
-                } else if (resizingEventId === ev.id) {
-                  const displayDurationMins = Math.max(
-                    15,
-                    duration * 60 + liveResizeDeltaMins,
-                  );
-                  displayEnd = new Date(
-                    ev.start.getTime() + displayDurationMins * 60000,
-                  );
-                  displayDuration = displayDurationMins / 60;
-                }
+                  const isCrossMidnight = !isSameDay(ev.start, ev.end) && (ev.end.getTime() - ev.start.getTime() > 60000);
+                  const isPart1 = isCrossMidnight && ev.start.getTime() >= dayStart.getTime();
+                  const isPart2 = isCrossMidnight && ev.start.getTime() < dayStart.getTime();
 
-                return (
-                  <div
-                    key={ev.id}
+                  // High-performance display calculations using local drag/resize offsets
+                  let displayStart = segStartDate;
+                  let displayEnd = segEndDate;
+                  let displayStartHour = startHour;
+                  let displayDuration = duration;
+
+                  if (dragEventId === ev.id) {
+                    displayStart = new Date(
+                      ev.start.getTime() + liveDragOffsetMins * 60000,
+                    );
+                    displayEnd = new Date(
+                      ev.end.getTime() + liveDragOffsetMins * 60000,
+                    );
+                    displayStartHour =
+                      displayStart.getHours() + displayStart.getMinutes() / 60;
+                  } else if (resizingEventId === ev.id) {
+                    const displayDurationMins = Math.max(
+                      15,
+                      duration * 60 + liveResizeDeltaMins,
+                    );
+                    displayEnd = new Date(
+                      ev.start.getTime() + displayDurationMins * 60000,
+                    );
+                    displayDuration = displayDurationMins / 60;
+                  }
+
+                  return (
+                    <div
+                      key={`${ev.id}_col_${colIndex}`}
                     onPointerDown={(e) => {
                       if (e.button !== 0) return;
                       if (
@@ -2099,6 +2145,16 @@ export function StudyCalendar({
                               {("todo" in ev
                                 ? (ev as any).todo?.type
                                 : undefined) || "TASK"}
+                              {isPart1 && (
+                                <span className="ml-1 px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono text-[8px] font-bold">
+                                  🌙 Part 1
+                                </span>
+                              )}
+                              {isPart2 && (
+                                <span className="ml-1 px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[8px] font-bold">
+                                  🌅 Part 2
+                                </span>
+                              )}
                             </div>
 
                             {/* Title and Checkbox */}
@@ -2165,9 +2221,14 @@ export function StudyCalendar({
                               data-time-display="true"
                               className="text-[9px] font-medium flex items-center gap-1 truncate font-mono"
                             >
-                              {format(displayStart, "h:mm a")}{" "}
+                              {format(ev.start, "h:mm a")}{" "}
                               <ArrowRight className="w-2 h-2 opacity-60" />{" "}
-                              {format(displayEnd, "h:mm a")}
+                              {format(ev.end, "h:mm a")}
+                              {isCrossMidnight && (
+                                <span className="opacity-75 text-[8px] font-mono">
+                                  {isPart1 ? "(→ next day)" : "(overnight)"}
+                                </span>
+                              )}
                             </p>
                             <p
                               data-duration-display="true"
@@ -2462,7 +2523,8 @@ export function StudyCalendar({
                     </div>
                   </div>
                 );
-              })}
+              });
+            })}
           </div>
         </div>
       </div>
@@ -3186,9 +3248,9 @@ export function StudyCalendar({
                           end.setDate(end.getDate() + 1);
                         }
 
-                        const durationMins = Math.round(
-                          (dragSelection.endHour - dragSelection.startHour) *
-                            60,
+                        const durationMins = Math.max(
+                          15,
+                          Math.round((end.getTime() - start.getTime()) / 60000),
                         );
                         let baseXpPerHour = 120; // 120 XP per hour by default
                         if (
@@ -3710,12 +3772,14 @@ export function StudyCalendar({
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
                     Quick Preset Blocks
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {[
-                      { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM" },
-                      { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM" },
-                      { label: "Early Bird", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM" },
-                      { label: "Night Owl", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM" },
+                      { label: "Night Owl (Overnight)", start: "23:00", end: "08:00", icon: "🌌", desc: "11:00 PM – 8:00 AM (9 hrs, 2 days)" },
+                      { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM (16 hrs)" },
+                      { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM (8 hrs)" },
+                      { label: "Late Evening", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM (8 hrs)" },
+                      { label: "Early Bird", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM (8 hrs)" },
+                      { label: "Deep Night", start: "22:00", end: "06:00", icon: "✨", desc: "10:00 PM – 6:00 AM (8 hrs, 2 days)" },
                     ].map((p) => {
                       const isSel = modalBlockStart === p.start && modalBlockEnd === p.end;
                       return (
@@ -3771,6 +3835,36 @@ export function StudyCalendar({
                     />
                   </div>
                 </div>
+
+                {/* Dynamic Multi-day / Overnight Schedule Indicator */}
+                {(() => {
+                  const [sH, sM] = (modalBlockStart || "06:00").split(":").map(Number);
+                  const [eH, eM] = (modalBlockEnd || "22:00").split(":").map(Number);
+                  const sTot = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+                  let eTot = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
+                  const isOvernight = eTot <= sTot;
+                  if (isOvernight) eTot += 24 * 60;
+                  const diffHours = ((eTot - sTot) / 60).toFixed(1).replace(/\.0$/, "");
+
+                  return (
+                    <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 text-xs font-mono ${
+                      isOvernight
+                        ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300"
+                        : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                    }`}>
+                      {isOvernight ? <span className="text-base">🌙</span> : <span className="text-base">⏱️</span>}
+                      <div className="flex-1">
+                        <span className="font-bold">
+                          {isOvernight ? "2-Day Overnight Schedule" : "Daily Study Window"}:
+                        </span>{" "}
+                        <span>{diffHours} hours total ({formatTime12h(modalBlockStart)} to {isOvernight ? "next morning " : ""}{formatTime12h(modalBlockEnd)})</span>
+                        {isOvernight && (
+                          <span className="block text-[10px] text-indigo-400 mt-0.5">Tasks seamlessly span across midnight without errors or conflicts.</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Realignment Option */}
                 <label className="flex items-start gap-3 p-3 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 cursor-pointer">
