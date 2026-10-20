@@ -10,19 +10,20 @@ import {
 } from './types';
 import { Todo, generateUniqueTaskId } from '@/context/AppContext';
 import { getLocalDateString } from '@/lib/utils';
-import { formatLocalISO, parseDateKeySafely } from '@/lib/studyBlock';
 export { getTaskSignature, getTaskSignaturesWithLegacy } from './signature';
 
 export function calculateDateDiffDays(startDateStr: string, endDateStr: string): number {
-  const start = parseDateKeySafely(startDateStr);
-  const end = parseDateKeySafely(endDateStr);
+  const [sy, sm, sd] = startDateStr.split('-').map(Number);
+  const [ey, em, ed] = endDateStr.split('-').map(Number);
+  const start = new Date(sy, sm - 1, sd);
+  const end = new Date(ey, em - 1, ed);
   const diffTime = end.getTime() - start.getTime();
   return Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
 }
 
 export function addDaysToDate(dateStr: string, daysToAdd: number): string {
-  const base = parseDateKeySafely(dateStr);
-  const date = new Date(base.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d + daysToAdd);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -442,48 +443,22 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
   return roadmap;
 }
 
-export function generateTodosFromRoadmap(
-  roadmap: RoadmapDay[],
-  planId: string,
-  studyBlockStart: string = "06:00",
-  studyBlockEnd: string = "22:00"
-): Todo[] {
+export function generateTodosFromRoadmap(roadmap: RoadmapDay[], planId: string): Todo[] {
   const todos: Todo[] = [];
 
-  const [sH, sM] = (studyBlockStart || "06:00").split(":").map(Number);
-  const [eH, eM] = (studyBlockEnd || "22:00").split(":").map(Number);
-
-  const startMins = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
-  let endMins = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
-  if (endMins <= startMins) {
-    endMins += 24 * 60; // Cross-midnight 2-day block
-  }
-
-  const totalWindowMins = Math.max(60, endMins - startMins);
-
   roadmap.forEach(day => {
-    const dayBase = parseDateKeySafely(day.date);
-
-    const taskCount = day.tasks.length;
-    const intervalMins = taskCount > 1 ? Math.min(180, Math.floor(totalWindowMins / taskCount)) : 120;
-
     day.tasks.forEach((task, idx) => {
-      const taskDur = task.durationMinutes || 90;
-      const taskStartOffset = Math.min(endMins - taskDur, startMins + idx * intervalMins);
-      const taskEndOffset = taskStartOffset + taskDur;
-
-      const startDateObj = new Date(dayBase.getTime() + taskStartOffset * 60 * 1000);
-      const endDateObj = new Date(dayBase.getTime() + taskEndOffset * 60 * 1000);
-
-      const startISO = formatLocalISO(startDateObj);
-      const endISO = formatLocalISO(endDateObj);
+      // Create time slots in morning/afternoon/evening
+      const startHour = 9 + Math.min(8, idx * 2);
+      const startHourStr = String(startHour).padStart(2, '0') + ':00';
+      const endHourStr = String(startHour + Math.max(1, Math.round(task.durationMinutes / 60))).padStart(2, '0') + ':00';
 
       const capitalizedType =
         task.type === 'lecture' ? 'Lecture' :
         task.type === 'practice' ? 'Practice' :
         task.type === 'revision' ? 'Revision' : 'Test';
 
-      const xp = Math.max(60, Math.round(taskDur * 1.5));
+      const xp = Math.max(60, Math.round(task.durationMinutes * 1.5));
 
       todos.push({
         id: generateUniqueTaskId(`bl_${task.chapterId.slice(0, 6)}`),
@@ -495,15 +470,14 @@ export function generateTodosFromRoadmap(
         subject: task.subject,
         chapter: task.chapter,
         lectureNumber: task.lectureNumber,
-        startTime: startISO,
-        endTime: endISO,
-        durationMinutes: taskDur,
+        startTime: `${day.date}T${startHourStr}`,
+        endTime: `${day.date}T${endHourStr}`,
+        durationMinutes: task.durationMinutes,
         backlogPlanId: planId,
         backlogChapterId: task.chapterId,
         backlogDayIndex: day.dayIndex,
         backlogTaskType: task.type,
         isBacklogTask: true,
-        calendarSynced: true,
         dateScheduled: day.date
       });
     });

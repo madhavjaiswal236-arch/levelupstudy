@@ -47,40 +47,6 @@ export class ErrorBoundary extends Component<Props, State> {
           )}
           <div className="flex flex-wrap items-center justify-center gap-3">
             <button
-              onClick={() => {
-                try {
-                  const stateStr = localStorage.getItem("jee_tracker_state");
-                  if (stateStr) {
-                    const parsed = JSON.parse(stateStr);
-                    if (Array.isArray(parsed.todos)) {
-                      parsed.todos = parsed.todos.map((t: any) => {
-                        if (!t) return t;
-                        if (t.startTime && (String(t.startTime).includes("NaN") || isNaN(new Date(t.startTime).getTime()))) {
-                          delete t.startTime;
-                        }
-                        if (t.endTime && (String(t.endTime).includes("NaN") || isNaN(new Date(t.endTime).getTime()))) {
-                          delete t.endTime;
-                        }
-                        if (t.dateScheduled && String(t.dateScheduled).includes("NaN")) {
-                          delete t.dateScheduled;
-                        }
-                        return t;
-                      });
-                      localStorage.setItem("jee_tracker_state", JSON.stringify(parsed));
-                    }
-                  }
-                } catch (e) {
-                  console.error("Auto repair error:", e);
-                }
-                sessionStorage.clear();
-                window.location.reload();
-              }}
-              className="flex items-center gap-2 bg-emerald-600/30 hover:bg-emerald-600/40 dark:text-emerald-300 text-emerald-800 px-5 py-2.5 rounded-lg border border-emerald-500/40 font-mono font-bold text-sm transition-all shadow-md"
-            >
-              <RefreshCw className="w-4 h-4" />
-              AUTO-REPAIR & RESTORE
-            </button>
-            <button
               onClick={() => window.location.reload()}
               className="flex items-center gap-2 bg-rose-600/20 hover:bg-rose-600/30 dark:text-rose-400 text-rose-700 px-5 py-2.5 rounded-lg border border-rose-500/30 font-mono font-bold text-sm transition-all"
             >
@@ -89,17 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </button>
             <button
               onClick={() => {
-                try {
-                  sessionStorage.clear();
-                  const stateStr = localStorage.getItem("jee_tracker_state");
-                  if (stateStr) {
-                    const parsed = JSON.parse(stateStr);
-                    if (parsed.todos) {
-                      parsed.todos = (parsed.todos || []).filter((t: any) => t && !String(t.startTime).includes("NaN"));
-                      localStorage.setItem("jee_tracker_state", JSON.stringify(parsed));
-                    }
-                  }
-                } catch (e) {}
+                sessionStorage.clear();
                 window.location.reload();
               }}
               className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-5 py-2.5 rounded-lg border border-slate-600 font-mono font-bold text-sm transition-all"

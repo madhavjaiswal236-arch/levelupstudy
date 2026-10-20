@@ -20,11 +20,7 @@ import {
   ArrowRight,
   Menu,
   BrainCircuit,
-  Settings2,
-  Sliders,
-  Sparkles,
 } from "lucide-react";
-import { realignTasksToStudyBlock, formatLocalISO } from "../lib/studyBlock";
 import { SpacedMemoryWidget } from "./coach/SpacedMemoryWidget";
 import {
   getAccessToken,
@@ -55,99 +51,6 @@ import {
   addMonths,
 } from "date-fns";
 import { predictNextLecture } from "../lib/utils";
-
-const safeFormat = (date: any, formatStr: string, fallback: string = ""): string => {
-  if (!date) return fallback;
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return fallback;
-    return format(d, formatStr);
-  } catch {
-    return fallback;
-  }
-};
-
-const safeIsSameDay = (d1: any, d2: any): boolean => {
-  if (!d1 || !d2) return false;
-  try {
-    const dt1 = d1 instanceof Date ? d1 : new Date(d1);
-    const dt2 = d2 instanceof Date ? d2 : new Date(d2);
-    if (isNaN(dt1.getTime()) || isNaN(dt2.getTime())) return false;
-    return isSameDay(dt1, dt2);
-  } catch {
-    return false;
-  }
-};
-
-const safeStartOfDay = (date: any): Date => {
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return startOfDay(new Date());
-    return startOfDay(d);
-  } catch {
-    return startOfDay(new Date());
-  }
-};
-
-const safeStartOfWeek = (date: any, options?: Parameters<typeof startOfWeek>[1]): Date => {
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return startOfWeek(new Date(), options);
-    return startOfWeek(d, options);
-  } catch {
-    return startOfWeek(new Date(), options);
-  }
-};
-
-const safeAddDays = (date: any, amount: number): Date => {
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return new Date();
-    return addDays(d, amount);
-  } catch {
-    return new Date();
-  }
-};
-
-const safeAddMonths = (date: any, amount: number): Date => {
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return new Date();
-    return addMonths(d, amount);
-  } catch {
-    return new Date();
-  }
-};
-
-const safeStartOfMonth = (date: any): Date => {
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return startOfMonth(new Date());
-    return startOfMonth(d);
-  } catch {
-    return startOfMonth(new Date());
-  }
-};
-
-const safeEndOfMonth = (date: any): Date => {
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return endOfMonth(new Date());
-    return endOfMonth(d);
-  } catch {
-    return endOfMonth(new Date());
-  }
-};
-
-const safeGetDay = (date: any): number => {
-  try {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return 0;
-    return getDay(d);
-  } catch {
-    return 0;
-  }
-};
 
 const COLORS: Record<string, string> = {
   Physics:
@@ -188,11 +91,6 @@ export function StudyCalendar({
     getCurrentChapterForSubject,
     notifyCalendarPreviewOpened,
     notifyCalendarPreviewClosed,
-    scheduleProfile,
-    setScheduleProfile,
-    backlogPlan,
-    setBacklogPlan,
-    saveStateToCloudNow,
   } = useAppContext();
 
   useEffect(() => {
@@ -240,100 +138,6 @@ export function StudyCalendar({
     "General",
     "Google Calendar",
   ]);
-
-  // Active Study Time Block State
-  const activeStudyBlockStart =
-    scheduleProfile?.studyBlockStart || backlogPlan?.settings?.studyBlockStart || "06:00";
-  const activeStudyBlockEnd =
-    scheduleProfile?.studyBlockEnd || backlogPlan?.settings?.studyBlockEnd || "22:00";
-
-  const [showStudyBlockModal, setShowStudyBlockModal] = useState(false);
-  const [modalBlockStart, setModalBlockStart] = useState(activeStudyBlockStart);
-  const [modalBlockEnd, setModalBlockEnd] = useState(activeStudyBlockEnd);
-  const [realignExistingTasks, setRealignExistingTasks] = useState(true);
-
-  useEffect(() => {
-    if (showStudyBlockModal) {
-      setModalBlockStart(activeStudyBlockStart);
-      setModalBlockEnd(activeStudyBlockEnd);
-    }
-  }, [showStudyBlockModal, activeStudyBlockStart, activeStudyBlockEnd]);
-
-  const formatTime12h = (timeStr: string) => {
-    if (!timeStr) return "06:00 AM";
-    const [hStr, mStr] = timeStr.split(":");
-    let h = parseInt(hStr || "6", 10);
-    const m = mStr || "00";
-    const ampm = h >= 12 ? "PM" : "AM";
-    if (h === 0) h = 12;
-    else if (h > 12) h -= 12;
-    return `${String(h).padStart(2, "0")}:${m} ${ampm}`;
-  };
-
-  const handleSaveStudyBlock = () => {
-    const newStart = modalBlockStart || "06:00";
-    const newEnd = modalBlockEnd || "22:00";
-
-    if (setScheduleProfile) {
-      setScheduleProfile((prev) => ({
-        ...prev,
-        studyBlockStart: newStart,
-        studyBlockEnd: newEnd,
-      }));
-    }
-
-    let updatedPlan = backlogPlan;
-    if (backlogPlan && setBacklogPlan) {
-      updatedPlan = {
-        ...backlogPlan,
-        settings: {
-          ...backlogPlan.settings,
-          studyBlockStart: newStart,
-          studyBlockEnd: newEnd,
-        },
-      };
-      setBacklogPlan(updatedPlan);
-    }
-
-    let updatedTasks = todos;
-    if (realignExistingTasks) {
-      updatedTasks = realignTasksToStudyBlock(todos, newStart, newEnd);
-      setCalendarTodos(updatedTasks);
-      setUnsyncedChanges(true);
-    }
-
-    saveStateToCloudNow?.({ backlogPlan: updatedPlan, todos: updatedTasks });
-    setShowStudyBlockModal(false);
-    showToast(
-      `Study Block updated to ${formatTime12h(newStart)} – ${formatTime12h(newEnd)}!`,
-      "success"
-    );
-  };
-
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-        setShowMoreMenu(false);
-      }
-    };
-    if (showMoreMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [showMoreMenu]);
-
-  const handleRealignAllTasks = () => {
-    const updated = realignTasksToStudyBlock(todos, activeStudyBlockStart, activeStudyBlockEnd);
-    setCalendarTodos(updated);
-    saveStateToCloudNow?.({ todos: updated });
-    showToast(
-      `All pending tasks re-aligned into Study Block (${formatTime12h(activeStudyBlockStart)} – ${formatTime12h(activeStudyBlockEnd)})!`,
-      "success"
-    );
-  };
   const [selectedSubject, setSelectedSubject] = useState<string>("Physics");
   const [view, setView] = useState<"Day" | "3 Days" | "Week" | "Month">("Day");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -409,16 +213,14 @@ export function StudyCalendar({
           const next = deduplicatedList.map((t) => {
             if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
               const match = events.find((e: any) => e.id === t.calendarEventId);
-                const startDt = new Date(match.start.dateTime);
-                const endDt = new Date(match.end.dateTime);
-                if (!isNaN(startDt.getTime()) && !isNaN(endDt.getTime())) {
-                  const mStart = startDt.toISOString();
-                  const mEnd = endDt.toISOString();
-                  if (t.startTime !== mStart || t.endTime !== mEnd) {
-                    updated = true;
-                    return { ...t, startTime: mStart, endTime: mEnd };
-                  }
+              if (match && match.start?.dateTime && match.end?.dateTime) {
+                const mStart = new Date(match.start.dateTime).toISOString();
+                const mEnd = new Date(match.end.dateTime).toISOString();
+                if (t.startTime !== mStart || t.endTime !== mEnd) {
+                  updated = true;
+                  return { ...t, startTime: mStart, endTime: mEnd };
                 }
+              }
             } else if ((!t.calendarEventId || t.calendarEventId.startsWith("local-")) && t.startTime) {
               const tStartMs = new Date(t.startTime).getTime();
               const match = events.find((e: any) => {
@@ -457,14 +259,14 @@ export function StudyCalendar({
   }, [setTodos]);
 
   const visibleDays = useMemo(() => {
-    if (view === "Day") return [safeStartOfDay(currentDate)];
+    if (view === "Day") return [startOfDay(currentDate)];
     if (view === "3 Days") {
-      const today = safeStartOfDay(currentDate);
-      return [today, safeAddDays(today, 1), safeAddDays(today, 2)];
+      const today = startOfDay(currentDate);
+      return [today, addDays(today, 1), addDays(today, 2)];
     }
     if (view === "Week") {
-      const start = safeStartOfWeek(currentDate, { weekStartsOn: 1 });
-      return Array.from({ length: 7 }).map((_, i) => safeAddDays(start, i));
+      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
+      return Array.from({ length: 7 }).map((_, i) => addDays(start, i));
     }
     // Month view handled separately
     return [];
@@ -489,12 +291,7 @@ export function StudyCalendar({
     todos
       .filter((t) => !t.isDeleted)
       .filter((t) => activeCalendars.includes(t.subject || "General"))
-      .filter((t) => {
-        if (!t.startTime || !t.endTime) return false;
-        const sMs = new Date(t.startTime as string).getTime();
-        const eMs = new Date(t.endTime as string).getTime();
-        return !isNaN(sMs) && !isNaN(eMs);
-      })
+      .filter((t) => t.startTime && t.endTime)
       .forEach((t) => {
         const start = new Date(t.startTime as string);
         const end = new Date(t.endTime as string);
@@ -1199,20 +996,21 @@ export function StudyCalendar({
   const handleScheduleSingle = async (task: Todo) => {
     let latestEnd = new Date();
     if (scheduledEvents.length > 0) {
-      const futureEvents = scheduledEvents.filter((e) => e.end && !isNaN(e.end.getTime()) && e.end > new Date());
+      const futureEvents = scheduledEvents.filter((e) => e.end > new Date());
       if (futureEvents.length > 0) {
-        const maxTime = Math.max(...futureEvents.map((e) => e.end.getTime()));
-        if (!isNaN(maxTime) && isFinite(maxTime)) {
-          latestEnd = new Date(maxTime);
-        }
+        latestEnd = new Date(
+          Math.max(...futureEvents.map((e) => e.end.getTime())),
+        );
       }
     }
 
-    let currentStart = new Date(latestEnd.getTime());
-    if (isNaN(currentStart.getTime()) || currentStart < new Date()) {
+    let currentStart = new Date(latestEnd);
+    if (currentStart < new Date()) {
       currentStart = new Date();
       currentStart.setMinutes(currentStart.getMinutes() + 10);
     }
+
+    // Removed 9 AM to 10 PM restrictions per user request
 
     const durationMins = task.lectureHours ? task.lectureHours * 60 : 105;
     const end = new Date(currentStart.getTime() + durationMins * 60000);
@@ -1229,7 +1027,7 @@ export function StudyCalendar({
 
     setCalendarTodos(updatedTodos);
     showToast(
-      `Scheduled ${task.text} for ${safeFormat(currentStart, "h:mm a")}`,
+      `Scheduled ${task.text} for ${format(currentStart, "h:mm a")}`,
       "success",
     );
 
@@ -1283,16 +1081,12 @@ export function StudyCalendar({
     showToast("Generating study plan...", "info");
 
     for (const task of unscheduledTasks) {
-      const blockStartH = parseInt(activeStudyBlockStart.split(":")[0], 10) || 6;
-      let blockEndH = parseInt(activeStudyBlockEnd.split(":")[0], 10) || 22;
-      if (blockEndH <= blockStartH) blockEndH = blockStartH + 12;
-
-      // Advance to next valid hour within active Study Block
-      if (currentStart.getHours() >= blockEndH) {
+      // Advance to next valid hour (9 AM to 10 PM)
+      if (currentStart.getHours() >= 22) {
         currentStart.setDate(currentStart.getDate() + 1);
-        currentStart.setHours(blockStartH, 0, 0, 0);
-      } else if (currentStart.getHours() < blockStartH) {
-        currentStart.setHours(blockStartH, 0, 0, 0);
+        currentStart.setHours(9, 0, 0, 0);
+      } else if (currentStart.getHours() < 9) {
+        currentStart.setHours(9, 0, 0, 0);
       }
 
       const durationMins = task.lectureHours ? task.lectureHours * 60 : 105;
@@ -1370,14 +1164,14 @@ export function StudyCalendar({
                 className="flex-1 flex items-center justify-center border-r border-slate-200 dark:border-white/5 relative gap-1.5 h-12"
               >
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-wider ${safeIsSameDay(d, currentDate) ? "text-indigo-400" : safeIsSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-400"}`}
+                  className={`text-[10px] font-bold uppercase tracking-wider ${isSameDay(d, currentDate) ? "text-indigo-400" : isSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-400"}`}
                 >
-                  {safeFormat(d, "EEE")}
+                  {format(d, "EEE")}
                 </span>
                 <span
-                  className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${safeIsSameDay(d, currentDate) ? "bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.9)]" : safeIsSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-700 dark:text-slate-200"}`}
+                  className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${isSameDay(d, currentDate) ? "bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.9)]" : isSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-700 dark:text-slate-200"}`}
                 >
-                  {safeFormat(d, "d")}
+                  {format(d, "d")}
                 </span>
               </div>
             ))}
@@ -1428,7 +1222,7 @@ export function StudyCalendar({
             }}
           >
             <div className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_4px_12px_rgba(79,70,229,0.9)] border border-indigo-400/30">
-              {safeFormat(currentLocalTime, "h:mm a")}
+              {format(currentLocalTime, "h:mm a")}
             </div>
           </div>
         </div>
@@ -1464,72 +1258,10 @@ export function StudyCalendar({
                   <div
                     className="absolute w-full h-[1px] border-b border-dashed border-slate-100 dark:border-white/5"
                     style={{ top: `${hour * 80 + 40}px` }}
-                />
-              )}
-            </div>
-          ))}
-
-          {/* Active Study Block Visual Highlight Zone(s) */}
-            {(() => {
-              const sHour = parseInt(activeStudyBlockStart.split(":")[0], 10) || 6;
-              const sMin = parseInt(activeStudyBlockStart.split(":")[1] || "0", 10);
-              const eHour = parseInt(activeStudyBlockEnd.split(":")[0], 10) || 22;
-              const eMin = parseInt(activeStudyBlockEnd.split(":")[1] || "0", 10);
-
-              const sTotalMins = sHour * 60 + sMin;
-              const eTotalMins = eHour * 60 + eMin;
-              const isCrossDay = eTotalMins <= sTotalMins;
-
-              if (isCrossDay) {
-                // 2-day cross-midnight block: render evening section (start -> 24:00) and morning section (00:00 -> end)
-                const eveningTopPx = (sTotalMins / 60) * 80;
-                const eveningHeightPx = ((1440 - sTotalMins) / 60) * 80;
-                const morningTopPx = 0;
-                const morningHeightPx = (eTotalMins / 60) * 80;
-
-                return (
-                  <>
-                    {/* Evening segment (Part 1, e.g. 11 PM to Midnight) */}
-                    <div
-                      className="absolute w-full pointer-events-none z-[10] border-t border-amber-500/30 bg-amber-500/[0.04] dark:bg-amber-400/[0.03] transition-all"
-                      style={{ top: `${eveningTopPx}px`, height: `${eveningHeightPx}px` }}
-                    >
-                      <div className="sticky left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold tracking-tight shadow-xs backdrop-blur-xs">
-                        <Clock className="w-3 h-3 text-amber-500" />
-                        <span>STUDY BLOCK (Part 1): {formatTime12h(activeStudyBlockStart)} – midnight 🌙</span>
-                      </div>
-                    </div>
-
-                    {/* Morning segment (Part 2, e.g. Midnight to 8 AM next day) */}
-                    <div
-                      className="absolute w-full pointer-events-none z-[10] border-b border-amber-500/30 bg-amber-500/[0.04] dark:bg-amber-400/[0.03] transition-all"
-                      style={{ top: `${morningTopPx}px`, height: `${morningHeightPx}px` }}
-                    >
-                      <div className="sticky left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold tracking-tight shadow-xs backdrop-blur-xs">
-                        <Clock className="w-3 h-3 text-amber-500" />
-                        <span>STUDY BLOCK (Part 2): midnight – {formatTime12h(activeStudyBlockEnd)} 🌅</span>
-                      </div>
-                    </div>
-                  </>
-                );
-              }
-
-              // Normal same-day block
-              const topPx = (sTotalMins / 60) * 80;
-              const heightPx = Math.max(60, ((eTotalMins - sTotalMins) / 60) * 80);
-
-              return (
-                <div
-                  className="absolute w-full pointer-events-none z-[10] border-y border-amber-500/30 bg-amber-500/[0.04] dark:bg-amber-400/[0.03] transition-all"
-                  style={{ top: `${topPx}px`, height: `${heightPx}px` }}
-                >
-                  <div className="sticky left-2 top-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold tracking-tight shadow-xs backdrop-blur-xs">
-                    <Clock className="w-3 h-3 text-amber-500" />
-                    <span>DAILY STUDY BLOCK: {formatTime12h(activeStudyBlockStart)} – {formatTime12h(activeStudyBlockEnd)}</span>
-                  </div>
-                </div>
-              );
-            })()}
+                  />
+                )}
+              </div>
+            ))}
 
             {visibleDays.map((d, colIndex) => (
               <div
@@ -1749,7 +1481,7 @@ export function StudyCalendar({
               <div
                 className="absolute bg-indigo-500/20 border-2 border-indigo-500 rounded-xl pointer-events-none z-40 shadow-sm"
                 style={{
-                  left: `calc(${visibleDays.findIndex((d) => safeIsSameDay(d, dragSelection.day)) * (100 / visibleDays.length)}% + 4px)`,
+                  left: `calc(${visibleDays.findIndex((d) => isSameDay(d, dragSelection.day)) * (100 / visibleDays.length)}% + 4px)`,
                   width: `calc(${100 / visibleDays.length}% - 8px)`,
                   top: `${dragSelection.startHour * 80}px`,
                   height: `${(dragSelection.endHour - dragSelection.startHour) * 80}px`,
@@ -1757,57 +1489,50 @@ export function StudyCalendar({
               />
             )}
 
-            {/* Events - Supports full multi-day / cross-midnight overnight schedules across 2 days */}
-            {visibleDays.flatMap((vd, colIndex) => {
-              const dayStart = new Date(vd.getFullYear(), vd.getMonth(), vd.getDate(), 0, 0, 0, 0);
-              const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+            {/* Events */}
+            {scheduledEvents
+              .filter((ev) => visibleDays.some((vd) => isSameDay(vd, ev.start)))
+              .map((ev) => {
+                const dayIndex = visibleDays.findIndex((vd) =>
+                  isSameDay(vd, ev.start),
+                );
+                if (dayIndex === -1) return null;
 
-              return scheduledEvents
-                .filter((ev) => !isNaN(ev.start.getTime()) && !isNaN(ev.end.getTime()) && ev.start.getTime() < dayEnd.getTime() && ev.end.getTime() > dayStart.getTime())
-                .map((ev) => {
-                  const dayIndex = colIndex;
-                  const segStartMs = Math.max(dayStart.getTime(), ev.start.getTime());
-                  const segEndMs = Math.min(dayEnd.getTime(), ev.end.getTime());
-                  const segStartDate = new Date(segStartMs);
-                  const segEndDate = new Date(segEndMs);
+                const startHour =
+                  ev.start.getHours() + ev.start.getMinutes() / 60;
+                const duration =
+                  (ev.end.getTime() - ev.start.getTime()) / 3600000;
+                const colorClass = COLORS[ev.subject] || COLORS["Default"];
 
-                  const startHour = segStartDate.getHours() + segStartDate.getMinutes() / 60;
-                  const duration = Math.max(0.2, (segEndMs - segStartMs) / 3600000);
-                  const colorClass = COLORS[ev.subject] || COLORS["Default"];
+                // High-performance display calculations using local drag/resize offsets
+                let displayStart = ev.start;
+                let displayEnd = ev.end;
+                let displayStartHour = startHour;
+                let displayDuration = duration;
 
-                  const isCrossMidnight = !safeIsSameDay(ev.start, ev.end) && (ev.end.getTime() - ev.start.getTime() > 60000);
-                  const isPart1 = isCrossMidnight && ev.start.getTime() >= dayStart.getTime();
-                  const isPart2 = isCrossMidnight && ev.start.getTime() < dayStart.getTime();
+                if (dragEventId === ev.id) {
+                  displayStart = new Date(
+                    ev.start.getTime() + liveDragOffsetMins * 60000,
+                  );
+                  displayEnd = new Date(
+                    ev.end.getTime() + liveDragOffsetMins * 60000,
+                  );
+                  displayStartHour =
+                    displayStart.getHours() + displayStart.getMinutes() / 60;
+                } else if (resizingEventId === ev.id) {
+                  const displayDurationMins = Math.max(
+                    15,
+                    duration * 60 + liveResizeDeltaMins,
+                  );
+                  displayEnd = new Date(
+                    ev.start.getTime() + displayDurationMins * 60000,
+                  );
+                  displayDuration = displayDurationMins / 60;
+                }
 
-                  // High-performance display calculations using local drag/resize offsets
-                  let displayStart = segStartDate;
-                  let displayEnd = segEndDate;
-                  let displayStartHour = startHour;
-                  let displayDuration = duration;
-
-                  if (dragEventId === ev.id) {
-                    displayStart = new Date(
-                      ev.start.getTime() + liveDragOffsetMins * 60000,
-                    );
-                    displayEnd = new Date(
-                      ev.end.getTime() + liveDragOffsetMins * 60000,
-                    );
-                    displayStartHour =
-                      displayStart.getHours() + displayStart.getMinutes() / 60;
-                  } else if (resizingEventId === ev.id) {
-                    const displayDurationMins = Math.max(
-                      15,
-                      duration * 60 + liveResizeDeltaMins,
-                    );
-                    displayEnd = new Date(
-                      ev.start.getTime() + displayDurationMins * 60000,
-                    );
-                    displayDuration = displayDurationMins / 60;
-                  }
-
-                  return (
-                    <div
-                      key={`${ev.id}_col_${colIndex}`}
+                return (
+                  <div
+                    key={ev.id}
                     onPointerDown={(e) => {
                       if (e.button !== 0) return;
                       if (
@@ -1908,7 +1633,7 @@ export function StudyCalendar({
                             const tempStart = new Date(visibleDays[currentDayIndex]);
                             tempStart.setHours(h, m, 0, 0);
                             const tempEnd = new Date(tempStart.getTime() + durationMilli);
-                            timeEl.innerHTML = `${safeFormat(tempStart, "h:mm a")} <span class="mx-0.5 opacity-60">→</span> ${safeFormat(tempEnd, "h:mm a")}`;
+                            timeEl.innerHTML = `${format(tempStart, "h:mm a")} <span class="mx-0.5 opacity-60">→</span> ${format(tempEnd, "h:mm a")}`;
                           }
                         }
                       };
@@ -2225,7 +1950,7 @@ export function StudyCalendar({
                             data-time-display="true"
                             className="text-[9px] opacity-75 font-mono ml-auto truncate flex-shrink-0"
                           >
-                            {safeFormat(displayStart, "h:mm a")}
+                            {format(displayStart, "h:mm a")}
                           </span>
                         </div>
                       ) : (
@@ -2246,16 +1971,6 @@ export function StudyCalendar({
                               {("todo" in ev
                                 ? (ev as any).todo?.type
                                 : undefined) || "TASK"}
-                              {isPart1 && (
-                                <span className="ml-1 px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono text-[8px] font-bold">
-                                  🌙 Part 1
-                                </span>
-                              )}
-                              {isPart2 && (
-                                <span className="ml-1 px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[8px] font-bold">
-                                  🌅 Part 2
-                                </span>
-                              )}
                             </div>
 
                             {/* Title and Checkbox */}
@@ -2322,14 +2037,9 @@ export function StudyCalendar({
                               data-time-display="true"
                               className="text-[9px] font-medium flex items-center gap-1 truncate font-mono"
                             >
-                              {safeFormat(ev.start, "h:mm a")}{" "}
+                              {format(displayStart, "h:mm a")}{" "}
                               <ArrowRight className="w-2 h-2 opacity-60" />{" "}
-                              {safeFormat(ev.end, "h:mm a")}
-                              {isCrossMidnight && (
-                                <span className="opacity-75 text-[8px] font-mono">
-                                  {isPart1 ? "(→ next day)" : "(overnight)"}
-                                </span>
-                              )}
+                              {format(displayEnd, "h:mm a")}
                             </p>
                             <p
                               data-duration-display="true"
@@ -2435,7 +2145,7 @@ export function StudyCalendar({
                               const tempEnd = new Date(
                                 ev.start.getTime() + newDurationMins * 60000,
                               );
-                              timeEl.innerHTML = `${safeFormat(ev.start, "h:mm a")} <span class="mx-0.5 text-slate-400">→</span> ${safeFormat(tempEnd, "h:mm a")}`;
+                              timeEl.innerHTML = `${format(ev.start, "h:mm a")} <span class="mx-0.5 text-slate-400">→</span> ${format(tempEnd, "h:mm a")}`;
                             }
                             const durationEl = eventCard?.querySelector(
                               '[data-duration-display="true"]',
@@ -2624,8 +2334,7 @@ export function StudyCalendar({
                     </div>
                   </div>
                 );
-              });
-            })}
+              })}
           </div>
         </div>
       </div>
@@ -2715,7 +2424,7 @@ export function StudyCalendar({
           {daysArr.map((d) => {
             const isCurrentMonth = d.getMonth() === currentDate.getMonth();
             const dayEvents = scheduledEvents.filter((ev) =>
-              safeIsSameDay(ev.start, d),
+              isSameDay(ev.start, d),
             );
             return (
               <div
@@ -2723,7 +2432,7 @@ export function StudyCalendar({
                 className={`border-r border-b border-slate-200 dark:border-white/5 p-2 min-h-[100px] ${!isCurrentMonth ? "bg-slate-100 dark:bg-white/5 opacity-50" : "bg-white dark:bg-[#1a1a1a]"}`}
               >
                 <div
-                  className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 ${safeIsSameDay(d, new Date()) ? "bg-indigo-600 text-white shadow-md" : "text-slate-700 dark:text-slate-300"}`}
+                  className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 ${isSameDay(d, new Date()) ? "bg-indigo-600 text-white shadow-md" : "text-slate-700 dark:text-slate-300"}`}
                 >
                   {d.getDate()}
                 </div>
@@ -2756,17 +2465,17 @@ export function StudyCalendar({
       <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-sm text-white">
-            {safeFormat(currentDate, "MMMM yyyy")}
+            {format(currentDate, "MMMM yyyy")}
           </h3>
           <div className="flex gap-1">
             <button
-              onClick={() => setCurrentDate(safeAddMonths(currentDate, -1))}
+              onClick={() => setCurrentDate(addMonths(currentDate, -1))}
               className="p-1 hover:bg-white/10 rounded-lg transition-colors"
             >
               <ChevronLeft className="w-4 h-4 text-slate-400" />
             </button>
             <button
-              onClick={() => setCurrentDate(safeAddMonths(currentDate, 1))}
+              onClick={() => setCurrentDate(addMonths(currentDate, 1))}
               className="p-1 hover:bg-white/10 rounded-lg transition-colors"
             >
               <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -2782,7 +2491,7 @@ export function StudyCalendar({
               {d}
             </div>
           ))}
-          {Array.from({ length: safeGetDay(safeStartOfMonth(currentDate)) }).map(
+          {Array.from({ length: getDay(startOfMonth(currentDate)) }).map(
             (_, i) => (
               <div key={`${prefix}-empty-${i}`} />
             ),
@@ -2799,8 +2508,8 @@ export function StudyCalendar({
               currentDate.getMonth(),
               i + 1,
             );
-            const isToday = safeIsSameDay(dayDate, new Date());
-            const isSel = safeIsSameDay(dayDate, currentDate);
+            const isToday = isSameDay(dayDate, new Date());
+            const isSel = isSameDay(dayDate, currentDate);
             return (
               <button
                 key={`${prefix}-day-${i}`}
@@ -2862,40 +2571,6 @@ export function StudyCalendar({
             </p>
           </div>
         </div>
-      </div>
-
-      {/* Study Time Block Card */}
-      <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-400" />
-            <h3 className="font-bold text-sm text-white">Study Time Block</h3>
-          </div>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono font-bold">
-            Active
-          </span>
-        </div>
-
-        <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800 space-y-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400">Scheduled Hours:</span>
-            <span className="text-amber-300 font-mono font-bold">
-              {formatTime12h(activeStudyBlockStart)} – {formatTime12h(activeStudyBlockEnd)}
-            </span>
-          </div>
-          <p className="text-[10px] text-slate-400 leading-tight">
-            All tasks & auto-plans are scheduled strictly within this window.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowStudyBlockModal(true)}
-          className="w-full py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
-        >
-          <Settings2 className="w-3.5 h-3.5" />
-          <span>Change Study Block</span>
-        </button>
       </div>
 
       {/* Calendars */}
@@ -3001,12 +2676,12 @@ export function StudyCalendar({
                 Personal: "bg-rose-500",
               };
               const color = colorMap[t.subject || ""] || "bg-indigo-500";
-              let timeStr = safeFormat(st, "h:mm a");
-              let dateStr = safeIsSameDay(st, new Date())
+              let timeStr = format(st, "h:mm a");
+              let dateStr = isSameDay(st, new Date())
                 ? "Today"
-                : safeIsSameDay(st, safeAddDays(new Date(), 1))
+                : isSameDay(st, addDays(new Date(), 1))
                   ? "Tomorrow"
-                  : safeFormat(st, "MMM d");
+                  : format(st, "MMM d");
 
               return (
                 <div
@@ -3080,7 +2755,7 @@ export function StudyCalendar({
                       New Study Session
                     </h3>
                     <p className="text-sm text-slate-500 mb-4">
-                      {safeFormat(dragSelection.day, "MMMM d, yyyy")}
+                      {format(dragSelection.day, "MMMM d, yyyy")}
                     </p>
                     <div className="flex gap-4 items-center">
                       <div className="flex-1">
@@ -3349,9 +3024,9 @@ export function StudyCalendar({
                           end.setDate(end.getDate() + 1);
                         }
 
-                        const durationMins = Math.max(
-                          15,
-                          Math.round((end.getTime() - start.getTime()) / 60000),
+                        const durationMins = Math.round(
+                          (dragSelection.endHour - dragSelection.startHour) *
+                            60,
                         );
                         let baseXpPerHour = 120; // 120 XP per hour by default
                         if (
@@ -3386,7 +3061,6 @@ export function StudyCalendar({
                           if (lecNumStr) lecNumParsed = parseInt(lecNumStr);
                         }
 
-                        const scheduledDateStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
                         const newTask = {
                           id: Date.now(),
                           text: finalName,
@@ -3399,11 +3073,8 @@ export function StudyCalendar({
                           lectureNumber: lecNumParsed,
                           startTime: start.toISOString(),
                           endTime: end.toISOString(),
-                          dateScheduled: scheduledDateStr,
                           priority: taskPriority,
                           durationMinutes: durationMins,
-                          calendarSynced: true,
-                          calendarEventId: `local-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
                         };
 
                         const isDuplicate = todos.some(
@@ -3416,9 +3087,7 @@ export function StudyCalendar({
                               !t.completed),
                         );
                         if (!isDuplicate) {
-                          const updated = [...todos, newTask];
-                          setCalendarTodos(updated);
-                          saveStateToCloudNow?.({ todos: updated });
+                          setCalendarTodos([...todos, newTask]);
                         }
                         setShowTaskModal(false);
                         setDragSelection(null);
@@ -3625,191 +3294,79 @@ export function StudyCalendar({
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col bg-white dark:bg-[#121212] order-1 md:order-2 h-full min-h-0">
           {/* Header */}
-          <div className="min-h-[72px] py-3 md:py-0 border-b border-slate-200 dark:border-white/10 flex flex-wrap items-center justify-between px-4 md:px-6 bg-white dark:bg-[#1A1A1A] gap-3 shrink-0">
-            <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-              {/* 3 Lines (More) Section Menu */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowMoreMenu((prev) => !prev)}
-                  className="p-2 bg-slate-100 dark:bg-white/5 rounded-xl hover:bg-slate-200 dark:hover:bg-white/10 transition-colors flex items-center gap-1.5 border border-slate-200/50 dark:border-white/5"
-                  title="Schedule & Study Block Options (3 Lines Menu)"
-                >
-                  <Menu className="w-5 h-5 text-slate-700 dark:text-slate-200" />
-                  <span className="hidden xl:inline text-xs font-bold text-slate-700 dark:text-slate-300">More</span>
-                </button>
-
-                {showMoreMenu && (
-                  <div
-                    ref={moreMenuRef}
-                    className="absolute top-full left-0 mt-2 w-72 bg-slate-900 border border-amber-500/30 rounded-2xl p-2 shadow-2xl z-[150] space-y-1 text-white animate-in fade-in slide-in-from-top-2 duration-150"
-                  >
-                    <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
-                      <p className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">Schedule & Study Options</p>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">3-Lines Menu</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        setShowStudyBlockModal(true);
-                      }}
-                      className="w-full flex items-start gap-3 p-2.5 rounded-xl hover:bg-amber-500/20 text-left transition-colors group"
-                    >
-                      <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 group-hover:scale-105 transition-transform shrink-0">
-                        <Clock className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-white group-hover:text-amber-300">Study Time Block</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 font-mono font-bold">Active</span>
-                        </div>
-                        <p className="text-[10px] text-amber-300 font-mono mt-0.5 font-bold">
-                          {formatTime12h(activeStudyBlockStart)} – {formatTime12h(activeStudyBlockEnd)}
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Click to decide your daily study hours & auto-fit tasks</p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        handleRealignAllTasks();
-                      }}
-                      className="w-full flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/10 text-left transition-colors"
-                    >
-                      <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400 shrink-0">
-                        <Sparkles className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-white">Re-align All Tasks</span>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Pack all pending tasks inside the active study block</p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        setShowSpacedMemory(true);
-                      }}
-                      className="w-full flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/10 text-left transition-colors"
-                    >
-                      <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400 shrink-0">
-                        <BrainCircuit className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-white">Spaced Review Queue</span>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Review spaced repetition memory items</p>
-                      </div>
-                    </button>
-
-                    <div className="pt-1 border-t border-white/10">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMoreMenu(false);
-                          setShowMobileSidebar(true);
-                        }}
-                        className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-white/10 text-xs font-medium text-slate-300"
-                      >
-                        <span>Open Schedule Sidebar</span>
-                        <ChevronRight className="w-4 h-4 text-slate-500" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
+          <div className="min-h-[80px] py-4 md:py-0 border-b border-slate-200 dark:border-white/10 flex flex-wrap items-center justify-between px-4 md:px-6 bg-white dark:bg-[#1A1A1A] gap-4 shrink-0">
+            <div className="flex items-center gap-2 md:gap-4">
+              <button
+                onClick={() => setShowMobileSidebar(true)}
+                className="md:hidden p-2 bg-slate-100 dark:bg-white/5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 transition-colors mr-1"
+                title="Open Schedule Sidebar"
+              >
+                <Menu className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+              </button>
               <button
                 onClick={() => setCurrentDate(new Date())}
-                className="hidden sm:block px-3.5 py-1.5 border border-slate-200 dark:border-slate-700 rounded-xl text-xs md:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                className="hidden sm:block px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
               >
                 Today
               </button>
-              <div className="flex gap-1 items-center">
+              <div className="flex gap-1">
                 <button
                   onClick={handlePrev}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                  title="Previous"
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <button
                   onClick={handleNext}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                  title="Next"
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
-              <h2 className="text-base md:text-lg font-bold tracking-tight min-w-[130px] pr-1">
+              <h2 className="text-lg md:text-xl font-semibold tracking-tight min-w-[150px]">
                 {view === "Month"
-                  ? safeFormat(currentDate, "MMMM yyyy")
+                  ? format(currentDate, "MMMM yyyy")
                   : view === "Day"
-                    ? safeFormat(currentDate, "MMMM d, yyyy")
-                    : `${safeFormat(visibleDays[0], "MMM d")} – ${safeFormat(visibleDays[visibleDays.length - 1], "MMM d, yyyy")}`}
+                    ? format(currentDate, "MMMM d, yyyy")
+                    : `${format(visibleDays[0], "MMM d")} – ${format(visibleDays[visibleDays.length - 1], "MMM d, yyyy")}`}
               </h2>
-
-              {/* View Switcher: Day, 3 Days, Week, Month - Restored directly next to date navigation */}
-              <div className="flex bg-slate-100 dark:bg-black/60 p-1 rounded-xl border border-slate-200/60 dark:border-white/10 shadow-xs">
-                {(["Day", "3 Days", "Week", "Month"] as const).map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setView(v)}
-                    className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all ${
-                      view === v
-                        ? "bg-indigo-600 text-white shadow-sm font-bold"
-                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5"
-                    }`}
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
             </div>
 
-            {/* Right Side: Clean Action Buttons */}
-            <div className="flex items-center gap-2 md:gap-3">
-              {/* Quick Study Block indicator pill in calendar header */}
-              <button
-                type="button"
-                onClick={() => setShowStudyBlockModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-all shadow-xs"
-                title="Click to configure daily study time block"
-              >
-                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                <span className="hidden sm:inline">Block:</span>
-                <span>{formatTime12h(activeStudyBlockStart)} – {formatTime12h(activeStudyBlockEnd)}</span>
-              </button>
-
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowSpacedMemory(true)}
-                className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs md:text-sm font-bold bg-purple-600/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 hover:bg-purple-600 hover:text-white transition-all shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs md:text-sm font-bold bg-purple-600/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 hover:bg-purple-600 hover:text-white transition-all shadow-sm"
                 title="Spaced Memory Consolidation Queue"
               >
                 <BrainCircuit className="w-4 h-4 text-purple-500" />
                 <span className="hidden sm:inline">Spaced Review</span>
               </button>
-
               <button
                 onClick={() => handleCalendarSync(true)}
                 disabled={isSyncing}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm disabled:opacity-50 disabled:animate-none ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-md disabled:opacity-50 disabled:animate-none ${
                   unsyncedChanges
                     ? "bg-indigo-600 hover:bg-indigo-700 text-white animate-pulse"
-                    : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_12px_rgba(79,70,229,0.4)]"
+                    : "bg-indigo-500/80 hover:bg-indigo-600 text-white shadow-[0_0_12px_rgba(79,70,229,0.5)]"
                 }`}
               >
                 {isSyncing ? "Syncing..." : "Apply Timeline"}
               </button>
-
+              <div className="flex bg-slate-100 dark:bg-black/50 p-1 rounded-xl">
+                {(["Day", "3 Days", "Week", "Month"] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    className={`px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-all ${view === v ? "bg-indigo-600 text-white shadow-md" : "text-slate-500 hover:text-slate-800 dark:hover:text-white"}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
               {onClose && (
                 <button
                   onClick={onClose}
-                  className="p-1.5 md:px-3 md:py-1.5 bg-rose-500/10 dark:bg-rose-500/20 hover:bg-rose-600 hover:text-white text-rose-600 dark:text-rose-400 rounded-xl transition-all flex items-center justify-center shrink-0 ml-1 font-semibold gap-1.5 text-xs md:text-sm"
+                  className="p-2 md:px-3 md:py-2 bg-rose-500/10 dark:bg-rose-500/20 hover:bg-rose-600 hover:text-white text-rose-600 dark:text-rose-400 rounded-xl transition-all flex items-center justify-center shrink-0 ml-1 font-semibold gap-1.5 text-xs md:text-sm"
                   title="Close Fullscreen Calendar"
                 >
                   <X className="w-4 h-4" />
@@ -3823,7 +3380,7 @@ export function StudyCalendar({
           <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div
-                key={view + "-" + formatLocalISO(currentDate)}
+                key={view + "-" + currentDate.toISOString()}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
@@ -3835,173 +3392,6 @@ export function StudyCalendar({
             </AnimatePresence>
           </div>
         </div>
-
-        {/* Study Time Block Modal */}
-        <AnimatePresence>
-          {showStudyBlockModal && (
-            <div className="fixed inset-0 z-[250] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="w-full max-w-lg bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl relative text-white space-y-5"
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowStudyBlockModal(false)}
-                  className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
-                    <Clock className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black tracking-tight text-white">
-                      Configure Study Time Block
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      Specify the daily hours during which all your tasks should be scheduled.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Quick Presets */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
-                    Quick Preset Blocks
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {[
-                      { label: "Night Owl (Overnight)", start: "23:00", end: "08:00", icon: "🌌", desc: "11:00 PM – 8:00 AM (9 hrs, 2 days)" },
-                      { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM (16 hrs)" },
-                      { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM (8 hrs)" },
-                      { label: "Late Evening", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM (8 hrs)" },
-                      { label: "Early Bird", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM (8 hrs)" },
-                      { label: "Deep Night", start: "22:00", end: "06:00", icon: "✨", desc: "10:00 PM – 6:00 AM (8 hrs, 2 days)" },
-                    ].map((p) => {
-                      const isSel = modalBlockStart === p.start && modalBlockEnd === p.end;
-                      return (
-                        <button
-                          key={p.label}
-                          type="button"
-                          onClick={() => {
-                            setModalBlockStart(p.start);
-                            setModalBlockEnd(p.end);
-                          }}
-                          className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                            isSel
-                              ? "border-amber-400 bg-amber-400/20 text-white shadow-md ring-1 ring-amber-400/50"
-                              : "border-slate-800 bg-slate-950/80 text-slate-300 hover:border-slate-700 hover:bg-slate-900"
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5 font-bold text-xs">
-                            <span>{p.icon}</span>
-                            <span>{p.label}</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono mt-1">
-                            {p.desc}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Custom Start & End Inputs */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300 block">
-                      Block Start Time:
-                    </label>
-                    <input
-                      type="time"
-                      value={modalBlockStart}
-                      onChange={(e) => setModalBlockStart(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-sm font-bold focus:border-amber-400 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300 block">
-                      Block End Time:
-                    </label>
-                    <input
-                      type="time"
-                      value={modalBlockEnd}
-                      onChange={(e) => setModalBlockEnd(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-sm font-bold focus:border-amber-400 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Dynamic Multi-day / Overnight Schedule Indicator */}
-                {(() => {
-                  const [sH, sM] = (modalBlockStart || "06:00").split(":").map(Number);
-                  const [eH, eM] = (modalBlockEnd || "22:00").split(":").map(Number);
-                  const sTot = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
-                  let eTot = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
-                  const isOvernight = eTot <= sTot;
-                  if (isOvernight) eTot += 24 * 60;
-                  const diffHours = ((eTot - sTot) / 60).toFixed(1).replace(/\.0$/, "");
-
-                  return (
-                    <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 text-xs font-mono ${
-                      isOvernight
-                        ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300"
-                        : "bg-amber-500/10 border-amber-500/30 text-amber-300"
-                    }`}>
-                      {isOvernight ? <span className="text-base">🌙</span> : <span className="text-base">⏱️</span>}
-                      <div className="flex-1">
-                        <span className="font-bold">
-                          {isOvernight ? "2-Day Overnight Schedule" : "Daily Study Window"}:
-                        </span>{" "}
-                        <span>{diffHours} hours total ({formatTime12h(modalBlockStart)} to {isOvernight ? "next morning " : ""}{formatTime12h(modalBlockEnd)})</span>
-                        {isOvernight && (
-                          <span className="block text-[10px] text-indigo-400 mt-0.5">Tasks seamlessly span across midnight without errors or conflicts.</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Realignment Option */}
-                <label className="flex items-start gap-3 p-3 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={realignExistingTasks}
-                    onChange={(e) => setRealignExistingTasks(e.target.checked)}
-                    className="mt-0.5 accent-amber-400 rounded shrink-0"
-                  />
-                  <span>
-                    <strong className="text-white">Re-align uncompleted tasks:</strong> Automatically shift all pending tasks to fit inside this new study block time window.
-                  </span>
-                </label>
-
-                {/* Action Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowStudyBlockModal(false)}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveStudyBlock}
-                    className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-md flex items-center gap-1.5"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Save & Apply Study Block</span>
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
         {showSpacedMemory && (
           <div className="fixed inset-0 z-[250] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

@@ -42,8 +42,6 @@ export interface BacklogPlanSettings {
   testAfterChapterCompletion: boolean;
   testDurationMinutes: number;
   bufferDays: number;
-  studyBlockStart?: string; // e.g. "06:00"
-  studyBlockEnd?: string;   // e.g. "22:00"
 }
 
 export type FeasibilityStatus = "COMFORTABLE" | "ON_TRACK" | "TIGHT" | "AT_RISK" | "IMPOSSIBLE";

@@ -1,5 +1,4 @@
 import { getAccessToken, refreshGoogleToken, invalidateOAuthToken } from './firebase';
-import { getActiveStudyBlock, calculateNextAvailableStudySlot } from './studyBlock';
 
 /**
  * Fetch wrapper for Google APIs with full Exponential Backoff and Jitter.
@@ -91,35 +90,32 @@ export async function createCalendarEvent(title: string, durationMinutes: number
   let endTime = specificEndTime;
 
   if (!startTime || !endTime) {
-    const block = getActiveStudyBlock();
-    const todayDate = new Date();
-    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, "0")}-${String(todayDate.getDate()).padStart(2, "0")}`;
-    const slot = calculateNextAvailableStudySlot(
-      todayStr,
-      durationMinutes,
-      todos,
-      block.start,
-      block.end
-    );
-    startTime = new Date(slot.startTime);
-    endTime = new Date(slot.endTime);
+    let latestEndTime = new Date();
+    const now = new Date();
+    for (const t of todos) {
+      if (t.endTime && !t.completed) {
+        const dt = new Date(t.endTime);
+        if (dt > latestEndTime && dt.getTime() < now.getTime() + 3 * 24 * 60 * 60 * 1000) {
+          latestEndTime = dt;
+        }
+      }
+    }
+    startTime = new Date(latestEndTime);
+    startTime.setMinutes(startTime.getMinutes() + 10);
+    
+    let finalDuration = durationMinutes;
+    endTime = new Date(startTime.getTime() + finalDuration * 60000);
   }
 
-  const safeStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
-  let safeEnd = endTime && !isNaN(endTime.getTime()) ? endTime : new Date(safeStart.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
-  if (safeEnd.getTime() <= safeStart.getTime()) {
-    safeEnd = new Date(safeStart.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
-  }
-
-  const hasConflict = await checkCalendarConflicts(safeStart, safeEnd);
+  const hasConflict = await checkCalendarConflicts(startTime, endTime);
 
   if (!token) {
     console.log("No token available for calendar, creating local event");
     return {
       id: 'local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
       hasConflict: hasConflict,
-      startTime: safeStart.toISOString(),
-      endTime: safeEnd.toISOString()
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString()
     };
   }
 
@@ -138,11 +134,11 @@ export async function createCalendarEvent(title: string, durationMinutes: number
     summary: title,
     colorId: colorId,
     start: {
-      dateTime: safeStart.toISOString(),
+      dateTime: startTime.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     end: {
-      dateTime: safeEnd.toISOString(),
+      dateTime: endTime.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     reminders: {
@@ -202,17 +198,12 @@ export async function createCalendarEvent(title: string, durationMinutes: number
 }
 
 export async function checkCalendarConflicts(startTime: Date, endTime: Date): Promise<boolean> {
-  let token = await getAccessToken();
-  if (!token) return false;
+ let token = await getAccessToken();
+ if (!token) return false;
 
-  const validStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
-  const validEnd = endTime && !isNaN(endTime.getTime()) && endTime.getTime() > validStart.getTime()
-    ? endTime
-    : new Date(validStart.getTime() + 60 * 60 * 1000);
-
-  try {
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(validStart.toISOString())}&timeMax=${encodeURIComponent(validEnd.toISOString())}&singleEvents=true`;
-    const res = await fetchGoogleApi(url, 'GET');
+ try {
+ const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startTime.toISOString())}&timeMax=${encodeURIComponent(endTime.toISOString())}&singleEvents=true`;
+ const res = await fetchGoogleApi(url, 'GET');
 
  if (!res.ok) return false;
  

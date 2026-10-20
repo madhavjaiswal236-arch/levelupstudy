@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { GripVertical, Target, Calendar, Trash2, Clock, Play, ArrowUpRight } from "lucide-react";
 import { NeonCheckbox } from "./ui/neon-checkbox";
 import { getLogicalDate } from "../context/AppContext";
+import { isSameDay, format } from "date-fns";
 import { getLocalDateString, getTaskScheduledDate } from "@/lib/utils";
 
 interface SortableTodoItemProps {
@@ -147,21 +148,17 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
               {(() => {
                 let durationStr = "";
                 if (todo.startTime && todo.endTime) {
-                  const s = new Date(todo.startTime).getTime();
-                  const e = new Date(todo.endTime).getTime();
-                  if (!isNaN(s) && !isNaN(e)) {
-                    const diffMs = e - s;
-                    const diffMins = Math.round(diffMs / 60000);
-                    if (diffMins > 0) {
-                      const hrs = Math.floor(diffMins / 60);
-                      const mins = diffMins % 60;
-                      if (hrs > 0 && mins > 0) {
-                        durationStr = `${hrs}h ${mins}m`;
-                      } else if (hrs > 0) {
-                        durationStr = `${hrs}h`;
-                      } else {
-                        durationStr = `${mins}m`;
-                      }
+                  const diffMs = new Date(todo.endTime).getTime() - new Date(todo.startTime).getTime();
+                  const diffMins = Math.round(diffMs / 60000);
+                  if (diffMins > 0) {
+                    const hrs = Math.floor(diffMins / 60);
+                    const mins = diffMins % 60;
+                    if (hrs > 0 && mins > 0) {
+                      durationStr = `${hrs}h ${mins}m`;
+                    } else if (hrs > 0) {
+                      durationStr = `${hrs}h`;
+                    } else {
+                      durationStr = `${mins}m`;
                     }
                   }
                 } else if (todo.durationMinutes) {
