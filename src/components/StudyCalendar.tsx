@@ -201,13 +201,14 @@ export function StudyCalendar({
       setBacklogPlan(updatedPlan);
     }
 
+    let updatedTasks = todos;
     if (realignExistingTasks) {
-      setCalendarTodos((prev) => {
-        return realignTasksToStudyBlock(prev, newStart, newEnd);
-      });
+      updatedTasks = realignTasksToStudyBlock(todos, newStart, newEnd);
+      setCalendarTodos(updatedTasks);
+      setUnsyncedChanges(true);
     }
 
-    saveStateToCloudNow?.({});
+    saveStateToCloudNow?.({ todos: updatedTasks });
     setShowStudyBlockModal(false);
     showToast(
       `Study Block updated to ${formatTime12h(newStart)} – ${formatTime12h(newEnd)}!`,
