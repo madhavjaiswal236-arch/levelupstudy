@@ -24,7 +24,7 @@ import {
   Sliders,
   Sparkles,
 } from "lucide-react";
-import { realignTasksToStudyBlock } from "../lib/studyBlock";
+import { realignTasksToStudyBlock, formatLocalISO } from "../lib/studyBlock";
 import { SpacedMemoryWidget } from "./coach/SpacedMemoryWidget";
 import {
   getAccessToken,
@@ -55,6 +55,99 @@ import {
   addMonths,
 } from "date-fns";
 import { predictNextLecture } from "../lib/utils";
+
+const safeFormat = (date: any, formatStr: string, fallback: string = ""): string => {
+  if (!date) return fallback;
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return format(d, formatStr);
+  } catch {
+    return fallback;
+  }
+};
+
+const safeIsSameDay = (d1: any, d2: any): boolean => {
+  if (!d1 || !d2) return false;
+  try {
+    const dt1 = d1 instanceof Date ? d1 : new Date(d1);
+    const dt2 = d2 instanceof Date ? d2 : new Date(d2);
+    if (isNaN(dt1.getTime()) || isNaN(dt2.getTime())) return false;
+    return isSameDay(dt1, dt2);
+  } catch {
+    return false;
+  }
+};
+
+const safeStartOfDay = (date: any): Date => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return startOfDay(new Date());
+    return startOfDay(d);
+  } catch {
+    return startOfDay(new Date());
+  }
+};
+
+const safeStartOfWeek = (date: any, options?: Parameters<typeof startOfWeek>[1]): Date => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return startOfWeek(new Date(), options);
+    return startOfWeek(d, options);
+  } catch {
+    return startOfWeek(new Date(), options);
+  }
+};
+
+const safeAddDays = (date: any, amount: number): Date => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return new Date();
+    return addDays(d, amount);
+  } catch {
+    return new Date();
+  }
+};
+
+const safeAddMonths = (date: any, amount: number): Date => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return new Date();
+    return addMonths(d, amount);
+  } catch {
+    return new Date();
+  }
+};
+
+const safeStartOfMonth = (date: any): Date => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return startOfMonth(new Date());
+    return startOfMonth(d);
+  } catch {
+    return startOfMonth(new Date());
+  }
+};
+
+const safeEndOfMonth = (date: any): Date => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return endOfMonth(new Date());
+    return endOfMonth(d);
+  } catch {
+    return endOfMonth(new Date());
+  }
+};
+
+const safeGetDay = (date: any): number => {
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return 0;
+    return getDay(d);
+  } catch {
+    return 0;
+  }
+};
 
 const COLORS: Record<string, string> = {
   Physics:
@@ -316,14 +409,16 @@ export function StudyCalendar({
           const next = deduplicatedList.map((t) => {
             if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
               const match = events.find((e: any) => e.id === t.calendarEventId);
-              if (match && match.start?.dateTime && match.end?.dateTime) {
-                const mStart = new Date(match.start.dateTime).toISOString();
-                const mEnd = new Date(match.end.dateTime).toISOString();
-                if (t.startTime !== mStart || t.endTime !== mEnd) {
-                  updated = true;
-                  return { ...t, startTime: mStart, endTime: mEnd };
+                const startDt = new Date(match.start.dateTime);
+                const endDt = new Date(match.end.dateTime);
+                if (!isNaN(startDt.getTime()) && !isNaN(endDt.getTime())) {
+                  const mStart = startDt.toISOString();
+                  const mEnd = endDt.toISOString();
+                  if (t.startTime !== mStart || t.endTime !== mEnd) {
+                    updated = true;
+                    return { ...t, startTime: mStart, endTime: mEnd };
+                  }
                 }
-              }
             } else if ((!t.calendarEventId || t.calendarEventId.startsWith("local-")) && t.startTime) {
               const tStartMs = new Date(t.startTime).getTime();
               const match = events.find((e: any) => {
@@ -362,14 +457,14 @@ export function StudyCalendar({
   }, [setTodos]);
 
   const visibleDays = useMemo(() => {
-    if (view === "Day") return [startOfDay(currentDate)];
+    if (view === "Day") return [safeStartOfDay(currentDate)];
     if (view === "3 Days") {
-      const today = startOfDay(currentDate);
-      return [today, addDays(today, 1), addDays(today, 2)];
+      const today = safeStartOfDay(currentDate);
+      return [today, safeAddDays(today, 1), safeAddDays(today, 2)];
     }
     if (view === "Week") {
-      const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-      return Array.from({ length: 7 }).map((_, i) => addDays(start, i));
+      const start = safeStartOfWeek(currentDate, { weekStartsOn: 1 });
+      return Array.from({ length: 7 }).map((_, i) => safeAddDays(start, i));
     }
     // Month view handled separately
     return [];
@@ -394,7 +489,12 @@ export function StudyCalendar({
     todos
       .filter((t) => !t.isDeleted)
       .filter((t) => activeCalendars.includes(t.subject || "General"))
-      .filter((t) => t.startTime && t.endTime)
+      .filter((t) => {
+        if (!t.startTime || !t.endTime) return false;
+        const sMs = new Date(t.startTime as string).getTime();
+        const eMs = new Date(t.endTime as string).getTime();
+        return !isNaN(sMs) && !isNaN(eMs);
+      })
       .forEach((t) => {
         const start = new Date(t.startTime as string);
         const end = new Date(t.endTime as string);
@@ -1099,21 +1199,20 @@ export function StudyCalendar({
   const handleScheduleSingle = async (task: Todo) => {
     let latestEnd = new Date();
     if (scheduledEvents.length > 0) {
-      const futureEvents = scheduledEvents.filter((e) => e.end > new Date());
+      const futureEvents = scheduledEvents.filter((e) => e.end && !isNaN(e.end.getTime()) && e.end > new Date());
       if (futureEvents.length > 0) {
-        latestEnd = new Date(
-          Math.max(...futureEvents.map((e) => e.end.getTime())),
-        );
+        const maxTime = Math.max(...futureEvents.map((e) => e.end.getTime()));
+        if (!isNaN(maxTime) && isFinite(maxTime)) {
+          latestEnd = new Date(maxTime);
+        }
       }
     }
 
-    let currentStart = new Date(latestEnd);
-    if (currentStart < new Date()) {
+    let currentStart = new Date(latestEnd.getTime());
+    if (isNaN(currentStart.getTime()) || currentStart < new Date()) {
       currentStart = new Date();
       currentStart.setMinutes(currentStart.getMinutes() + 10);
     }
-
-    // Removed 9 AM to 10 PM restrictions per user request
 
     const durationMins = task.lectureHours ? task.lectureHours * 60 : 105;
     const end = new Date(currentStart.getTime() + durationMins * 60000);
@@ -1130,7 +1229,7 @@ export function StudyCalendar({
 
     setCalendarTodos(updatedTodos);
     showToast(
-      `Scheduled ${task.text} for ${format(currentStart, "h:mm a")}`,
+      `Scheduled ${task.text} for ${safeFormat(currentStart, "h:mm a")}`,
       "success",
     );
 
@@ -1271,14 +1370,14 @@ export function StudyCalendar({
                 className="flex-1 flex items-center justify-center border-r border-slate-200 dark:border-white/5 relative gap-1.5 h-12"
               >
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-wider ${isSameDay(d, currentDate) ? "text-indigo-400" : isSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-400"}`}
+                  className={`text-[10px] font-bold uppercase tracking-wider ${safeIsSameDay(d, currentDate) ? "text-indigo-400" : safeIsSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-400"}`}
                 >
-                  {format(d, "EEE")}
+                  {safeFormat(d, "EEE")}
                 </span>
                 <span
-                  className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${isSameDay(d, currentDate) ? "bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.9)]" : isSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-700 dark:text-slate-200"}`}
+                  className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${safeIsSameDay(d, currentDate) ? "bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.9)]" : safeIsSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-700 dark:text-slate-200"}`}
                 >
-                  {format(d, "d")}
+                  {safeFormat(d, "d")}
                 </span>
               </div>
             ))}
@@ -1329,7 +1428,7 @@ export function StudyCalendar({
             }}
           >
             <div className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_4px_12px_rgba(79,70,229,0.9)] border border-indigo-400/30">
-              {format(currentLocalTime, "h:mm a")}
+              {safeFormat(currentLocalTime, "h:mm a")}
             </div>
           </div>
         </div>
@@ -1650,7 +1749,7 @@ export function StudyCalendar({
               <div
                 className="absolute bg-indigo-500/20 border-2 border-indigo-500 rounded-xl pointer-events-none z-40 shadow-sm"
                 style={{
-                  left: `calc(${visibleDays.findIndex((d) => isSameDay(d, dragSelection.day)) * (100 / visibleDays.length)}% + 4px)`,
+                  left: `calc(${visibleDays.findIndex((d) => safeIsSameDay(d, dragSelection.day)) * (100 / visibleDays.length)}% + 4px)`,
                   width: `calc(${100 / visibleDays.length}% - 8px)`,
                   top: `${dragSelection.startHour * 80}px`,
                   height: `${(dragSelection.endHour - dragSelection.startHour) * 80}px`,
@@ -1664,7 +1763,7 @@ export function StudyCalendar({
               const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
               return scheduledEvents
-                .filter((ev) => ev.start.getTime() < dayEnd.getTime() && ev.end.getTime() > dayStart.getTime())
+                .filter((ev) => !isNaN(ev.start.getTime()) && !isNaN(ev.end.getTime()) && ev.start.getTime() < dayEnd.getTime() && ev.end.getTime() > dayStart.getTime())
                 .map((ev) => {
                   const dayIndex = colIndex;
                   const segStartMs = Math.max(dayStart.getTime(), ev.start.getTime());
@@ -1676,7 +1775,7 @@ export function StudyCalendar({
                   const duration = Math.max(0.2, (segEndMs - segStartMs) / 3600000);
                   const colorClass = COLORS[ev.subject] || COLORS["Default"];
 
-                  const isCrossMidnight = !isSameDay(ev.start, ev.end) && (ev.end.getTime() - ev.start.getTime() > 60000);
+                  const isCrossMidnight = !safeIsSameDay(ev.start, ev.end) && (ev.end.getTime() - ev.start.getTime() > 60000);
                   const isPart1 = isCrossMidnight && ev.start.getTime() >= dayStart.getTime();
                   const isPart2 = isCrossMidnight && ev.start.getTime() < dayStart.getTime();
 
@@ -1809,7 +1908,7 @@ export function StudyCalendar({
                             const tempStart = new Date(visibleDays[currentDayIndex]);
                             tempStart.setHours(h, m, 0, 0);
                             const tempEnd = new Date(tempStart.getTime() + durationMilli);
-                            timeEl.innerHTML = `${format(tempStart, "h:mm a")} <span class="mx-0.5 opacity-60">→</span> ${format(tempEnd, "h:mm a")}`;
+                            timeEl.innerHTML = `${safeFormat(tempStart, "h:mm a")} <span class="mx-0.5 opacity-60">→</span> ${safeFormat(tempEnd, "h:mm a")}`;
                           }
                         }
                       };
@@ -2126,7 +2225,7 @@ export function StudyCalendar({
                             data-time-display="true"
                             className="text-[9px] opacity-75 font-mono ml-auto truncate flex-shrink-0"
                           >
-                            {format(displayStart, "h:mm a")}
+                            {safeFormat(displayStart, "h:mm a")}
                           </span>
                         </div>
                       ) : (
@@ -2223,9 +2322,9 @@ export function StudyCalendar({
                               data-time-display="true"
                               className="text-[9px] font-medium flex items-center gap-1 truncate font-mono"
                             >
-                              {format(ev.start, "h:mm a")}{" "}
+                              {safeFormat(ev.start, "h:mm a")}{" "}
                               <ArrowRight className="w-2 h-2 opacity-60" />{" "}
-                              {format(ev.end, "h:mm a")}
+                              {safeFormat(ev.end, "h:mm a")}
                               {isCrossMidnight && (
                                 <span className="opacity-75 text-[8px] font-mono">
                                   {isPart1 ? "(→ next day)" : "(overnight)"}
@@ -2336,7 +2435,7 @@ export function StudyCalendar({
                               const tempEnd = new Date(
                                 ev.start.getTime() + newDurationMins * 60000,
                               );
-                              timeEl.innerHTML = `${format(ev.start, "h:mm a")} <span class="mx-0.5 text-slate-400">→</span> ${format(tempEnd, "h:mm a")}`;
+                              timeEl.innerHTML = `${safeFormat(ev.start, "h:mm a")} <span class="mx-0.5 text-slate-400">→</span> ${safeFormat(tempEnd, "h:mm a")}`;
                             }
                             const durationEl = eventCard?.querySelector(
                               '[data-duration-display="true"]',
@@ -2616,7 +2715,7 @@ export function StudyCalendar({
           {daysArr.map((d) => {
             const isCurrentMonth = d.getMonth() === currentDate.getMonth();
             const dayEvents = scheduledEvents.filter((ev) =>
-              isSameDay(ev.start, d),
+              safeIsSameDay(ev.start, d),
             );
             return (
               <div
@@ -2624,7 +2723,7 @@ export function StudyCalendar({
                 className={`border-r border-b border-slate-200 dark:border-white/5 p-2 min-h-[100px] ${!isCurrentMonth ? "bg-slate-100 dark:bg-white/5 opacity-50" : "bg-white dark:bg-[#1a1a1a]"}`}
               >
                 <div
-                  className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 ${isSameDay(d, new Date()) ? "bg-indigo-600 text-white shadow-md" : "text-slate-700 dark:text-slate-300"}`}
+                  className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 ${safeIsSameDay(d, new Date()) ? "bg-indigo-600 text-white shadow-md" : "text-slate-700 dark:text-slate-300"}`}
                 >
                   {d.getDate()}
                 </div>
@@ -2657,17 +2756,17 @@ export function StudyCalendar({
       <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-sm text-white">
-            {format(currentDate, "MMMM yyyy")}
+            {safeFormat(currentDate, "MMMM yyyy")}
           </h3>
           <div className="flex gap-1">
             <button
-              onClick={() => setCurrentDate(addMonths(currentDate, -1))}
+              onClick={() => setCurrentDate(safeAddMonths(currentDate, -1))}
               className="p-1 hover:bg-white/10 rounded-lg transition-colors"
             >
               <ChevronLeft className="w-4 h-4 text-slate-400" />
             </button>
             <button
-              onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+              onClick={() => setCurrentDate(safeAddMonths(currentDate, 1))}
               className="p-1 hover:bg-white/10 rounded-lg transition-colors"
             >
               <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -2683,7 +2782,7 @@ export function StudyCalendar({
               {d}
             </div>
           ))}
-          {Array.from({ length: getDay(startOfMonth(currentDate)) }).map(
+          {Array.from({ length: safeGetDay(safeStartOfMonth(currentDate)) }).map(
             (_, i) => (
               <div key={`${prefix}-empty-${i}`} />
             ),
@@ -2700,8 +2799,8 @@ export function StudyCalendar({
               currentDate.getMonth(),
               i + 1,
             );
-            const isToday = isSameDay(dayDate, new Date());
-            const isSel = isSameDay(dayDate, currentDate);
+            const isToday = safeIsSameDay(dayDate, new Date());
+            const isSel = safeIsSameDay(dayDate, currentDate);
             return (
               <button
                 key={`${prefix}-day-${i}`}
@@ -2902,12 +3001,12 @@ export function StudyCalendar({
                 Personal: "bg-rose-500",
               };
               const color = colorMap[t.subject || ""] || "bg-indigo-500";
-              let timeStr = format(st, "h:mm a");
-              let dateStr = isSameDay(st, new Date())
+              let timeStr = safeFormat(st, "h:mm a");
+              let dateStr = safeIsSameDay(st, new Date())
                 ? "Today"
-                : isSameDay(st, addDays(new Date(), 1))
+                : safeIsSameDay(st, safeAddDays(new Date(), 1))
                   ? "Tomorrow"
-                  : format(st, "MMM d");
+                  : safeFormat(st, "MMM d");
 
               return (
                 <div
@@ -2981,7 +3080,7 @@ export function StudyCalendar({
                       New Study Session
                     </h3>
                     <p className="text-sm text-slate-500 mb-4">
-                      {format(dragSelection.day, "MMMM d, yyyy")}
+                      {safeFormat(dragSelection.day, "MMMM d, yyyy")}
                     </p>
                     <div className="flex gap-4 items-center">
                       <div className="flex-1">
@@ -3648,10 +3747,10 @@ export function StudyCalendar({
               </div>
               <h2 className="text-base md:text-lg font-bold tracking-tight min-w-[130px] pr-1">
                 {view === "Month"
-                  ? format(currentDate, "MMMM yyyy")
+                  ? safeFormat(currentDate, "MMMM yyyy")
                   : view === "Day"
-                    ? format(currentDate, "MMMM d, yyyy")
-                    : `${format(visibleDays[0], "MMM d")} – ${format(visibleDays[visibleDays.length - 1], "MMM d, yyyy")}`}
+                    ? safeFormat(currentDate, "MMMM d, yyyy")
+                    : `${safeFormat(visibleDays[0], "MMM d")} – ${safeFormat(visibleDays[visibleDays.length - 1], "MMM d, yyyy")}`}
               </h2>
 
               {/* View Switcher: Day, 3 Days, Week, Month - Restored directly next to date navigation */}
@@ -3724,7 +3823,7 @@ export function StudyCalendar({
           <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div
-                key={view + "-" + currentDate.toISOString()}
+                key={view + "-" + formatLocalISO(currentDate)}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}

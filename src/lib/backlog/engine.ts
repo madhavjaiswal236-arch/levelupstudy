@@ -10,20 +10,19 @@ import {
 } from './types';
 import { Todo, generateUniqueTaskId } from '@/context/AppContext';
 import { getLocalDateString } from '@/lib/utils';
+import { formatLocalISO, parseDateKeySafely } from '@/lib/studyBlock';
 export { getTaskSignature, getTaskSignaturesWithLegacy } from './signature';
 
 export function calculateDateDiffDays(startDateStr: string, endDateStr: string): number {
-  const [sy, sm, sd] = startDateStr.split('-').map(Number);
-  const [ey, em, ed] = endDateStr.split('-').map(Number);
-  const start = new Date(sy, sm - 1, sd);
-  const end = new Date(ey, em - 1, ed);
+  const start = parseDateKeySafely(startDateStr);
+  const end = parseDateKeySafely(endDateStr);
   const diffTime = end.getTime() - start.getTime();
   return Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
 }
 
 export function addDaysToDate(dateStr: string, daysToAdd: number): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d + daysToAdd);
+  const base = parseDateKeySafely(dateStr);
+  const date = new Date(base.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -463,8 +462,7 @@ export function generateTodosFromRoadmap(
   const totalWindowMins = Math.max(60, endMins - startMins);
 
   roadmap.forEach(day => {
-    const [y, m, d] = day.date.split("-").map(Number);
-    const dayBase = new Date(y, m - 1, d, 0, 0, 0, 0);
+    const dayBase = parseDateKeySafely(day.date);
 
     const taskCount = day.tasks.length;
     const intervalMins = taskCount > 1 ? Math.min(180, Math.floor(totalWindowMins / taskCount)) : 120;
@@ -477,8 +475,8 @@ export function generateTodosFromRoadmap(
       const startDateObj = new Date(dayBase.getTime() + taskStartOffset * 60 * 1000);
       const endDateObj = new Date(dayBase.getTime() + taskEndOffset * 60 * 1000);
 
-      const startISO = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, "0")}-${String(startDateObj.getDate()).padStart(2, "0")}T${String(startDateObj.getHours()).padStart(2, "0")}:${String(startDateObj.getMinutes()).padStart(2, "0")}:00`;
-      const endISO = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, "0")}-${String(endDateObj.getDate()).padStart(2, "0")}T${String(endDateObj.getHours()).padStart(2, "0")}:${String(endDateObj.getMinutes()).padStart(2, "0")}:00`;
+      const startISO = formatLocalISO(startDateObj);
+      const endISO = formatLocalISO(endDateObj);
 
       const capitalizedType =
         task.type === 'lecture' ? 'Lecture' :

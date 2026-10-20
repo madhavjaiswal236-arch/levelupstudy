@@ -105,20 +105,21 @@ export async function createCalendarEvent(title: string, durationMinutes: number
     endTime = new Date(slot.endTime);
   }
 
-  // Defensive validation: ensure endTime is strictly after startTime across midnight
-  if (startTime && endTime && endTime.getTime() <= startTime.getTime()) {
-    endTime = new Date(startTime.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
+  const safeStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
+  let safeEnd = endTime && !isNaN(endTime.getTime()) ? endTime : new Date(safeStart.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
+  if (safeEnd.getTime() <= safeStart.getTime()) {
+    safeEnd = new Date(safeStart.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
   }
 
-  const hasConflict = await checkCalendarConflicts(startTime, endTime);
+  const hasConflict = await checkCalendarConflicts(safeStart, safeEnd);
 
   if (!token) {
     console.log("No token available for calendar, creating local event");
     return {
       id: 'local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
       hasConflict: hasConflict,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString()
+      startTime: safeStart.toISOString(),
+      endTime: safeEnd.toISOString()
     };
   }
 
@@ -137,11 +138,11 @@ export async function createCalendarEvent(title: string, durationMinutes: number
     summary: title,
     colorId: colorId,
     start: {
-      dateTime: startTime.toISOString(),
+      dateTime: safeStart.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     end: {
-      dateTime: endTime.toISOString(),
+      dateTime: safeEnd.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     reminders: {
@@ -204,12 +205,13 @@ export async function checkCalendarConflicts(startTime: Date, endTime: Date): Pr
   let token = await getAccessToken();
   if (!token) return false;
 
-  const safeEndTime = endTime.getTime() <= startTime.getTime()
-    ? new Date(startTime.getTime() + 60 * 60 * 1000)
-    : endTime;
+  const validStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
+  const validEnd = endTime && !isNaN(endTime.getTime()) && endTime.getTime() > validStart.getTime()
+    ? endTime
+    : new Date(validStart.getTime() + 60 * 60 * 1000);
 
   try {
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startTime.toISOString())}&timeMax=${encodeURIComponent(safeEndTime.toISOString())}&singleEvents=true`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(validStart.toISOString())}&timeMax=${encodeURIComponent(validEnd.toISOString())}&singleEvents=true`;
     const res = await fetchGoogleApi(url, 'GET');
 
  if (!res.ok) return false;

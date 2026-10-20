@@ -23,15 +23,75 @@ export interface StudyBlockWindow {
 
 /**
  * Converts a Date object to local ISO string (YYYY-MM-DDTHH:mm:ss) avoiding UTC drift.
+ * Safely guards against null, undefined, or invalid Date inputs.
  */
 export function formatLocalISO(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  const h = String(date.getHours()).padStart(2, "0");
-  const min = String(date.getMinutes()).padStart(2, "0");
-  const s = String(date.getSeconds()).padStart(2, "0");
+  const safeDate = !date || isNaN(date.getTime()) ? new Date() : date;
+  const y = safeDate.getFullYear();
+  const m = String(safeDate.getMonth() + 1).padStart(2, "0");
+  const d = String(safeDate.getDate()).padStart(2, "0");
+  const h = String(safeDate.getHours()).padStart(2, "0");
+  const min = String(safeDate.getMinutes()).padStart(2, "0");
+  const s = String(safeDate.getSeconds()).padStart(2, "0");
   return `${y}-${m}-${d}T${h}:${min}:${s}`;
+}
+
+/**
+ * Safely parses any date representation (YYYY-MM-DD, ISO string, etc.) into a clean 00:00:00 Date object.
+ * Never throws RangeError and never produces an Invalid Date.
+ */
+export function parseDateKeySafely(rawKey?: string | null): Date {
+  if (rawKey) {
+    const match = String(rawKey).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const y = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const d = parseInt(match[3], 10);
+      const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
+      if (!isNaN(dt.getTime())) return dt;
+    }
+    const directDate = new Date(rawKey);
+    if (!isNaN(directDate.getTime())) {
+      return new Date(directDate.getFullYear(), directDate.getMonth(), directDate.getDate(), 0, 0, 0, 0);
+    }
+  }
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+}
+
+/**
+ * Automatically inspects and heals any corrupted tasks with NaN or invalid dates.
+ */
+export function sanitizeAndHealTodos<T extends Record<string, any>>(rawList: T[]): T[] {
+  if (!Array.isArray(rawList)) return [];
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return rawList.map((t: any) => {
+    if (!t || typeof t !== "object") return t;
+    const sTime = t.startTime ? String(t.startTime) : undefined;
+    const eTime = t.endTime ? String(t.endTime) : undefined;
+    const dSched = t.dateScheduled ? String(t.dateScheduled) : undefined;
+
+    const isStartTimeCorrupt = Boolean(sTime && (sTime.includes("NaN") || isNaN(new Date(sTime).getTime())));
+    const isEndTimeCorrupt = Boolean(eTime && (eTime.includes("NaN") || isNaN(new Date(eTime).getTime())));
+    const isDateSchedCorrupt = Boolean(dSched && (dSched.includes("NaN") || !/^\d{4}-\d{2}-\d{2}/.test(dSched)));
+
+    if (isStartTimeCorrupt || isEndTimeCorrupt || isDateSchedCorrupt) {
+      let cleanDate = todayStr;
+      if (dSched && /^\d{4}-\d{2}-\d{2}/.test(dSched)) {
+        cleanDate = dSched.slice(0, 10);
+      } else if (sTime && /^\d{4}-\d{2}-\d{2}/.test(sTime)) {
+        cleanDate = sTime.slice(0, 10);
+      }
+      return {
+        ...t,
+        dateScheduled: cleanDate,
+        startTime: isStartTimeCorrupt ? undefined : sTime,
+        endTime: isEndTimeCorrupt ? undefined : eTime,
+      };
+    }
+    return t;
+  });
 }
 
 /**
@@ -150,8 +210,7 @@ export function calculateNextAvailableStudySlot(
   let blockEndMins = isOvernight ? morningTailMins + 24 * 60 : morningTailMins;
 
   // Base timestamp for targetDate at 00:00:00 local time
-  const [yStr, mStr, dStr] = targetDateStr.split("-");
-  const baseDate = new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, parseInt(dStr, 10), 0, 0, 0, 0);
+  const baseDate = parseDateKeySafely(targetDateStr);
 
   const now = new Date();
   const nowOffsetMins = (now.getTime() - baseDate.getTime()) / 60000;
@@ -245,27 +304,34 @@ export function realignTasksToStudyBlock(
   studyBlockStart: string = "06:00",
   studyBlockEnd: string = "22:00"
 ): Todo[] {
-  const [sH, sM] = studyBlockStart.split(":").map(Number);
-  const [eH, eM] = studyBlockEnd.split(":").map(Number);
+  const [sH, sM] = (studyBlockStart || "06:00").split(":").map(Number);
+  const [eH, eM] = (studyBlockEnd || "22:00").split(":").map(Number);
 
   const startTotalMins = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
   let endTotalMins = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
   if (endTotalMins <= startTotalMins) {
-    endTotalMins += 24 * 60; // Spans across 2 days
+    endTotalMins += 24 * 60; // Spans across 2 days (overnight schedule)
   }
   const totalBlockDurationMins = Math.max(60, endTotalMins - startTotalMins);
+
+  const now = new Date();
+  const defaultTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   // Group uncompleted tasks by scheduled date
   const dateMap = new Map<string, Todo[]>();
   tasks.forEach((t) => {
     if (!t.completed && !t.isDeleted) {
-      let dKey = t.dateScheduled;
+      let dKey = "";
+      if (t.dateScheduled) {
+        const match = String(t.dateScheduled).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) dKey = match[0];
+      }
       if (!dKey && t.startTime) {
-        dKey = t.startTime.split("T")[0];
+        const match = String(t.startTime).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) dKey = match[0];
       }
       if (!dKey) {
-        const now = new Date();
-        dKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        dKey = defaultTodayStr;
       }
       if (!dateMap.has(dKey)) dateMap.set(dKey, []);
       dateMap.get(dKey)!.push(t);
@@ -276,14 +342,13 @@ export function realignTasksToStudyBlock(
   tasks.forEach((t) => updatedMap.set(String(t.id), t));
 
   dateMap.forEach((dayTasks, dKey) => {
-    const [y, m, d] = dKey.split("-").map(Number);
-    const baseDate = new Date(y, m - 1, d, 0, 0, 0, 0);
+    const baseDate = parseDateKeySafely(dKey);
 
     const count = dayTasks.length;
     const stepMins = count > 1 ? Math.min(180, Math.floor(totalBlockDurationMins / count)) : 120;
 
     dayTasks.forEach((task, idx) => {
-      const durMins = task.durationMinutes || 90;
+      const durMins = Math.max(15, task.durationMinutes || 90);
       const slotStartMins = Math.min(endTotalMins - durMins, startTotalMins + idx * stepMins);
       const slotEndMins = slotStartMins + durMins;
 
