@@ -1,4 +1,5 @@
 import { getAccessToken, refreshGoogleToken, invalidateOAuthToken } from './firebase';
+import { getActiveStudyBlock, calculateNextAvailableStudySlot } from './studyBlock';
 
 /**
  * Fetch wrapper for Google APIs with full Exponential Backoff and Jitter.
@@ -90,21 +91,23 @@ export async function createCalendarEvent(title: string, durationMinutes: number
   let endTime = specificEndTime;
 
   if (!startTime || !endTime) {
-    let latestEndTime = new Date();
-    const now = new Date();
-    for (const t of todos) {
-      if (t.endTime && !t.completed) {
-        const dt = new Date(t.endTime);
-        if (dt > latestEndTime && dt.getTime() < now.getTime() + 3 * 24 * 60 * 60 * 1000) {
-          latestEndTime = dt;
-        }
-      }
-    }
-    startTime = new Date(latestEndTime);
-    startTime.setMinutes(startTime.getMinutes() + 10);
-    
-    let finalDuration = durationMinutes;
-    endTime = new Date(startTime.getTime() + finalDuration * 60000);
+    const block = getActiveStudyBlock();
+    const todayDate = new Date();
+    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, "0")}-${String(todayDate.getDate()).padStart(2, "0")}`;
+    const slot = calculateNextAvailableStudySlot(
+      todayStr,
+      durationMinutes,
+      todos,
+      block.start,
+      block.end
+    );
+    startTime = new Date(slot.startTime);
+    endTime = new Date(slot.endTime);
+  }
+
+  // Defensive validation: ensure endTime is strictly after startTime across midnight
+  if (startTime && endTime && endTime.getTime() <= startTime.getTime()) {
+    endTime = new Date(startTime.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
   }
 
   const hasConflict = await checkCalendarConflicts(startTime, endTime);
@@ -198,12 +201,16 @@ export async function createCalendarEvent(title: string, durationMinutes: number
 }
 
 export async function checkCalendarConflicts(startTime: Date, endTime: Date): Promise<boolean> {
- let token = await getAccessToken();
- if (!token) return false;
+  let token = await getAccessToken();
+  if (!token) return false;
 
- try {
- const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startTime.toISOString())}&timeMax=${encodeURIComponent(endTime.toISOString())}&singleEvents=true`;
- const res = await fetchGoogleApi(url, 'GET');
+  const safeEndTime = endTime.getTime() <= startTime.getTime()
+    ? new Date(startTime.getTime() + 60 * 60 * 1000)
+    : endTime;
+
+  try {
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startTime.toISOString())}&timeMax=${encodeURIComponent(safeEndTime.toISOString())}&singleEvents=true`;
+    const res = await fetchGoogleApi(url, 'GET');
 
  if (!res.ok) return false;
  

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Layers,
@@ -24,7 +24,16 @@ import {
   Compass,
   Trash2,
   BrainCircuit,
+  Play,
+  X,
+  Settings2,
 } from 'lucide-react';
+import {
+  getActiveStudyBlock,
+  calculateNextAvailableStudySlot,
+  realignTasksToStudyBlock,
+  formatTime12h,
+} from '@/lib/studyBlock';
 import { useAppContext } from '@/context/AppContext';
 import { BacklogWizard } from '@/components/backlog/BacklogWizard';
 import { BacklogSimulator } from '@/components/backlog/BacklogSimulator';
@@ -54,13 +63,184 @@ export default function BacklogHQ() {
     setTodos,
     updateTask,
     addXp,
-    saveStateToCloudNow
+    saveStateToCloudNow,
+    scheduleProfile,
+    setScheduleProfile,
   } = useAppContext();
 
   // Navigation / Modal States
   const [showWizard, setShowWizard] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
   const [showMissedModal, setShowMissedModal] = useState(false);
+
+  // Active Study Time Block
+  const activeBlock = useMemo(
+    () => getActiveStudyBlock(scheduleProfile, backlogPlan),
+    [scheduleProfile, backlogPlan]
+  );
+  const activeStudyBlockStart = activeBlock.start;
+  const activeStudyBlockEnd = activeBlock.end;
+
+  const [showStudyBlockModal, setShowStudyBlockModal] = useState(false);
+  const [modalBlockStart, setModalBlockStart] = useState(activeStudyBlockStart);
+  const [modalBlockEnd, setModalBlockEnd] = useState(activeStudyBlockEnd);
+  const [realignExistingTasks, setRealignExistingTasks] = useState(true);
+
+  useEffect(() => {
+    if (showStudyBlockModal) {
+      setModalBlockStart(activeStudyBlockStart);
+      setModalBlockEnd(activeStudyBlockEnd);
+    }
+  }, [showStudyBlockModal, activeStudyBlockStart, activeStudyBlockEnd]);
+
+  // Handle saving study block directly from Tracker 360
+  const handleSaveStudyBlock = () => {
+    const newStart = modalBlockStart || "06:00";
+    const newEnd = modalBlockEnd || "22:00";
+
+    if (setScheduleProfile) {
+      setScheduleProfile((prev) => ({
+        ...prev,
+        studyBlockStart: newStart,
+        studyBlockEnd: newEnd,
+      }));
+    }
+
+    let updatedPlan = backlogPlan;
+    if (backlogPlan && setBacklogPlan) {
+      updatedPlan = {
+        ...backlogPlan,
+        settings: {
+          ...backlogPlan.settings,
+          studyBlockStart: newStart,
+          studyBlockEnd: newEnd,
+        },
+      };
+      setBacklogPlan(updatedPlan);
+    }
+
+    let nextTodos = todos;
+    if (realignExistingTasks) {
+      nextTodos = realignTasksToStudyBlock(todos, newStart, newEnd);
+      setTodos(nextTodos);
+    }
+
+    saveStateToCloudNow({
+      backlogPlan: updatedPlan,
+      todos: nextTodos,
+    });
+    setShowStudyBlockModal(false);
+  };
+
+  // Handle clicking "Start" on ANY backlog task, lecture, or roadmap item
+  const handleStartBacklogTask = (
+    taskOrRoadmap: any,
+    chapterName?: string,
+    subjectName?: string
+  ) => {
+    const durMins = taskOrRoadmap.durationMinutes || 120;
+
+    // Check if task already exists in todos
+    const existing = todos.find(
+      (t) =>
+        t.isBacklogTask &&
+        (t.id === taskOrRoadmap.id ||
+          (t.text && t.text === (taskOrRoadmap.title || taskOrRoadmap.text)) ||
+          (taskOrRoadmap.chapterId &&
+            t.backlogChapterId === taskOrRoadmap.chapterId &&
+            (taskOrRoadmap.lectureNumber
+              ? t.lectureNumber === taskOrRoadmap.lectureNumber
+              : true)))
+    );
+
+    let scheduledTask: any;
+    let nextTodos = [...todos];
+
+    if (existing) {
+      // Check if already scheduled within today's study block
+      const hasValidSlot =
+        existing.startTime &&
+        existing.startTime.startsWith(todayStr) &&
+        existing.endTime;
+
+      if (hasValidSlot) {
+        scheduledTask = existing;
+      } else {
+        const slot = calculateNextAvailableStudySlot(
+          todayStr,
+          durMins,
+          todos,
+          activeStudyBlockStart,
+          activeStudyBlockEnd
+        );
+        scheduledTask = {
+          ...existing,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          dateScheduled: slot.dateScheduled,
+          calendarSynced: true,
+          calendarEventId: existing.calendarEventId || `local-${existing.id}`,
+          updatedAt: Date.now(),
+        };
+        nextTodos = todos.map((t) =>
+          t.id === existing.id ? scheduledTask : t
+        );
+      }
+    } else {
+      // Create new todo from backlog task strictly within study time block
+      const slot = calculateNextAvailableStudySlot(
+        todayStr,
+        durMins,
+        todos,
+        activeStudyBlockStart,
+        activeStudyBlockEnd
+      );
+      const title =
+        taskOrRoadmap.title ||
+        taskOrRoadmap.text ||
+        `${chapterName || "Backlog"} - Lecture ${taskOrRoadmap.lectureNumber || 1}`;
+
+      const xp = Math.max(60, Math.round(durMins * 1.5));
+      scheduledTask = {
+        id: `bl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        text: title,
+        completed: false,
+        xpReward: xp,
+        type:
+          taskOrRoadmap.type === "practice"
+            ? "Practice"
+            : taskOrRoadmap.type === "revision"
+              ? "Revision"
+              : taskOrRoadmap.type === "test"
+                ? "Chapter Test"
+                : "Lecture",
+        priority: "High",
+        subject: subjectName || taskOrRoadmap.subject || "General",
+        chapter: chapterName || taskOrRoadmap.chapter,
+        lectureNumber: taskOrRoadmap.lectureNumber,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        durationMinutes: durMins,
+        backlogPlanId: backlogPlan?.id,
+        backlogChapterId: taskOrRoadmap.chapterId,
+        backlogTaskType: taskOrRoadmap.type || "lecture",
+        isBacklogTask: true,
+        calendarSynced: true,
+        calendarEventId: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        dateScheduled: slot.dateScheduled,
+        updatedAt: Date.now(),
+      };
+      nextTodos = [scheduledTask, ...todos];
+    }
+
+    setTodos(nextTodos);
+    saveStateToCloudNow({ todos: nextTodos });
+
+    // Trigger focus session in Dashboard
+    window.dispatchEvent(
+      new CustomEvent("start-focus-task", { detail: { task: scheduledTask } })
+    );
+  };
 
   // Active view tab: 'journey' | 'today' | 'curriculum' | 'roadmap' | 'spaced'
   const [activeTab, setActiveTab] = useState<'journey' | 'today' | 'curriculum' | 'roadmap' | 'spaced'>('journey');
@@ -209,7 +389,12 @@ export default function BacklogHQ() {
     const newRoadmap = generateRoadmap(updatedPlan);
     updatedPlan.roadmap = newRoadmap;
 
-    const newTodos = generateTodosFromRoadmap(newRoadmap, updatedPlan.id);
+    const newTodos = generateTodosFromRoadmap(
+      newRoadmap,
+      updatedPlan.id,
+      updatedPlan.settings?.studyBlockStart,
+      updatedPlan.settings?.studyBlockEnd
+    );
 
     setBacklogPlan(updatedPlan);
 
@@ -313,6 +498,15 @@ export default function BacklogHQ() {
 
         {backlogPlan && !showWizard && (
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start md:self-auto">
+            <button
+              type="button"
+              onClick={() => setShowStudyBlockModal(true)}
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+              title="Configure your daily study time block"
+            >
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
+              <span>Block: {formatTime12h(activeStudyBlockStart)} – {formatTime12h(activeStudyBlockEnd)}</span>
+            </button>
             <button
               type="button"
               onClick={() => setShowSimulator(true)}
@@ -666,6 +860,27 @@ export default function BacklogHQ() {
                             </div>
                           </div>
                         </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-center shrink-0 ml-3">
+                          {!task.completed ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartBacklogTask(task);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-xs hover:scale-105 transition-all"
+                              title="Start focus session inside Study Time Block"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              <span>Start</span>
+                            </button>
+                          ) : (
+                            <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" /> Done
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -753,14 +968,51 @@ export default function BacklogHQ() {
                                   Selected Lectures:
                                 </span>
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  {lecs.map(num => (
-                                    <div
-                                      key={num}
-                                      className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-amber-100 dark:bg-amber-400/15 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-400/30 flex items-center gap-1"
-                                    >
-                                      <span>Lec {num}</span>
-                                    </div>
-                                  ))}
+                                  {lecs.map(num => {
+                                    const isDone = todos.some(
+                                      t => t.isBacklogTask && t.completed && t.backlogChapterId === chap.id && t.lectureNumber === num
+                                    );
+
+                                    return (
+                                      <button
+                                        key={num}
+                                        type="button"
+                                        onClick={() =>
+                                          handleStartBacklogTask(
+                                            {
+                                              id: `bl_lec_${chap.id}_${num}`,
+                                              title: `${chap.name} - Lecture ${num}`,
+                                              type: 'lecture',
+                                              chapterId: chap.id,
+                                              chapter: chap.name,
+                                              lectureNumber: num,
+                                              durationMinutes: chap.lectureDurationMinutes || 120,
+                                              subject: sub.name,
+                                            },
+                                            chap.name,
+                                            sub.name
+                                          )
+                                        }
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border flex items-center gap-1.5 transition group ${
+                                          isDone
+                                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                            : 'bg-amber-100 dark:bg-amber-400/15 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-400/30 hover:bg-amber-400 hover:text-slate-950 cursor-pointer shadow-xs'
+                                        }`}
+                                        title={
+                                          isDone
+                                            ? `Lecture ${num} completed`
+                                            : `Click to schedule Lecture ${num} in your Study Block & Start!`
+                                        }
+                                      >
+                                        {isDone ? (
+                                          <Check className="w-3 h-3 text-emerald-500" />
+                                        ) : (
+                                          <Play className="w-3 h-3 fill-current opacity-70 group-hover:opacity-100" />
+                                        )}
+                                        <span>Lec {num}</span>
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             </div>
@@ -917,10 +1169,20 @@ export default function BacklogHQ() {
                                   </span>
                                   <span className="font-medium">{t.title}</span>
                                   <span className="text-slate-400 dark:text-slate-500 font-mono">({t.durationMinutes}m)</span>
-                                  {isCompleted && (
+                                  {isCompleted ? (
                                     <span className="no-underline text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                                       Done
                                     </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartBacklogTask(t, t.chapter, t.subject)}
+                                      className="ml-auto px-2 py-0.5 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 text-[10px] font-bold font-mono flex items-center gap-1 transition shadow-xs"
+                                      title="Schedule into Study Block and start focus session"
+                                    >
+                                      <Play className="w-2.5 h-2.5 fill-current" />
+                                      <span>Start</span>
+                                    </button>
                                   )}
                                 </div>
                               );
@@ -974,6 +1236,173 @@ export default function BacklogHQ() {
           onClose={() => setShowMissedModal(false)}
         />
       )}
+
+      {/* Study Time Block Configuration Modal */}
+      <AnimatePresence>
+        {showStudyBlockModal && (
+          <div className="fixed inset-0 z-[250] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-lg bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl relative text-white space-y-5"
+            >
+              <button
+                type="button"
+                onClick={() => setShowStudyBlockModal(false)}
+                className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight text-white">
+                    Configure Daily Study Time Block
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    All your Tracker 360 roadmap tasks and manual backlog starts are scheduled strictly within this window.
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                  Quick Preset Blocks
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { label: "Night Owl (Overnight)", start: "23:00", end: "08:00", icon: "🌌", desc: "11:00 PM – 8:00 AM (9 hrs, 2 days)" },
+                    { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM (16 hrs)" },
+                    { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM (8 hrs)" },
+                    { label: "Late Evening", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM (8 hrs)" },
+                    { label: "Early Bird", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM (8 hrs)" },
+                    { label: "Deep Night", start: "22:00", end: "06:00", icon: "✨", desc: "10:00 PM – 6:00 AM (8 hrs, 2 days)" },
+                  ].map((p) => {
+                    const isSel = modalBlockStart === p.start && modalBlockEnd === p.end;
+                    return (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => {
+                          setModalBlockStart(p.start);
+                          setModalBlockEnd(p.end);
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                          isSel
+                            ? "border-amber-400 bg-amber-400/20 text-white shadow-md ring-1 ring-amber-400/50"
+                            : "border-slate-800 bg-slate-950/80 text-slate-300 hover:border-slate-700 hover:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <span>{p.icon}</span>
+                          <span>{p.label}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono mt-1">
+                          {p.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Inputs */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    Block Start Time:
+                  </label>
+                  <input
+                    type="time"
+                    value={modalBlockStart}
+                    onChange={(e) => setModalBlockStart(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-sm font-bold focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    Block End Time:
+                  </label>
+                  <input
+                    type="time"
+                    value={modalBlockEnd}
+                    onChange={(e) => setModalBlockEnd(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-sm font-bold focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Multi-day / Overnight Schedule Indicator */}
+              {(() => {
+                const [sH, sM] = (modalBlockStart || "06:00").split(":").map(Number);
+                const [eH, eM] = (modalBlockEnd || "22:00").split(":").map(Number);
+                const sTot = (isNaN(sH) ? 6 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+                let eTot = (isNaN(eH) ? 22 : eH) * 60 + (isNaN(eM) ? 0 : eM);
+                const isOvernight = eTot <= sTot;
+                if (isOvernight) eTot += 24 * 60;
+                const diffHours = ((eTot - sTot) / 60).toFixed(1).replace(/\.0$/, "");
+
+                return (
+                  <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 text-xs font-mono ${
+                    isOvernight
+                      ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300"
+                      : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                  }`}>
+                    {isOvernight ? <span className="text-base">🌙</span> : <span className="text-base">⏱️</span>}
+                    <div className="flex-1">
+                      <span className="font-bold">
+                        {isOvernight ? "2-Day Overnight Schedule" : "Daily Study Window"}:
+                      </span>{" "}
+                      <span>{diffHours} hours total ({formatTime12h(modalBlockStart)} to {isOvernight ? "next morning " : ""}{formatTime12h(modalBlockEnd)})</span>
+                      {isOvernight && (
+                        <span className="block text-[10px] text-indigo-400 mt-0.5">Tasks seamlessly span across midnight without errors or conflicts.</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Realignment Option */}
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-slate-950/90 border border-slate-800/80 text-xs text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={realignExistingTasks}
+                  onChange={(e) => setRealignExistingTasks(e.target.checked)}
+                  className="mt-0.5 accent-amber-400 rounded shrink-0"
+                />
+                <span>
+                  <strong className="text-white">Re-align uncompleted tasks:</strong> Automatically shift all pending tasks to fit inside this new study block time window.
+                </span>
+              </label>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowStudyBlockModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveStudyBlock}
+                  className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-md flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save & Apply Study Block</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

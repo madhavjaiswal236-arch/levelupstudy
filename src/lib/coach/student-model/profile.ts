@@ -10,6 +10,8 @@ export interface StudentScheduleProfile {
   targetSleepHours: number;
   usualWakeTime: string; // e.g. "06:00"
   maxConsecutiveStudyHours: number;
+  studyBlockStart?: string; // e.g. "06:00"
+  studyBlockEnd?: string;   // e.g. "22:00"
   intakeAnswers?: {
     revisionStyle?: string;
     predictionAccuracy?: string;
@@ -31,6 +33,8 @@ export const DEFAULT_SCHEDULE_PROFILE: StudentScheduleProfile = {
   targetSleepHours: 6.0,
   usualWakeTime: "06:00",
   maxConsecutiveStudyHours: 3.5,
+  studyBlockStart: "06:00",
+  studyBlockEnd: "22:00",
 };
 
 export function getExpectedCapacityHours(dayType: DayType): number {
