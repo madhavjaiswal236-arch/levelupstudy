@@ -189,8 +189,9 @@ export function StudyCalendar({
       }));
     }
 
+    let updatedPlan = backlogPlan;
     if (backlogPlan && setBacklogPlan) {
-      const updatedPlan = {
+      updatedPlan = {
         ...backlogPlan,
         settings: {
           ...backlogPlan.settings,
@@ -208,7 +209,7 @@ export function StudyCalendar({
       setUnsyncedChanges(true);
     }
 
-    saveStateToCloudNow?.({ todos: updatedTasks });
+    saveStateToCloudNow?.({ backlogPlan: updatedPlan, todos: updatedTasks });
     setShowStudyBlockModal(false);
     showToast(
       `Study Block updated to ${formatTime12h(newStart)} – ${formatTime12h(newEnd)}!`,
