@@ -445,20 +445,31 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
 
 export function generateTodosFromRoadmap(roadmap: RoadmapDay[], planId: string): Todo[] {
   const todos: Todo[] = [];
+  const BREAK_MINUTES = 15; // 15-minute break between consecutive tasks
 
   roadmap.forEach(day => {
-    day.tasks.forEach((task, idx) => {
-      // Create time slots in morning/afternoon/evening
-      const startHour = 9 + Math.min(8, idx * 2);
-      const startHourStr = String(startHour).padStart(2, '0') + ':00';
-      const endHourStr = String(startHour + Math.max(1, Math.round(task.durationMinutes / 60))).padStart(2, '0') + ':00';
+    let currentStartMins = 9 * 60; // Day starts at 09:00 AM (540 minutes from midnight)
+
+    day.tasks.forEach((task) => {
+      const duration = Math.max(15, task.durationMinutes || 120);
+
+      const startH = Math.floor(currentStartMins / 60) % 24;
+      const startM = currentStartMins % 60;
+      const startHHStr = String(startH).padStart(2, '0');
+      const startMMStr = String(startM).padStart(2, '0');
+
+      const endMinsTotal = currentStartMins + duration;
+      const endH = Math.floor(endMinsTotal / 60) % 24;
+      const endM = endMinsTotal % 60;
+      const endHHStr = String(endH).padStart(2, '0');
+      const endMMStr = String(endM).padStart(2, '0');
 
       const capitalizedType =
         task.type === 'lecture' ? 'Lecture' :
         task.type === 'practice' ? 'Practice' :
         task.type === 'revision' ? 'Revision' : 'Test';
 
-      const xp = Math.max(60, Math.round(task.durationMinutes * 1.5));
+      const xp = Math.max(60, Math.round(duration * 1.5));
 
       todos.push({
         id: generateUniqueTaskId(`bl_${task.chapterId.slice(0, 6)}`),
@@ -470,9 +481,9 @@ export function generateTodosFromRoadmap(roadmap: RoadmapDay[], planId: string):
         subject: task.subject,
         chapter: task.chapter,
         lectureNumber: task.lectureNumber,
-        startTime: `${day.date}T${startHourStr}`,
-        endTime: `${day.date}T${endHourStr}`,
-        durationMinutes: task.durationMinutes,
+        startTime: `${day.date}T${startHHStr}:${startMMStr}:00`,
+        endTime: `${day.date}T${endHHStr}:${endMMStr}:00`,
+        durationMinutes: duration,
         backlogPlanId: planId,
         backlogChapterId: task.chapterId,
         backlogDayIndex: day.dayIndex,
@@ -480,6 +491,9 @@ export function generateTodosFromRoadmap(roadmap: RoadmapDay[], planId: string):
         isBacklogTask: true,
         dateScheduled: day.date
       });
+
+      // Next task on the same day starts after current task ends + 15 min break
+      currentStartMins = endMinsTotal + BREAK_MINUTES;
     });
   });
 

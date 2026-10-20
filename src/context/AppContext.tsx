@@ -24,6 +24,7 @@ export type { BacklogPlan };
 import { reconstructPlanFromTodos } from "@/lib/backlog/engine";
 import { getLevelFromXp, getLocalDateString, isCurrentDayTask, getLogicalDate, setCachedRolloverTime } from "@/lib/utils";
 export { getLogicalDate, setCachedRolloverTime };
+import { sanitizeAndHealTodos } from "@/lib/studyBlock";
 import { StudentScheduleProfile, DEFAULT_SCHEDULE_PROFILE } from "@/lib/coach/student-model/profile";
 export type { StudentScheduleProfile };
 import { Preferences } from "@capacitor/preferences";
@@ -165,6 +166,7 @@ export interface Todo {
   dateScheduled?: string;
   completedDate?: string;
   completedAt?: number;
+  updatedAt?: number;
 }
 
 export const generateUniqueTaskId = (prefix = "task"): string => {
@@ -747,9 +749,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {}
     }
-    if (mergedState.todos !== undefined) setTodos(mergedState.todos);
-    if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(mergedState.loggedTasksToday);
-    if (mergedState.pendingTasks !== undefined) setPendingTasks(mergedState.pendingTasks);
+    if (mergedState.todos !== undefined) setTodos(sanitizeAndHealTodos(mergedState.todos));
+    if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(sanitizeAndHealTodos(mergedState.loggedTasksToday));
+    if (mergedState.pendingTasks !== undefined) setPendingTasks(sanitizeAndHealTodos(mergedState.pendingTasks));
     if (mergedState.history !== undefined) setHistory(mergedState.history);
     if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
     if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
@@ -879,7 +881,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const loadedTodos = parsed.todos || [];
+      const loadedTodos = sanitizeAndHealTodos<Todo>(parsed.todos || []);
       if (!loadedBacklogPlan && loadedTodos.length > 0) {
         loadedBacklogPlan = reconstructPlanFromTodos(loadedTodos);
       }
@@ -890,13 +892,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           new Map(loadedTodos.map((t: Todo) => [t.id, t])).values(),
         ) as Todo[],
       );
-      const loadedLoggedTasks = parsed.loggedTasksToday || [];
+      const loadedLoggedTasks = sanitizeAndHealTodos<Todo>(parsed.loggedTasksToday || []);
       setLoggedTasksToday(
         Array.from(
           new Map(loadedLoggedTasks.map((t: Todo) => [t.id, t])).values(),
         ) as Todo[],
       );
-      const loadedPendingTasks = parsed.pendingTasks || [];
+      const loadedPendingTasks = sanitizeAndHealTodos<Todo>(parsed.pendingTasks || []);
       setPendingTasks(
         Array.from(
           new Map(loadedPendingTasks.map((t: Todo) => [t.id, t])).values(),

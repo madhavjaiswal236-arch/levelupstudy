@@ -45,6 +45,17 @@ import {
 } from '@/lib/backlog/engine';
 import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
 import { getLocalDateString } from '@/lib/utils';
+import {
+  createCalendarEvent,
+  rescheduleCalendarEvents,
+  fetchGoogleCalendarEvents
+} from '@/lib/calendar';
+import {
+  getAccessTokenSync,
+  refreshGoogleToken,
+  googleSignIn,
+  auth
+} from '@/lib/firebase';
 
 export default function BacklogHQ() {
   const {
@@ -61,6 +72,132 @@ export default function BacklogHQ() {
   const [showWizard, setShowWizard] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
   const [showMissedModal, setShowMissedModal] = useState(false);
+  const [isSyncingCalendar, setIsSyncingCalendar] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleApplyAllToCalendar = async () => {
+    setIsSyncingCalendar(true);
+    setSyncMessage("Syncing all tasks with breaks...");
+    try {
+      let token = getAccessTokenSync();
+      if (!token && auth.currentUser) {
+        try { token = await refreshGoogleToken(); } catch (e) {}
+      }
+      if (!token) {
+        try {
+          const res = await googleSignIn();
+          if (!res) {
+            setIsSyncingCalendar(false);
+            setSyncMessage(null);
+            return;
+          }
+        } catch (e) {
+          console.warn("OAuth login failed or in progress:", e);
+        }
+      }
+
+      // Step 1: Enforce exact 15-minute breaks on all scheduled tasks
+      let currentTodos = [...todos];
+      let updated = false;
+
+      const tasksByDate = new Map<string, typeof todos>();
+      currentTodos.forEach((t) => {
+        if (t.isDeleted || t.completed) return;
+        const dateKey = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : getLocalDateString());
+        if (!tasksByDate.has(dateKey)) {
+          tasksByDate.set(dateKey, []);
+        }
+        tasksByDate.get(dateKey)!.push(t);
+      });
+
+      tasksByDate.forEach((dayTasks, dateKey) => {
+        let currentStartMins = 9 * 60; // 09:00 AM
+        dayTasks.forEach((t) => {
+          const durationMins = Math.max(15, t.durationMinutes || (t.lectureHours ? t.lectureHours * 60 : 105));
+          const startH = Math.floor(currentStartMins / 60) % 24;
+          const startM = currentStartMins % 60;
+          const startHHStr = String(startH).padStart(2, "0");
+          const startMMStr = String(startM).padStart(2, "0");
+
+          const endMinsTotal = currentStartMins + durationMins;
+          const endH = Math.floor(endMinsTotal / 60) % 24;
+          const endM = endMinsTotal % 60;
+          const endHHStr = String(endH).padStart(2, "0");
+          const endMMStr = String(endM).padStart(2, "0");
+
+          const calcStartISO = `${dateKey}T${startHHStr}:${startMMStr}:00`;
+          const calcEndISO = `${dateKey}T${endHHStr}:${endMMStr}:00`;
+
+          if (t.startTime !== calcStartISO || t.endTime !== calcEndISO || t.durationMinutes !== durationMins) {
+            updated = true;
+            const idx = currentTodos.findIndex((item) => item.id === t.id);
+            if (idx !== -1) {
+              currentTodos[idx] = {
+                ...currentTodos[idx],
+                startTime: calcStartISO,
+                endTime: calcEndISO,
+                durationMinutes: durationMins,
+                dateScheduled: dateKey,
+              };
+            }
+          }
+          currentStartMins = endMinsTotal + 15; // 15-minute break
+        });
+      });
+
+      if (updated) {
+        setTodos(currentTodos);
+      }
+
+      // Step 2: Push unsynced tasks to Google Calendar
+      const unsynced = currentTodos.filter(t => !t.isDeleted && t.startTime && t.endTime && (!t.calendarEventId || t.calendarEventId.startsWith("local-")));
+      let syncedCount = 0;
+
+      for (const t of unsynced) {
+        try {
+          const tStart = new Date(t.startTime!);
+          const tEnd = new Date(t.endTime!);
+          const durationMins = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
+          const res = await createCalendarEvent(
+            t.text,
+            durationMins,
+            t.type || "Lecture",
+            false,
+            currentTodos,
+            tStart,
+            tEnd
+          );
+          if (res && res.id) {
+            syncedCount++;
+            const idx = currentTodos.findIndex((ct) => ct.id === t.id);
+            if (idx !== -1) {
+              currentTodos[idx] = {
+                ...currentTodos[idx],
+                calendarEventId: res.id,
+                calendarSynced: true,
+              };
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to create event for task", t.id, e);
+        }
+      }
+
+      if (syncedCount > 0) {
+        setTodos(currentTodos);
+        saveStateToCloudNow({ todos: currentTodos });
+      }
+
+      setSyncMessage("All tasks scheduled on Calendar with 15-minute breaks!");
+      setTimeout(() => setSyncMessage(null), 4000);
+    } catch (err: any) {
+      console.error("Single click apply all error:", err);
+      setSyncMessage("Tasks scheduled locally with 15-min breaks!");
+      setTimeout(() => setSyncMessage(null), 4000);
+    } finally {
+      setIsSyncingCalendar(false);
+    }
+  };
 
   // Active view tab: 'journey' | 'today' | 'curriculum' | 'roadmap' | 'spaced'
   const [activeTab, setActiveTab] = useState<'journey' | 'today' | 'curriculum' | 'roadmap' | 'spaced'>('journey');
@@ -315,6 +452,15 @@ export default function BacklogHQ() {
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start md:self-auto">
             <button
               type="button"
+              onClick={handleApplyAllToCalendar}
+              disabled={isSyncingCalendar}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] sm:text-xs font-black flex items-center gap-1.5 transition shadow-md disabled:opacity-50"
+            >
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>{isSyncingCalendar ? "Syncing..." : "Apply All to Calendar"}</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setShowSimulator(true)}
               className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-amber-400 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition"
             >
@@ -341,6 +487,13 @@ export default function BacklogHQ() {
           </div>
         )}
       </div>
+
+      {syncMessage && (
+        <div className="p-3 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-lg flex items-center gap-2 animate-in fade-in">
+          <Check className="w-4 h-4" />
+          <span>{syncMessage}</span>
+        </div>
+      )}
 
       {/* Missed Tasks Alert Banner */}
       {missedTasks.length > 0 && !showWizard && (

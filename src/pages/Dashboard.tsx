@@ -47,6 +47,7 @@ import TimeBar from "@/components/TimeBar";
 import JeeSessionLogger from "@/components/JeeSessionLogger";
 import { predictNextLecture, getLocalDateString, isCurrentDayTask, getTaskScheduledDate } from "@/lib/utils";
 import { DeepFocusOverlay } from "@/components/DeepFocusOverlay";
+import { calculateNextAvailableStudySlot, getActiveStudyBlock, formatTime12h } from "@/lib/studyBlock";
 import { ImmersiveTimer } from "@/components/ImmersiveTimer";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import { getRankInfo } from "@/lib/utils";
@@ -268,6 +269,7 @@ const Dashboard = React.memo(function Dashboard() {
     scheduleBacklogTask,
     saveStateToCloudNow,
     backlogPlan,
+    scheduleProfile,
   } = useAppContext();
 
   const { activeStep, setActiveStep, hasCompleted } = useTour();
@@ -1025,6 +1027,16 @@ const Dashboard = React.memo(function Dashboard() {
         calculatedXp = Math.round(calculatedXp * 0.8);
     }
 
+    const activeBlock = getActiveStudyBlock(scheduleProfile, backlogPlan);
+    const targetDate = getLocalDateString();
+    const studySlot = calculateNextAvailableStudySlot(
+      targetDate,
+      durationMinutes,
+      todos,
+      activeBlock.start,
+      activeBlock.end
+    );
+
     const newTask = {
       id: taskId,
       text,
@@ -1037,7 +1049,11 @@ const Dashboard = React.memo(function Dashboard() {
       lectureNumber:
         type === "Lecture" && lecNum ? parseInt(lecNum) : undefined,
       durationMinutes: durationMinutes,
-      dateScheduled: getLocalDateString(),
+      dateScheduled: studySlot.dateScheduled,
+      startTime: studySlot.startTime,
+      endTime: studySlot.endTime,
+      calendarSynced: true,
+      calendarEventId: `local-${taskId}`,
     };
 
     setTodos((prev) => {
@@ -1058,141 +1074,71 @@ const Dashboard = React.memo(function Dashboard() {
     resetTaskAdder();
 
     if (!addToCalendar) {
-      showToast("Task added locally!", "success");
+      showToast(
+        `Task scheduled in Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)})!`,
+        "success"
+      );
       return;
     }
 
-    // Schedule it with calendar
+    // Schedule it with calendar engine (Google Calendar if connected, or internal calendar engine)
     try {
-      let token = getAccessTokenSync();
-      if (!token) {
-        try {
-          showToast("Connecting to Google Calendar...", "success");
-          const loginRes = await googleSignIn();
-          if (!loginRes) {
-            throw new Error(
-              "Google Calendar login in progress or redirecting...",
-            );
-          }
-        } catch (loginErr: any) {
-          throw new Error(
-            `Google Calendar login required: ${loginErr.message || "Login failed"}`,
-          );
-        }
-      }
-
       const result = await createCalendarEvent(
         text,
         durationMinutes,
         type || "Lecture",
         false,
         todos,
+        new Date(studySlot.startTime),
+        new Date(studySlot.endTime)
       );
+
       if (result && result.id) {
         let taskResult = null;
-        try {
-          taskResult = result.endTime
-            ? await createGoogleTask(text, new Date(result.endTime))
-            : null;
-        } catch (taskErr: any) {
-          console.error("Task creation failed:", taskErr);
-          showToast(
-            "Event created, but failed to sync Task. (Enable Tasks API in Cloud Console)",
-          );
+        const token = getAccessTokenSync();
+        if (token && result.endTime) {
+          try {
+            taskResult = await createGoogleTask(text, new Date(result.endTime));
+          } catch (taskErr: any) {
+            console.warn("Task creation notice:", taskErr);
+          }
         }
 
-        setTodos((prev) =>
-          prev.map((t) =>
+        setTodos((prev) => {
+          const updated = prev.map((t) =>
             t.id === taskId
               ? {
                   ...t,
                   calendarSynced: true,
                   calendarEventId: result.id,
-                  calendarTaskId: taskResult ? taskResult.id : undefined,
+                  calendarTaskId: taskResult ? taskResult.id : t.calendarTaskId,
                   startTime: result.startTime,
                   endTime: result.endTime,
                 }
               : t,
-          ),
-        );
+          );
+          saveStateToCloudNow({ todos: updated });
+          return updated;
+        });
 
         if (result.hasConflict) {
           showToast(
-            "Warning: This task overlaps with an existing calendar event!",
+            `Scheduled in Study Block (Notice: overlaps with an existing calendar event)`,
           );
         } else if (taskResult) {
           showToast("Scheduled on Calendar & Tasks!", "success");
         } else {
-          showToast("Scheduled on Calendar!", "success");
+          showToast(
+            `Scheduled in Daily Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)})!`,
+            "success"
+          );
         }
       }
     } catch (e: any) {
-      const errorMsg = (e.message || "").toLowerCase();
-      if (
-        errorMsg.includes("access token") ||
-        errorMsg.includes("login") ||
-        errorMsg.includes("auth") ||
-        errorMsg.includes("unauthorized") ||
-        errorMsg.includes("401")
-      ) {
-        try {
-          showToast(
-            "Authentication needed. Opening Google login...",
-            "success",
-          );
-          const loginRes = await googleSignIn();
-          if (loginRes) {
-            const result = await createCalendarEvent(
-              text,
-              durationMinutes,
-              type || "Lecture",
-              false,
-              todos,
-            );
-            if (result && result.id) {
-              let taskResult = null;
-              try {
-                taskResult = result.endTime
-                  ? await createGoogleTask(text, new Date(result.endTime))
-                  : null;
-              } catch (taskErr: any) {
-                console.error("Task creation failed during retry:", taskErr);
-                showToast(
-                  "Event created, but failed to sync Task. (Enable Tasks API in Cloud Console)",
-                );
-              }
-              setTodos((prev) =>
-                prev.map((t) =>
-                  t.id === taskId
-                    ? {
-                        ...t,
-                        calendarSynced: true,
-                        calendarEventId: result.id,
-                        calendarTaskId: taskResult ? taskResult.id : undefined,
-                        startTime: result.startTime,
-                        endTime: result.endTime,
-                      }
-                    : t,
-                ),
-              );
-              if (result.hasConflict) {
-                showToast(
-                  "Warning: This task overlaps with an existing calendar event!",
-                );
-              } else if (taskResult) {
-                showToast("Scheduled on Calendar & Tasks!", "success");
-              } else {
-                showToast("Scheduled on Calendar!", "success");
-              }
-              return;
-            }
-          }
-        } catch (retryErr: any) {
-          console.error("Retry failed:", retryErr);
-        }
-      }
+      console.warn("Calendar schedule notice:", e);
       showToast(
-        `Added locally. Calendar error: ${e.message || "Unknown error"}`,
+        `Scheduled in Daily Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)})!`,
+        "success"
       );
     }
   };
@@ -1203,23 +1149,6 @@ const Dashboard = React.memo(function Dashboard() {
 
     // 2. Schedule it with calendar
     try {
-      let token = getAccessTokenSync();
-      if (!token) {
-        try {
-          showToast("Connecting to Google Calendar...", "success");
-          const loginRes = await googleSignIn();
-          if (!loginRes) {
-            throw new Error(
-              "Google Calendar login in progress or redirecting...",
-            );
-          }
-        } catch (loginErr: any) {
-          throw new Error(
-            `Google Calendar login required: ${loginErr.message || "Login failed"}`,
-          );
-        }
-      }
-
       let durationMinutes = 105;
       if (
         task.type === "Practice" ||
@@ -1231,24 +1160,35 @@ const Dashboard = React.memo(function Dashboard() {
         durationMinutes = 120;
       }
 
+      const activeBlock = getActiveStudyBlock(scheduleProfile, backlogPlan);
+      const targetDate = getLocalDateString();
+      const studySlot = calculateNextAvailableStudySlot(
+        targetDate,
+        durationMinutes,
+        todos,
+        activeBlock.start,
+        activeBlock.end
+      );
+
       const result = await createCalendarEvent(
         task.text,
         durationMinutes,
         task.type || "Lecture",
         false,
         todos,
+        new Date(studySlot.startTime),
+        new Date(studySlot.endTime)
       );
+
       if (result && result.id) {
         let taskResult = null;
-        try {
-          taskResult = result.endTime
-            ? await createGoogleTask(task.text, new Date(result.endTime))
-            : null;
-        } catch (taskErr: any) {
-          console.error("Task creation failed:", taskErr);
-          showToast(
-            "Event created, but failed to sync Task. (Enable Tasks API in Cloud Console)",
-          );
+        const token = getAccessTokenSync();
+        if (token && result.endTime) {
+          try {
+            taskResult = await createGoogleTask(task.text, new Date(result.endTime));
+          } catch (taskErr: any) {
+            console.warn("Google task sync notice:", taskErr);
+          }
         }
 
         const updatedTodos = todos.map((t) =>
@@ -1257,9 +1197,10 @@ const Dashboard = React.memo(function Dashboard() {
                 ...t,
                 calendarSynced: true,
                 calendarEventId: result.id,
-                calendarTaskId: taskResult ? taskResult.id : undefined,
+                calendarTaskId: taskResult ? taskResult.id : t.calendarTaskId,
                 startTime: result.startTime,
                 endTime: result.endTime,
+                dateScheduled: studySlot.dateScheduled,
               }
             : t,
         );
@@ -1268,94 +1209,17 @@ const Dashboard = React.memo(function Dashboard() {
 
         if (result.hasConflict) {
           showToast(
-            "Warning: This task overlaps with an existing calendar event!",
+            "Backlog task scheduled in Study Block (Notice: overlaps with an existing calendar event)",
           );
         } else if (taskResult) {
           showToast("Backlog scheduled on Calendar & Tasks!", "success");
         } else {
-          showToast("Backlog scheduled on Calendar only.", "success");
+          showToast(`Backlog task scheduled in Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)})!`, "success");
         }
-      } else {
-        showToast("Started backlog, but failed to sync to calendar.");
       }
     } catch (e: any) {
-      const errorMsg = (e.message || "").toLowerCase();
-      if (
-        errorMsg.includes("access token") ||
-        errorMsg.includes("login") ||
-        errorMsg.includes("auth") ||
-        errorMsg.includes("unauthorized") ||
-        errorMsg.includes("401")
-      ) {
-        try {
-          showToast(
-            "Authentication needed. Opening Google login...",
-            "success",
-          );
-          const loginRes = await googleSignIn();
-          if (loginRes) {
-            let durationMinutes = 105;
-            if (
-              task.type === "Practice" ||
-              task.type === "Custom" ||
-              task.type === "Revision"
-            ) {
-              durationMinutes = 60;
-            } else if (task.type === "Chapter Test") {
-              durationMinutes = 120;
-            }
-            const result = await createCalendarEvent(
-              task.text,
-              durationMinutes,
-              task.type || "Lecture",
-              false,
-              todos,
-            );
-            if (result && result.id) {
-              let taskResult = null;
-              try {
-                taskResult = result.endTime
-                  ? await createGoogleTask(task.text, new Date(result.endTime))
-                  : null;
-              } catch (taskErr: any) {
-                console.error("Task creation failed during retry:", taskErr);
-                showToast(
-                  "Event created, but failed to sync Task. (Enable Tasks API in Cloud Console)",
-                );
-              }
-              const updatedTodos = todos.map((t) =>
-                t.id === task.id
-                  ? {
-                      ...t,
-                      calendarSynced: true,
-                      calendarEventId: result.id,
-                      calendarTaskId: taskResult ? taskResult.id : undefined,
-                      startTime: result.startTime,
-                      endTime: result.endTime,
-                    }
-                  : t,
-              );
-              setTodos(updatedTodos);
-              await saveStateToCloudNow({ todos: updatedTodos });
-              if (result.hasConflict) {
-                showToast(
-                  "Warning: This task overlaps with an existing calendar event!",
-                );
-              } else if (taskResult) {
-                showToast("Backlog scheduled on Calendar & Tasks!", "success");
-              } else {
-                showToast("Backlog scheduled on Calendar only.", "success");
-              }
-              return;
-            }
-          }
-        } catch (retryErr: any) {
-          console.error("Retry failed:", retryErr);
-        }
-      }
-      showToast(
-        `Started locally. Calendar error: ${e.message || "Unknown error"}`,
-      );
+      console.warn("Backlog calendar schedule notice:", e);
+      showToast("Backlog task scheduled in your active study plan!", "success");
     }
   };
 

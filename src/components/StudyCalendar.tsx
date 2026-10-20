@@ -50,7 +50,7 @@ import {
   parseISO,
   addMonths,
 } from "date-fns";
-import { predictNextLecture } from "../lib/utils";
+import { predictNextLecture, getLocalDateString } from "../lib/utils";
 
 const COLORS: Record<string, string> = {
   Physics:
@@ -645,6 +645,61 @@ export function StudyCalendar({
         console.warn("Calendar auth check note:", authErr);
       }
 
+      // Pre-step: Ensure ALL tasks in todos have exact start and end times with 15-minute breaks between consecutive tasks
+      let currentTodosState = [...todos];
+      let needsReschedule = false;
+
+      const tasksByDate = new Map<string, typeof todos>();
+      currentTodosState.forEach((t) => {
+        if (t.isDeleted || t.completed) return;
+        const dateKey = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : getLocalDateString());
+        if (!tasksByDate.has(dateKey)) {
+          tasksByDate.set(dateKey, []);
+        }
+        tasksByDate.get(dateKey)!.push(t);
+      });
+
+      tasksByDate.forEach((dayTasks, dateKey) => {
+        let currentStartMins = 9 * 60; // Start at 09:00 AM
+        dayTasks.forEach((t) => {
+          const durationMins = Math.max(15, t.durationMinutes || (t.lectureHours ? t.lectureHours * 60 : 105));
+          
+          const startH = Math.floor(currentStartMins / 60) % 24;
+          const startM = currentStartMins % 60;
+          const startHHStr = String(startH).padStart(2, "0");
+          const startMMStr = String(startM).padStart(2, "0");
+
+          const endMinsTotal = currentStartMins + durationMins;
+          const endH = Math.floor(endMinsTotal / 60) % 24;
+          const endM = endMinsTotal % 60;
+          const endHHStr = String(endH).padStart(2, "0");
+          const endMMStr = String(endM).padStart(2, "0");
+
+          const calcStartISO = `${dateKey}T${startHHStr}:${startMMStr}:00`;
+          const calcEndISO = `${dateKey}T${endHHStr}:${endMMStr}:00`;
+
+          if (t.startTime !== calcStartISO || t.endTime !== calcEndISO || t.durationMinutes !== durationMins) {
+            needsReschedule = true;
+            const idx = currentTodosState.findIndex((item) => item.id === t.id);
+            if (idx !== -1) {
+              currentTodosState[idx] = {
+                ...currentTodosState[idx],
+                startTime: calcStartISO,
+                endTime: calcEndISO,
+                durationMinutes: durationMins,
+                dateScheduled: dateKey,
+              };
+            }
+          }
+          // 15-minute break between consecutive tasks
+          currentStartMins = endMinsTotal + 15;
+        });
+      });
+
+      if (needsReschedule) {
+        setCalendarTodos(currentTodosState);
+      }
+
       // Step 1: Fetch Google Calendar events in range if authenticated (-14 days to +30 days)
       let gcalEvents: any[] = [];
       if (hasAuth) {
@@ -970,7 +1025,7 @@ export function StudyCalendar({
     }
 
     if (allSuccess) {
-      showToast("Timeline applied! All conflicts during lectures cleared & synced.", "success");
+      showToast("Timeline applied! All tasks scheduled on Calendar with 15-minute breaks in between.", "success");
       setUnsyncedChanges(false);
     } else if (isManual) {
       showToast(
@@ -1120,11 +1175,11 @@ export function StudyCalendar({
         console.error("Calendar sync error:", err);
       }
 
-      currentStart = new Date(end.getTime() + 10 * 60000); // 10 min break
+      currentStart = new Date(end.getTime() + 15 * 60000); // 15 min break between tasks
     }
 
     setCalendarTodos(updatedTodos);
-    showToast("Study plan generated!", "success");
+    showToast("Study plan generated with 15-minute breaks!", "success");
   };
 
   const hours = Array.from({ length: 24 }, (_, i) => i); // 12 AM to 11 PM
