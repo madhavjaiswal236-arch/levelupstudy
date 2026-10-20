@@ -165,7 +165,6 @@ export interface Todo {
   dateScheduled?: string;
   completedDate?: string;
   completedAt?: number;
-  updatedAt?: number;
 }
 
 export const generateUniqueTaskId = (prefix = "task"): string => {

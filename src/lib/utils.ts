@@ -219,7 +219,6 @@ export function isCurrentDayTask(
     completed?: boolean;
     dateScheduled?: string;
     startTime?: string;
-    endTime?: string;
     isBacklogTask?: boolean;
     backlogDayIndex?: number;
     completedDate?: string;
@@ -228,11 +227,6 @@ export function isCurrentDayTask(
   todayStr?: string
 ): boolean {
   const currentDay = todayStr || getLocalDateString();
-
-  // If the task starts or ends on currentDay (including cross-midnight overnight schedules spanning 2 days)
-  if (task.startTime && task.startTime.slice(0, 10) === currentDay) return true;
-  if (task.endTime && task.endTime.slice(0, 10) === currentDay) return true;
-
   const taskDate = getTaskScheduledDate(task);
 
   if (taskDate) {

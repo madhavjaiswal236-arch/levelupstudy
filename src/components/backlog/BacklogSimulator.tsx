@@ -182,12 +182,7 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
     const newRoadmap = generateRoadmap(updatedPlan);
     updatedPlan.roadmap = newRoadmap;
 
-    const newFutureTodos = generateTodosFromRoadmap(
-      newRoadmap,
-      updatedPlan.id,
-      updatedPlan.settings?.studyBlockStart,
-      updatedPlan.settings?.studyBlockEnd
-    );
+    const newFutureTodos = generateTodosFromRoadmap(newRoadmap, updatedPlan.id);
 
     // Keep completed tasks, replace incomplete backlog tasks without duplicating
     const nonBacklog = todos.filter(t => !t.isBacklogTask && !t.backlogChapterId);

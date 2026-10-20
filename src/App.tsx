@@ -49,7 +49,6 @@ import {
   Todo,
 } from "./context/AppContext";
 import { getXpForLevel, getLocalDateString, isCurrentDayTask } from "./lib/utils";
-import { getActiveStudyBlock, calculateNextAvailableStudySlot } from "./lib/studyBlock";
 import { useHaptic } from "./hooks/useHaptic";
 import { useAuthToken } from "./hooks/useAuthToken";
 import { useCapacitorSetup } from "./hooks/useCapacitorSetup";
@@ -140,7 +139,6 @@ function AppContent() {
     practiceSessions,
     pendingTasks,
     todos,
-    setTodos,
     xpGainedToday,
     hoursStudiedToday,
     notificationSettings,
@@ -501,42 +499,10 @@ function AppContent() {
       const todayKey = getStandardDateKey(getLogicalDate());
       sessionStorage.setItem(`tracker360_briefing_seen_${todayKey}`, "true");
     } catch {}
-
-    let targetTask = task;
-    if (!task.startTime || !task.endTime) {
-      const block = getActiveStudyBlock();
-      const todayStr = getLocalDateString();
-      const slot = calculateNextAvailableStudySlot(
-        todayStr,
-        task.durationMinutes || 90,
-        todos,
-        block.start,
-        block.end
-      );
-      targetTask = {
-        ...task,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        dateScheduled: slot.dateScheduled,
-        updatedAt: Date.now(),
-      };
-      setTodos((prev) =>
-        prev.map((t) => (t.id === task.id ? targetTask : t))
-      );
-    }
-
     setActiveTab("dashboard");
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("start-focus-task", { detail: { task: targetTask } }));
+      window.dispatchEvent(new CustomEvent("start-focus-task", { detail: { task } }));
     }, 150);
-  }, [todos, setTodos]);
-
-  useEffect(() => {
-    const handleRemoteStartFocus = () => {
-      setActiveTab("dashboard");
-    };
-    window.addEventListener("start-focus-task", handleRemoteStartFocus);
-    return () => window.removeEventListener("start-focus-task", handleRemoteStartFocus);
   }, []);
 
   const { hapticLevelUp, hapticSuccess } = useHaptic();
