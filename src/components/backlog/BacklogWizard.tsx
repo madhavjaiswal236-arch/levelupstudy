@@ -160,7 +160,7 @@ const DEFAULT_SUBJECTS: BacklogSubject[] = [
 ];
 
 export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCancel, initialPlan }) => {
-  const { setBacklogPlan, setTodos, saveStateToCloudNow } = useAppContext();
+  const { setBacklogPlan, setTodos, saveStateToCloudNow, scheduleProfile, setScheduleProfile } = useAppContext();
 
   // Wizard Steps: 1. Setup Chapters & Lectures -> 2. Review Backlog -> 3. Capacity & Rotation -> 4. Roadmap & Commit
   const [step, setStep] = useState<number>(1);
@@ -231,6 +231,12 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
   const [bufferDays, setBufferDays] = useState<number>(
     initialPlan?.settings.bufferDays ?? 2
   );
+  const [studyBlockStart, setStudyBlockStart] = useState<string>(
+    initialPlan?.settings?.studyBlockStart || scheduleProfile?.studyBlockStart || "06:00"
+  );
+  const [studyBlockEnd, setStudyBlockEnd] = useState<string>(
+    initialPlan?.settings?.studyBlockEnd || scheduleProfile?.studyBlockEnd || "22:00"
+  );
 
   // Synchronize hours and lectures (based on 2-hour = 120 min lectures)
   const handleDailyHoursChange = (val: number) => {
@@ -256,8 +262,10 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
     testEnabled,
     testAfterChapterCompletion: true,
     testDurationMinutes: 90,
-    bufferDays
-  }), [startDate, deadlineDate, capacityMode, dailyHours, dailyLectures, revisionEnabled, revisionAfterEvery, testEnabled, bufferDays]);
+    bufferDays,
+    studyBlockStart,
+    studyBlockEnd
+  }), [startDate, deadlineDate, capacityMode, dailyHours, dailyLectures, revisionEnabled, revisionAfterEvery, testEnabled, bufferDays, studyBlockStart, studyBlockEnd]);
 
   const metrics = useMemo(() => {
     return calculateMetrics(subjects, currentSettings);
@@ -474,7 +482,7 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
     const roadmap = generateRoadmap(newPlan);
     newPlan.roadmap = roadmap;
 
-    const newTodos = generateTodosFromRoadmap(roadmap, planId);
+    const newTodos = generateTodosFromRoadmap(roadmap, planId, studyBlockStart, studyBlockEnd);
 
     // Save to context
     setBacklogPlan(newPlan);
@@ -508,6 +516,14 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
       updatedTodos = [...nonBacklog, ...completedBacklog, ...deduplicatedNew];
       return updatedTodos;
     });
+
+    if (setScheduleProfile) {
+      setScheduleProfile(prev => ({
+        ...prev,
+        studyBlockStart,
+        studyBlockEnd,
+      }));
+    }
 
     // Flush immediately to local storage and Firestore
     saveStateToCloudNow({ backlogPlan: newPlan, todos: updatedTodos });
@@ -1284,6 +1300,85 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Preferred Daily Study Time Block */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-amber-500/30 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span>Preferred Daily Study Time Block</span>
+              </div>
+              <span className="text-[11px] font-mono text-amber-300 bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20">
+                Tasks scheduled strictly in this window
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Decide when your daily study block starts and ends. All generated lectures, practice tasks, revisions, and test slots will be placed inside this timeframe.
+            </p>
+
+            {/* Presets */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {[
+                { label: "Full Day", start: "06:00", end: "22:00", icon: "🌅", desc: "6:00 AM – 10:00 PM" },
+                { label: "School / Evening", start: "15:00", end: "23:00", icon: "🏫", desc: "3:00 PM – 11:00 PM" },
+                { label: "Early Morning", start: "05:00", end: "13:00", icon: "🌅", desc: "5:00 AM – 1:00 PM" },
+                { label: "Night Owl", start: "17:00", end: "01:00", icon: "🌙", desc: "5:00 PM – 1:00 AM" },
+              ].map((p) => {
+                const isSelected = studyBlockStart === p.start && studyBlockEnd === p.end;
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      setStudyBlockStart(p.start);
+                      setStudyBlockEnd(p.end);
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                      isSelected
+                        ? "border-amber-400 bg-amber-400/15 text-white shadow-sm ring-1 ring-amber-400/40"
+                        : "border-slate-800 bg-slate-950/80 text-slate-300 hover:border-slate-700 hover:bg-slate-900"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <span>{p.icon}</span>
+                      <span>{p.label}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono mt-1 block">
+                      {p.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom Inputs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-300 block">
+                  Block Start Time:
+                </label>
+                <input
+                  type="time"
+                  value={studyBlockStart}
+                  onChange={(e) => setStudyBlockStart(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-400 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-300 block">
+                  Block End Time:
+                </label>
+                <input
+                  type="time"
+                  value={studyBlockEnd}
+                  onChange={(e) => setStudyBlockEnd(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-400 focus:outline-none"
+                />
+              </div>
             </div>
           </div>
 

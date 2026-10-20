@@ -1,4 +1,5 @@
 import { getAccessToken, refreshGoogleToken, invalidateOAuthToken } from './firebase';
+import { getActiveStudyBlock, calculateNextAvailableStudySlot } from './studyBlock';
 
 /**
  * Fetch wrapper for Google APIs with full Exponential Backoff and Jitter.
@@ -90,21 +91,18 @@ export async function createCalendarEvent(title: string, durationMinutes: number
   let endTime = specificEndTime;
 
   if (!startTime || !endTime) {
-    let latestEndTime = new Date();
-    const now = new Date();
-    for (const t of todos) {
-      if (t.endTime && !t.completed) {
-        const dt = new Date(t.endTime);
-        if (dt > latestEndTime && dt.getTime() < now.getTime() + 3 * 24 * 60 * 60 * 1000) {
-          latestEndTime = dt;
-        }
-      }
-    }
-    startTime = new Date(latestEndTime);
-    startTime.setMinutes(startTime.getMinutes() + 10);
-    
-    let finalDuration = durationMinutes;
-    endTime = new Date(startTime.getTime() + finalDuration * 60000);
+    const block = getActiveStudyBlock();
+    const todayDate = new Date();
+    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, "0")}-${String(todayDate.getDate()).padStart(2, "0")}`;
+    const slot = calculateNextAvailableStudySlot(
+      todayStr,
+      durationMinutes,
+      todos,
+      block.start,
+      block.end
+    );
+    startTime = new Date(slot.startTime);
+    endTime = new Date(slot.endTime);
   }
 
   const hasConflict = await checkCalendarConflicts(startTime, endTime);

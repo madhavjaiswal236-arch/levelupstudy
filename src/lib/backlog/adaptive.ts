@@ -132,7 +132,12 @@ export function recalculateRoadmap(
   updatedPlan.roadmap = newRoadmap;
 
   // Generate new todos for future days and filter out any that match already-completed signatures
-  const newFutureTodos = generateTodosFromRoadmap(newRoadmap, plan.id);
+  const newFutureTodos = generateTodosFromRoadmap(
+    newRoadmap,
+    plan.id,
+    plan.settings?.studyBlockStart,
+    plan.settings?.studyBlockEnd
+  );
   const freshTasks = newFutureTodos.filter(t => {
     const sigs = getTaskSignaturesWithLegacy(t);
     return !sigs.some(s => completedSignatures.has(s));

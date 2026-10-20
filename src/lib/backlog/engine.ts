@@ -443,15 +443,33 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
   return roadmap;
 }
 
-export function generateTodosFromRoadmap(roadmap: RoadmapDay[], planId: string): Todo[] {
+export function generateTodosFromRoadmap(
+  roadmap: RoadmapDay[],
+  planId: string,
+  studyBlockStart: string = "06:00",
+  studyBlockEnd: string = "22:00"
+): Todo[] {
   const todos: Todo[] = [];
 
+  let startH = parseInt((studyBlockStart || "06:00").split(":")[0], 10);
+  let endH = parseInt((studyBlockEnd || "22:00").split(":")[0], 10);
+  if (isNaN(startH)) startH = 6;
+  if (isNaN(endH)) endH = 22;
+  if (endH <= startH) endH = startH + 12;
+
+  const totalBlockHours = Math.max(2, endH - startH);
+
   roadmap.forEach(day => {
+    const taskCount = day.tasks.length;
+    const intervalHours = taskCount > 1 ? Math.min(3, totalBlockHours / taskCount) : 2;
+
     day.tasks.forEach((task, idx) => {
-      // Create time slots in morning/afternoon/evening
-      const startHour = 9 + Math.min(8, idx * 2);
-      const startHourStr = String(startHour).padStart(2, '0') + ':00';
-      const endHourStr = String(startHour + Math.max(1, Math.round(task.durationMinutes / 60))).padStart(2, '0') + ':00';
+      const startHourNum = Math.min(endH - 1, Math.floor(startH + idx * intervalHours));
+      const startHourStr = String(startHourNum).padStart(2, '0') + ':00';
+
+      const durHours = Math.max(1, Math.round(task.durationMinutes / 60));
+      const endHourNum = Math.min(23, startHourNum + durHours);
+      const endHourStr = String(endHourNum).padStart(2, '0') + ':00';
 
       const capitalizedType =
         task.type === 'lecture' ? 'Lecture' :
