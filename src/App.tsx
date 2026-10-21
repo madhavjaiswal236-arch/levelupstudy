@@ -1949,7 +1949,7 @@ function AppContent() {
                                 Yesterday's Analysis
                               </h2>
                               <p className="dark:text-cyan-400 text-cyan-700/80 font-mono text-xs sm:text-sm mb-3 sm:mb-4">
-                                AI Coach Evaluation
+                                Performance Evaluation
                               </p>
                             </header>
 
@@ -2040,7 +2040,7 @@ function AppContent() {
                             {/* AI Coach Assessment - Single Card matching screenshot */}
                             <div className="bg-cyan-950/20 border border-cyan-800/50 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl mt-3 sm:mt-4 text-left">
                               <h3 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 sm:mb-4 uppercase text-xs sm:text-sm tracking-wider">
-                                <BrainCircuit className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> AI Coach Assessment
+                                <BrainCircuit className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> Coach Assessment
                               </h3>
                               <div className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed space-y-2 sm:space-y-3 font-normal">
                                 {displayEntry.aiFeedback.split("\n\n").map((paragraph: string, idx: number, arr: string[]) => {

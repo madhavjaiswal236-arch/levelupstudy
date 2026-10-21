@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Clock } from 'lucide-react';
+import { useAppContext } from '@/context/AppContext';
 
 interface TimeBarProps {
   endDateStr: string;
@@ -11,6 +12,7 @@ interface TimeBarProps {
 
 export const TimeBar: React.FC<TimeBarProps> = React.memo(({ endDateStr, requiredHours, onStartDeepFocus }) => {
   const [now, setNow] = useState(() => new Date());
+  const { appStartDate } = useAppContext();
 
   useEffect(() => {
     // 60-second interval is optimal and saves CPU cycles and garbage collection
@@ -22,23 +24,19 @@ export const TimeBar: React.FC<TimeBarProps> = React.memo(({ endDateStr, require
 
   const { startDate, endDate, fillPercentage, daysLeft } = useMemo(() => {
     const end = new Date(endDateStr);
-    let startYear = end.getFullYear();
-    if (end.getMonth() < 3) {
-      startYear -= 1;
-    }
-    const start = new Date(startYear, 3, 1);
+    const start = appStartDate ? new Date(appStartDate) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const totalTime = end.getTime() - start.getTime();
     const elapsedTime = now.getTime() - start.getTime();
-    let fill = (elapsedTime / (totalTime || 1)) * 100;
+    let fill = totalTime > 0 ? (elapsedTime / totalTime) * 100 : 0;
     fill = Math.max(0, Math.min(100, fill));
-    const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const days = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
     return {
       startDate: start,
       endDate: end,
       fillPercentage: fill,
       daysLeft: days,
     };
-  }, [endDateStr, now]);
+  }, [endDateStr, appStartDate, now]);
 
   return (
     <Card className="h-full dark:bg-black bg-slate-50 dark:border-slate-800 border-slate-200 rounded-3xl md:rounded-2xl overflow-hidden relative group shadow-lg md:shadow-none p-4 md:p-6 flex flex-col justify-center">

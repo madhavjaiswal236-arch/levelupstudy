@@ -37,28 +37,28 @@ export default function Strategy() {
  <strong className="dark:text-white text-slate-900">Database:</strong> PostgreSQL (Supabase) for relational data (users, quests, transactions) + Redis for real-time streak tracking and leaderboard caching.
  </div>
  <div>
- <strong className="dark:text-white text-slate-900">AI Layer:</strong> Google Gemini API for behavioral analysis, dynamic pricing in the Leisure Store, and generating personalized "Redemption Quests".
+ <strong className="dark:text-white text-slate-900">System Layer:</strong> Smart behavioral analysis, dynamic pricing in the Leisure Store, and generating personalized "Redemption Quests".
  </div>
  </CardContent>
  </Card>
 
- {/* AI Logic */}
+ {/* Core Engine Logic */}
  <Card className="border-purple-500/20">
  <CardHeader>
  <CardTitle className="flex items-center gap-2 dark:text-purple-400 text-purple-700">
  <BrainCircuit className="w-5 h-5" />
- 2. Core AI Logic
+ 2. Core Engine Logic
  </CardTitle>
  </CardHeader>
  <CardContent className="space-y-4 dark:text-slate-300 text-slate-600 text-sm leading-relaxed">
  <div>
- <strong className="dark:text-white text-slate-900">Dynamic XP Economy:</strong> The AI monitors the user's "focus fatigue". If the user studies for 4 hours straight, the cost of a "15 Min Walk" drops to near zero, while "15 Min Instagram" spikes to 1000 XP to prevent dopamine hijacking.
+ <strong className="dark:text-white text-slate-900">Dynamic XP Economy:</strong> The system monitors the user's "focus fatigue". If the user studies for 4 hours straight, the cost of a "15 Min Walk" drops to near zero, while "15 Min Instagram" spikes to 1000 XP to prevent dopamine hijacking.
  </div>
  <div>
  <strong className="dark:text-white text-slate-900">Performance Analyst:</strong> Ingests mock test scores and study logs. Uses regression analysis to predict future scores and identifies specific weak topics (e.g., "Rotational Mechanics accuracy drops after 8 PM").
  </div>
  <div>
- <strong className="dark:text-white text-slate-900">Anti-Cheat:</strong> AI analyzes study patterns. If a user logs 14 hours of "Deep Work" with zero breaks, the system flags it and requires a "Proof of Work" mini-quiz to validate the XP.
+ <strong className="dark:text-white text-slate-900">Anti-Cheat:</strong> System analyzes study patterns. If a user logs 14 hours of "Deep Work" with zero breaks, the system flags it and requires a "Proof of Work" mini-quiz to validate the XP.
  </div>
  </CardContent>
  </Card>
@@ -94,7 +94,7 @@ export default function Strategy() {
  <div>
  <strong className="dark:text-white text-slate-900">Monetization (Premium Feel):</strong> 
  <br/>- <em>Free Tier:</em> Basic XP tracking, standard quests.
- <br/>- <em>"S-Tier Pass" ($9/mo):</em> Unlocks the AI Performance Analyst, advanced predictive graphs, custom HUD colors, and detailed weakness heatmaps.
+ <br/>- <em>"S-Tier Pass" ($9/mo):</em> Unlocks the Performance Analyst, advanced predictive graphs, custom HUD colors, and detailed weakness heatmaps.
  </div>
  <div className="mt-4">
  <strong className="dark:text-white text-slate-900 flex items-center gap-2"><Users className="w-4 h-4"/> Viral Mechanics:</strong>
@@ -104,7 +104,7 @@ export default function Strategy() {
  </CardContent>
  </Card>
  
- {/* AI Mentorship & Pedagogy */}
+ {/* Mentorship & Pedagogy */}
  <Card className="border-rose-500/20 md:col-span-2">
  <CardHeader>
  <CardTitle className="flex items-center gap-2 dark:text-rose-400 text-rose-700 group/mentor w-max cursor-pointer">
@@ -127,8 +127,8 @@ export default function Strategy() {
  <p className="mt-2 italic text-slate-500">Discipline isn't doing everything perfectly. It's returning quickly after disruption.</p>
  </div>
  <div>
- <strong className="dark:text-rose-300 dark:text-rose-400 text-rose-700 block mb-2 uppercase tracking-widest text-xs">AI Mentor Stance on Underperformance</strong>
- <p className="mb-2">Underperformance is data, not disobedience. The AI does not scold; it diagnoses (Fatigue, Overload, Emotional collapse, Broken discipline).</p>
+ <strong className="dark:text-rose-300 dark:text-rose-400 text-rose-700 block mb-2 uppercase tracking-widest text-xs">Mentor Stance on Underperformance</strong>
+ <p className="mb-2">Underperformance is data, not disobedience. The system does not scold; it diagnoses (Fatigue, Overload, Emotional collapse, Broken discipline).</p>
  <ul className="list-disc pl-5 space-y-1">
  <li><strong className="dark:text-white text-slate-900">Stop Guilt Spirals:</strong> Underperform → diagnose → adjust → restart. Do not guilt-trip.</li>
  <li><strong className="dark:text-white text-slate-900">Reduce Targets:</strong> When failing, drop the goal. Ask the student for 3 focused hours to rebuild self-trust. Motion beats stagnation.</li>

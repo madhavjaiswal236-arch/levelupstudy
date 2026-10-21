@@ -443,7 +443,12 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
   return roadmap;
 }
 
-export function generateTodosFromRoadmap(roadmap: RoadmapDay[], planId: string): Todo[] {
+export function generateTodosFromRoadmap(
+  roadmap: RoadmapDay[],
+  planId: string,
+  _studyBlockStart?: string,
+  _studyBlockEnd?: string
+): Todo[] {
   const todos: Todo[] = [];
   const BREAK_MINUTES = 15; // 15-minute break between consecutive tasks
 

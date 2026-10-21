@@ -418,7 +418,7 @@ export function AnalyticsCoachSection() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <CardTitle className="dark:text-indigo-400 text-indigo-400 uppercase tracking-widest text-sm sm:text-base flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
-                      Yesterday's Performance & AI Coach Analysis
+                      Yesterday's Performance & Coach Analysis
                       <span className="text-[10px] font-mono font-normal px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                         {yesterdayData.dateStr}
                       </span>
@@ -492,7 +492,7 @@ export function AnalyticsCoachSection() {
                   <div className="dark:bg-black/90 bg-slate-900 border border-indigo-500/40 p-4 sm:p-5 rounded-xl space-y-3">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5 pb-2 border-b border-indigo-500/20">
                       <BrainCircuit className="w-4 h-4 text-cyan-400" />
-                      AI Coach Assessment
+                      Coach Assessment
                     </h4>
 
                     <div className="space-y-3 text-xs sm:text-sm text-indigo-100 leading-relaxed font-normal">
@@ -598,7 +598,7 @@ export function AnalyticsCoachSection() {
               No Historical Rollover Data Recorded Yet
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-              Complete your daily rollover protocol to log yesterday's sleep and screen stats for instant AI Coach evaluations.
+              Complete your daily rollover protocol to log yesterday's sleep and screen stats for instant Coach evaluations.
             </p>
           </div>
         )}
@@ -707,7 +707,7 @@ export function AnalyticsCoachSection() {
                         {selectedCompanionDay.relativeLabel} Assessment
                       </span>
                       <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-wider mt-1">
-                        AI Coach Analysis ({selectedCompanionDay.dateStr})
+                        Coach Analysis ({selectedCompanionDay.dateStr})
                       </h3>
                     </div>
                   </div>

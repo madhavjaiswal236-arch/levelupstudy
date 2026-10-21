@@ -246,6 +246,8 @@ interface AppState {
   setFocusBadges: React.Dispatch<React.SetStateAction<number>>;
   syllabus: SyllabusData;
   activeBoost: { multiplier: number; expiresAt: number } | null;
+  appStartDate: string;
+  setAppStartDate: React.Dispatch<React.SetStateAction<string>>;
   class11EndDate: string | null;
   totalXpGoal: number;
   setTotalXpGoal: (val: number) => void;
@@ -489,6 +491,73 @@ export const calculateAbsenceGap = (
 
 const LOCAL_STORAGE_KEY = "jee_tracker_state";
 
+export function reconcilePerDayHistory(
+  existingHistory: PlayHistoryEntry[] = [],
+  lastStudyDateStr: string | null,
+  todayKey: string,
+  xpGainedOnLastDate: number = 0,
+  hoursStudiedOnLastDate: number = 0,
+): { updatedHistory: PlayHistoryEntry[]; isNewDay: boolean } {
+  if (!lastStudyDateStr || !todayKey) {
+    return { updatedHistory: existingHistory, isNewDay: false };
+  }
+  const lastKey = getStandardDateKey(lastStudyDateStr);
+  if (!lastKey || lastKey >= todayKey) {
+    return { updatedHistory: existingHistory, isNewDay: false };
+  }
+
+  let updated = [...existingHistory];
+
+  // 1. Archive last active day's progress to lastKey
+  const lastDateIndex = updated.findIndex((h) => getStandardDateKey(h.date) === lastKey);
+  if (lastDateIndex >= 0) {
+    updated[lastDateIndex] = {
+      ...updated[lastDateIndex],
+      hoursStudied: Math.max(updated[lastDateIndex].hoursStudied || 0, Number((hoursStudiedOnLastDate || 0).toFixed(1))),
+      xpEarned: Math.max(updated[lastDateIndex].xpEarned || 0, xpGainedOnLastDate || 0),
+    };
+  } else {
+    updated.push({
+      date: new Date(lastKey).toISOString(),
+      hoursStudied: Number((hoursStudiedOnLastDate || 0).toFixed(1)),
+      xpEarned: xpGainedOnLastDate || 0,
+      completedTasks: [],
+      plannedTasks: [],
+      sleepTime: 0,
+      screenTime: 0,
+    });
+  }
+
+  // 2. Fill all gap dates between lastKey and todayKey
+  const tempDate = new Date(lastKey);
+  tempDate.setDate(tempDate.getDate() + 1);
+  let safety = 0;
+  while (safety < 60) {
+    const gapKey = getStandardDateKey(tempDate);
+    if (!gapKey || gapKey >= todayKey) break;
+
+    if (!updated.some((h) => getStandardDateKey(h.date) === gapKey)) {
+      updated.push({
+        date: tempDate.toISOString(),
+        hoursStudied: 0,
+        xpEarned: 0,
+        completedTasks: [],
+        plannedTasks: [],
+        sleepTime: 0,
+        screenTime: 0,
+        isMissed: true,
+        missedReason: "Absent day",
+      });
+    }
+    tempDate.setDate(tempDate.getDate() + 1);
+    safety++;
+  }
+
+  updated.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  return { updatedHistory: updated, isNewDay: true };
+}
+
 export const calculate8HourGoalXp = (
   endDateStr: string | null | undefined,
   currentXp: number = 0,
@@ -551,6 +620,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
   const [focusBadges, setFocusBadges] = useState(0);
   const [syllabus, setSyllabus] = useState<SyllabusData>(initialSyllabusData);
+  const [appStartDate, setAppStartDateState] = useState<string>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("levelup_app_start_date");
+        if (saved) return saved;
+      }
+    } catch (e) {}
+    return getStandardDateKey(getLogicalDate());
+  });
+
+  const setAppStartDate = useCallback((val: string | ((prev: string) => string)) => {
+    setAppStartDateState((prev) => {
+      const nextVal = typeof val === "function" ? val(prev) : val;
+      const key = getStandardDateKey(nextVal) || nextVal;
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("levelup_app_start_date", key);
+        }
+      } catch (e) {}
+      return key;
+    });
+  }, []);
   const [activeBoost, setActiveBoost] = useState<{
     multiplier: number;
     expiresAt: number;
@@ -723,6 +814,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (mergedState.focusBadges !== undefined) setFocusBadges(mergedState.focusBadges);
     if (mergedState.syllabus !== undefined) setSyllabus(mergedState.syllabus);
     if (mergedState.activeBoost !== undefined) setActiveBoost(mergedState.activeBoost);
+    if (mergedState.appStartDate !== undefined && mergedState.appStartDate) setAppStartDate(mergedState.appStartDate);
     if (mergedState.class11EndDate !== undefined) setClass11EndDate(mergedState.class11EndDate);
     if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
     if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
@@ -808,32 +900,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDailyTarget(parsed.dailyTarget || 100);
       setAccuracy(parsed.accuracy || 0);
       setSpeedScore(parsed.speedScore || 0);
-      setStreakDays(parsed.streakDays || 0);
-      setLastStudyDate(parsed.lastStudyDate || null);
 
       const today = getLogicalDate();
+      const todayKey = getStandardDateKey(today);
+      const savedStorageDate = typeof window !== "undefined" ? localStorage.getItem("levelup_app_start_date") : null;
+      const loadedAppStartDate = parsed.appStartDate || savedStorageDate || todayKey;
+      setAppStartDate(loadedAppStartDate);
+      try {
+        localStorage.setItem("levelup_app_start_date", loadedAppStartDate);
+      } catch (e) {}
+
       const effectiveLastStudyDate = parsed.lastStudyDate || (parsed.history && parsed.history.length > 0 ? getStandardDateKey(parsed.history[parsed.history.length - 1].date) : null);
       const isToday = isSameLogicalDay(effectiveLastStudyDate, today);
       const protocolRecordExists = hasTodayProtocolRecord(parsed.history || [], parsed.lifeMetrics || [], today);
 
-      console.log(`[Local Storage Load] effectiveLastStudyDate: "${effectiveLastStudyDate}", TodayKey: "${getStandardDateKey(today)}", isToday: ${isToday}, protocolRecordExists: ${protocolRecordExists}`);
+      let loadedHistory = parsed.history || [];
+      let loadedXpToday = parsed.xpGainedToday || 0;
+      let loadedHoursToday = parsed.hoursStudiedToday || 0;
+      let loadedStreak = parsed.streakDays || 0;
+
+      if (effectiveLastStudyDate && effectiveLastStudyDate < todayKey) {
+        const { updatedHistory } = reconcilePerDayHistory(
+          loadedHistory,
+          effectiveLastStudyDate,
+          todayKey,
+          loadedXpToday,
+          loadedHoursToday
+        );
+        loadedHistory = updatedHistory;
+        loadedXpToday = 0;
+        loadedHoursToday = 0;
+        loadedStreak = 0; // Missed days reset active streak
+      }
+
+      setStreakDays(loadedStreak);
+      setLastStudyDate(todayKey);
 
       if (isToday || protocolRecordExists) {
         setNeedsRollover(false, "Local storage load: today is already completed or matches lastStudyDate");
-        setLastStudyDate(getStandardDateKey(today));
       } else if (effectiveLastStudyDate) {
         setNeedsRollover(true, "Local storage load: lastStudyDate is from a previous day");
-
-        // Check for genuine missed days
         const missingDates = calculateAbsenceGap(effectiveLastStudyDate, today);
         if (missingDates.length > 0) {
           setPendingMissedDays(missingDates);
         }
       }
-      setXpGainedToday(parsed.xpGainedToday || 0);
+
+      setXpGainedToday(loadedXpToday);
       setSpentXpToday(parsed.spentXpToday || 0);
       setTotalSpentXp(parsed.totalSpentXp || 0);
-      setHoursStudiedToday(parsed.hoursStudiedToday || 0);
+      setHoursStudiedToday(loadedHoursToday);
 
       setFocusBadges(parsed.focusBadges || 0);
 
@@ -904,7 +1020,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           new Map(loadedPendingTasks.map((t: Todo) => [t.id, t])).values(),
         ) as Todo[],
       );
-      let loadedHistory = parsed.history || [];
       setHistory(loadedHistory);
       setPracticeSessions(parsed.practiceSessions || []);
       setPlayerName(parsed.playerName || "Player 1");
@@ -1001,6 +1116,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Debounce state serialization and disk/cloud save to keep UI renders 60-120fps smooth
     const saveTimeoutId = setTimeout(() => {
       const stateToSave = {
+        appStartDate,
         xp,
         xpGainedToday,
         spentXpToday,
@@ -1405,6 +1521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (parsed.unlockedItems !== undefined) setUnlockedItems(parsed.unlockedItems);
           if (parsed.ongoingChapters !== undefined) setOngoingChapters(parsed.ongoingChapters);
           if (parsed.activeBoost !== undefined) setActiveBoost(parsed.activeBoost);
+          if (parsed.appStartDate !== undefined && parsed.appStartDate) setAppStartDate(parsed.appStartDate);
           if (parsed.playerName !== undefined) setPlayerName(parsed.playerName);
           if (parsed.class11EndDate !== undefined) setClass11EndDate(parsed.class11EndDate);
           if (parsed.isClass11SetupDone !== undefined) setIsClass11SetupDone(parsed.isClass11SetupDone);
@@ -1434,6 +1551,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     latestStateRef.current = {
+      appStartDate,
       xp,
       xpGainedToday,
       spentXpToday,
@@ -2548,6 +2666,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFocusBadges,
       syllabus,
       activeBoost,
+      appStartDate,
+      setAppStartDate,
       class11EndDate,
       setClass11EndDate,
       totalXpGoal,
@@ -2640,6 +2760,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       markReminderSeen,
     }),
     [
+      appStartDate,
+      setAppStartDate,
       showWelcomeHero,
       triggerWelcomeScreen,
       dismissWelcomeHero,

@@ -275,7 +275,7 @@ const Syllabus = React.memo(function Syllabus() {
               </span>
             </div>
             <p className="text-xs dark:text-slate-400 text-slate-600 mb-4">
-              AI Recovery Target:{" "}
+              Recovery Target:{" "}
               <strong className="dark:text-orange-400 text-orange-600">
                 2 tasks daily
               </strong>{" "}

@@ -378,7 +378,7 @@ const History = React.memo(function History() {
 		return (
 		<div className="bg-cyan-950/20 border border-cyan-800/50 p-4 sm:p-5 rounded-2xl mt-4 text-left">
 			<h4 className="flex items-center gap-2 dark:text-cyan-400 text-cyan-700 font-bold mb-3 uppercase text-xs tracking-wider">
-				<BrainCircuit className="w-4 h-4" /> AI Coach Assessment
+				<BrainCircuit className="w-4 h-4" /> Coach Assessment
 			</h4>
 			<div className="dark:text-slate-300 text-slate-800 text-xs sm:text-sm leading-relaxed space-y-3 font-normal">
 				{resolvedFeedback.split('\n\n').map((paragraph: string, idx: number, arr: string[]) => {
@@ -584,7 +584,7 @@ const History = React.memo(function History() {
  <div className="absolute -top-4 right-0 p-4 opacity-10"><Cpu className="w-32 h-32 dark:text-indigo-400 text-indigo-600" /></div>
  <CardHeader>
  <CardTitle className="dark:text-indigo-400 text-indigo-600 uppercase tracking-widest text-sm flex items-center gap-2">
- <Sparkles className="w-4 h-4" /> AI Coach Analysis
+ <Sparkles className="w-4 h-4" /> Coach Analysis
  </CardTitle>
  </CardHeader>
  <CardContent className="relative z-10 space-y-4">

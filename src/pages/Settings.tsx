@@ -70,6 +70,8 @@ import {
 
 const Settings = React.memo(function Settings() {
   const {
+    appStartDate,
+    setAppStartDate,
     notificationSettings,
     setNotificationSettings,
     playerName,
@@ -481,6 +483,26 @@ const Settings = React.memo(function Settings() {
                   />
                   <p className="text-[11px] text-slate-400 mt-1 font-mono">
                     Used to compute required daily study hours based on your target XP goal.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold font-mono uppercase text-slate-600 dark:text-slate-400 mb-1.5 flex items-center justify-between">
+                    <span>Journey Start Date</span>
+                    <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-bold font-mono">Fixed On First Login</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={appStartDate ? appStartDate.split("T")[0] : ""}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setAppStartDate(e.target.value);
+                      }
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1 font-mono">
+                    The baseline date you started preparation. Automatically locked on your first entry or target setup.
                   </p>
                 </div>
               </div>

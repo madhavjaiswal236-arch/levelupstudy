@@ -6,10 +6,11 @@ import { Button } from '../components/ui/button';
 import { TiltWrapper } from '../components/TiltWrapper';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, Cell, PieChart, Pie } from 'recharts';
 import { Activity, Brain, TrendingUp, AlertCircle, Target, Zap, Clock, Plus, BookOpen, X } from 'lucide-react';
-import { useAppContext, SyllabusData, getLogicalDate } from '../context/AppContext';
+import { useAppContext, SyllabusData, getLogicalDate, getStandardDateKey } from '../context/AppContext';
 import { TourStep, useTour } from '../components/TourGuide';
 import { getLocalDateString, isCurrentDayTask, getTaskScheduledDate } from '../lib/utils';
 import { AnalyticsCoachSection } from '../components/coach/AnalyticsCoachSection';
+import ContributionSkyline from '../components/ui/contribution-skyline';
 
 const MISTAKE_TYPES = [
  "Conceptual",
@@ -93,6 +94,20 @@ const Analytics = React.memo(function Analytics() {
 
  return { totalChapters: tot, completedChapters: comp, activeBacklogs: backlog, consistencyYield: yieldPer };
  }, [syllabus, todos, habits]);
+
+ // Real data for Contribution Skyline Heatmap
+ const skylineData = useMemo(() => {
+ if (!history || history.length === 0) return [];
+ const map = new Map<string, number>();
+ history.forEach(h => {
+ if (!h.date) return;
+ const dateStr = getStandardDateKey(h.date);
+ if (!dateStr || dateStr.length !== 10) return;
+ const hrs = Math.round((h.hoursStudied || 0) * 10) / 10;
+ map.set(dateStr, (map.get(dateStr) || 0) + hrs);
+ });
+ return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
+ }, [history]);
 
  // Dynamically compute XP trends for the sparkline (last 7 days map)
  const xpTrendData = useMemo(() => {
@@ -316,7 +331,7 @@ const Analytics = React.memo(function Analytics() {
  mistakeInsight: "Log practice sessions to analyze errors.",
  speedAlert: "No data yet",
  speedInsight: "Log practice sessions to analyze speed.",
- adaptiveAction: "Start practicing to unlock AI adaptive difficulty.",
+ adaptiveAction: "Start practicing to unlock adaptive difficulty.",
  consistencyAlert: "Consistency Yield",
  consistencyInsight: "Complete daily protocols to track consistency."
  };
@@ -575,7 +590,7 @@ const Analytics = React.memo(function Analytics() {
  <motion.div whileHover={{ scale: 1.2, rotate: 15 }} className="relative z-10">
  <Brain className="w-5 h-5 group-hover/ai:drop-shadow-md transition-all" />
  </motion.div>
- AI Performance Analyst
+ Performance Analyst
  </CardTitle>
  </CardHeader>
  <CardContent className="space-y-4 flex-1">
@@ -779,7 +794,7 @@ const Analytics = React.memo(function Analytics() {
  description="Monitor your trajectory, study hours, and XP progression over time. This helps visualize your long-term consistency."
  position="top"
  >
- <motion.div key="Tracker" variants={itemVariants} initial="hidden" animate="show" exit={{ opacity: 0, y: -20 }} className="w-full">
+ <motion.div key="Tracker" variants={itemVariants} initial="hidden" animate="show" exit={{ opacity: 0, y: -20 }} className="w-full space-y-6">
  <Card className="dark:bg-black bg-slate-50 dark:border-slate-800 border-slate-200 overflow-hidden relative">
  <div className="absolute -top-24 -right-24 w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
  <CardHeader className="border-b dark:border-slate-800 border-slate-200/50 pb-6 mb-6">
@@ -867,6 +882,18 @@ const Analytics = React.memo(function Analytics() {
  </div>
  </CardContent>
  </Card>
+ <ContributionSkyline
+   data={skylineData}
+   unit="hour"
+   unitPlural="hours"
+   defaultView="2d"
+   palette="github"
+   title={
+     <span className="font-bold text-sm sm:text-base flex items-center gap-2 dark:text-cyan-400 text-cyan-700 uppercase tracking-wider">
+       <Activity className="w-5 h-5 shrink-0" /> CONSISTENCY &amp; STUDY HOURS HEATMAP
+     </span>
+   }
+ />
  </motion.div>
  </TourStep>
  )}
