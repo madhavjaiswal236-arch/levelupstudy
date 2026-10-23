@@ -14,11 +14,13 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
-  Check
+  Check,
+  Download
 } from 'lucide-react';
 import { BacklogPlan, BacklogSubject, BacklogChapterInput } from '@/lib/backlog/types';
-import { Todo } from '@/context/AppContext';
+import { Todo, useAppContext } from '@/context/AppContext';
 import { getLocalDateString } from '@/lib/utils';
+import { exportRoadmapToPdf } from '@/lib/backlog/exportPdf';
 
 interface BacklogProgressJourneyProps {
   plan: BacklogPlan;
@@ -219,6 +221,8 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
     return planTasks.find(t => !t.completed);
   }, [planTasks]);
 
+  const { playerName } = useAppContext();
+
   return (
     <div className="space-y-6">
       {/* 1. STATUS COCKPIT: ON TRACK / AHEAD / BEHIND */}
@@ -273,6 +277,15 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
 
           {/* Quick Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto">
+            <button
+              type="button"
+              onClick={() => exportRoadmapToPdf(plan, playerName || "Student", todos)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+              title="Download full day-wise roadmap with checkboxes in PDF format"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export PDF Roadmap</span>
+            </button>
             {onOpenSimulator && (
               <button
                 type="button"

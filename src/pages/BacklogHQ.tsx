@@ -24,7 +24,10 @@ import {
   Compass,
   Trash2,
   BrainCircuit,
+  Download,
+  FileText,
 } from 'lucide-react';
+import { exportRoadmapToPdf } from '@/lib/backlog/exportPdf';
 import { useAppContext } from '@/context/AppContext';
 import { BacklogWizard } from '@/components/backlog/BacklogWizard';
 import { BacklogSimulator } from '@/components/backlog/BacklogSimulator';
@@ -65,8 +68,14 @@ export default function BacklogHQ() {
     setTodos,
     updateTask,
     addXp,
-    saveStateToCloudNow
+    saveStateToCloudNow,
+    playerName
   } = useAppContext();
+
+  const handleExportPdf = () => {
+    if (!backlogPlan) return;
+    exportRoadmapToPdf(backlogPlan, playerName || "Student", todos);
+  };
 
   // Navigation / Modal States
   const [showWizard, setShowWizard] = useState(false);
@@ -450,6 +459,15 @@ export default function BacklogHQ() {
 
         {backlogPlan && !showWizard && (
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start md:self-auto">
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-black flex items-center gap-1.5 transition shadow-md cursor-pointer"
+              title="Export complete day-wise roadmap with checkboxes as a printable PDF"
+            >
+              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>Export Roadmap PDF</span>
+            </button>
             <button
               type="button"
               onClick={handleApplyAllToCalendar}
@@ -936,8 +954,18 @@ export default function BacklogHQ() {
                   <p className="text-xs text-slate-500 dark:text-slate-400">Day-by-day plan with automatic subject rotation</p>
                 </div>
 
-                {/* Filter Tabs */}
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleExportPdf}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download PDF Roadmap Checklist</span>
+                  </button>
+
+                  {/* Filter Tabs */}
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs overflow-x-auto no-scrollbar">
                   {(['all', 'lecture', 'practice', 'revision', 'test'] as const).map(f => (
                     <button
                       key={f}
@@ -952,6 +980,7 @@ export default function BacklogHQ() {
                       {f}
                     </button>
                   ))}
+                  </div>
                 </div>
               </div>
 
