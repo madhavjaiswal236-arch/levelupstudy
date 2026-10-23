@@ -83,7 +83,7 @@ export const BacklogMissedModal: React.FC<BacklogMissedModalProps> = ({ missedTa
           initial={{ opacity: 0, scale: 0.92, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.92, y: 20 }}
-          className="relative w-full max-w-2xl bg-slate-900/95 border border-amber-500/40 rounded-2xl shadow-[0_0_50px_rgba(245,158,11,0.25)] overflow-hidden flex flex-col max-h-[90vh] my-auto"
+          className="relative w-full max-w-2xl liquid-glass-modal border border-amber-500/40 rounded-2xl shadow-[0_0_50px_rgba(245,158,11,0.25)] overflow-hidden flex flex-col max-h-[90vh] my-auto"
         >
           {/* Header */}
           <div className="p-6 bg-gradient-to-r from-amber-950/50 via-slate-900 to-slate-900 border-b border-amber-500/20 flex items-start justify-between">

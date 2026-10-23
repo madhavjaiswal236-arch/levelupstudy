@@ -1,6 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
+  ChevronDown,
+  ChevronUp,
+  Square,
+  CheckSquare,
   Layers,
   Sparkles,
   Calendar,
@@ -29,7 +33,7 @@ import {
 } from 'lucide-react';
 import { exportRoadmapToPdf } from '@/lib/backlog/exportPdf';
 import { useAppContext } from '@/context/AppContext';
-import { BacklogWizard } from '@/components/backlog/BacklogWizard';
+import { BacklogWizard, DEFAULT_SUBJECTS } from '@/components/backlog/BacklogWizard';
 import { BacklogSimulator } from '@/components/backlog/BacklogSimulator';
 import { BacklogMissedModal } from '@/components/backlog/BacklogMissedModal';
 import { ChapterLectureModal } from '@/components/backlog/ChapterLectureModal';
@@ -37,6 +41,7 @@ import { BacklogProgressJourney } from '@/components/backlog/BacklogProgressJour
 import { SpacedMemoryWidget } from '@/components/coach/SpacedMemoryWidget';
 import {
   BacklogPlan,
+  BacklogPlanSettings,
   RoadmapTask,
   BacklogChapterInput,
   FeasibilityStatus
@@ -44,7 +49,8 @@ import {
 import {
   calculateMetrics,
   generateRoadmap,
-  generateTodosFromRoadmap
+  generateTodosFromRoadmap,
+  addDaysToDate
 } from '@/lib/backlog/engine';
 import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
 import { getLocalDateString } from '@/lib/utils';
@@ -219,6 +225,83 @@ export default function BacklogHQ() {
 
   // Roadmap filter
   const [activeDayFilter, setActiveDayFilter] = useState<'all' | 'lecture' | 'practice' | 'revision' | 'test'>('all');
+
+  // Curriculum view subject filter & accordion collapse state for mobile
+  const [curriculumSubjectFilter, setCurriculumSubjectFilter] = useState<'all' | 'Physics' | 'Chemistry' | 'Mathematics'>('all');
+  const [expandedChapterIds, setExpandedChapterIds] = useState<Record<string, boolean>>({});
+
+  const toggleChapterExpand = (id: string) => {
+    setExpandedChapterIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const handleToggleExpandAllChapters = (expand: boolean) => {
+    if (!backlogPlan) return;
+    const nextState: Record<string, boolean> = {};
+    backlogPlan.subjects.forEach(s => {
+      s.chapters.forEach(c => {
+        nextState[c.id] = expand;
+      });
+    });
+    setExpandedChapterIds(nextState);
+  };
+
+  const handleQuickCreatePlan = (preset: '60day' | '90day') => {
+    const days = preset === '60day' ? 60 : 90;
+    const targetDailyMinutes = preset === '60day' ? 240 : 210;
+    const targetDailyLectures = 2;
+    const buffer = preset === '60day' ? 3 : 5;
+    const deadline = addDaysToDate(todayStr, days);
+
+    const newSettings: BacklogPlanSettings = {
+      startDate: todayStr,
+      deadlineDate: deadline,
+      capacityMode: 'hours',
+      targetDailyMinutes,
+      targetDailyLectures,
+      revisionEnabled: true,
+      revisionAfterEveryNLectures: 6,
+      revisionDurationMinutes: 60,
+      testEnabled: true,
+      testAfterChapterCompletion: true,
+      testDurationMinutes: 90,
+      bufferDays: buffer,
+      studyBlockStart: "06:00",
+      studyBlockEnd: "22:00"
+    };
+
+    const newSubjects = DEFAULT_SUBJECTS;
+    const metrics = calculateMetrics(newSubjects, newSettings);
+    const newPlan: BacklogPlan = {
+      id: `plan_${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      subjects: newSubjects,
+      settings: newSettings,
+      metrics
+    };
+
+    const roadmap = generateRoadmap(newPlan);
+    newPlan.roadmap = roadmap;
+
+    const newTodos = generateTodosFromRoadmap(roadmap, newPlan.id);
+    setBacklogPlan(newPlan);
+
+    let updatedTodos: typeof todos = [];
+    setTodos(prev => {
+      const nonBacklog = prev.filter(t => !t.isBacklogTask);
+      updatedTodos = [...nonBacklog, ...newTodos];
+      return updatedTodos;
+    });
+
+    try {
+      localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(newPlan));
+    } catch (e) {}
+
+    saveStateToCloudNow({ backlogPlan: newPlan, todos: updatedTodos });
+  };
 
   const todayStr = useMemo(() => getLocalDateString(), []);
 
@@ -424,82 +507,82 @@ export default function BacklogHQ() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-24 text-slate-900 dark:text-slate-100 transition-colors">
       {/* Top Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
-        <div className="flex items-center gap-3.5">
-          <div className="p-2.5 rounded-2xl bg-amber-400 text-slate-950 shadow-sm font-black shrink-0">
-            <Target className="w-7 h-7" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800/80 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 text-slate-950 shadow-sm flex items-center justify-center shrink-0">
+            <Target className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 TRACKER 360
               </h1>
-              <span className="px-2 py-0.5 rounded bg-amber-400/15 text-amber-700 dark:text-amber-400 text-xs font-mono font-bold border border-amber-400/30">
-                SUBJECT ROTATION
+              <span className="px-2 py-0.5 rounded-md bg-amber-400/10 text-amber-700 dark:text-amber-400 text-[10px] font-mono font-bold border border-amber-400/25">
+                INTERLEAVED ROTATION
               </span>
               {planStats && (
                 <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border ${
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
                     planStats.paceTone === 'ahead'
-                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25'
                       : planStats.paceTone === 'behind'
-                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30'
-                      : 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-500/30'
+                      ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/25'
+                      : 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25'
                   }`}
                 >
                   {planStats.paceLabel}
                 </span>
               )}
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Multi-Subject Academic Scheduler & Interleaved Backlog Recovery
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
+              Multi-Subject Academic Scheduler &amp; Backlog Recovery
             </p>
           </div>
         </div>
 
         {backlogPlan && !showWizard && (
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start md:self-auto">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar w-full sm:w-auto py-1 shrink-0">
             <button
               type="button"
               onClick={handleExportPdf}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-black flex items-center gap-1.5 transition shadow-md cursor-pointer"
+              className="px-3.5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm whitespace-nowrap shrink-0 cursor-pointer"
               title="Export complete day-wise roadmap with checkboxes as a printable PDF"
             >
-              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Export Roadmap PDF</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>Export PDF</span>
             </button>
             <button
               type="button"
               onClick={handleApplyAllToCalendar}
               disabled={isSyncingCalendar}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] sm:text-xs font-black flex items-center gap-1.5 transition shadow-md disabled:opacity-50"
+              className="px-3 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm disabled:opacity-50 whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>{isSyncingCalendar ? "Syncing..." : "Apply All to Calendar"}</span>
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{isSyncingCalendar ? "Syncing..." : "Sync Calendar"}</span>
             </button>
             <button
               type="button"
               onClick={() => setShowSimulator(true)}
-              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-amber-400 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-3 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
+              <Sliders className="w-3.5 h-3.5 text-amber-500" />
               <span>Simulator</span>
             </button>
             <button
               type="button"
               onClick={() => setShowWizard(true)}
-              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] sm:text-xs font-black flex items-center gap-1.5 transition shadow-sm"
+              className="px-3 h-9 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition shadow-sm whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Edit3 className="w-3.5 h-3.5" />
               <span>Edit Plan</span>
             </button>
             <button
               type="button"
               onClick={handleDeletePlan}
-              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-2.5 h-9 rounded-xl bg-slate-100 hover:bg-rose-50 dark:bg-slate-800/80 dark:hover:bg-rose-950/40 border border-slate-200 dark:border-slate-700/80 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
               title="Reset and clear active backlog plan"
             >
-              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Trash2 className="w-3.5 h-3.5" />
               <span>Reset</span>
             </button>
           </div>
@@ -518,7 +601,7 @@ export default function BacklogHQ() {
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="p-4 rounded-2xl bg-amber-50 dark:bg-slate-900 border border-amber-300 dark:border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
+          className="p-4 rounded-2xl liquid-glass-accent flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
         >
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-400/20 text-amber-700 dark:text-amber-400 border border-amber-400/30 shrink-0">
@@ -553,64 +636,160 @@ export default function BacklogHQ() {
         />
       )}
 
-      {/* MODE 2: NO PLAN EXISTS */}
+      {/* MODE 2: NO PLAN EXISTS - INTERACTIVE 3-STEP ARCHITECTURE & 1-CLICK STARTERS */}
       {!backlogPlan && !showWizard && (
         <div className="space-y-6">
-          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-10 relative overflow-hidden shadow-sm">
-            <div className="max-w-2xl space-y-4 relative z-10">
-              <span className="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-amber-400/15 text-amber-700 dark:text-amber-400 border border-amber-400/30">
-                SYSTEM READY
-              </span>
-              <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
-                Escape Backlog Paralysis with <span className="text-amber-500 dark:text-amber-400">Tracker 360</span>
+          {/* Hero Command Header with Liquid Glass Glow */}
+          <div className="rounded-2xl sm:rounded-3xl liquid-glass p-5 sm:p-8 relative overflow-hidden shadow-sm">
+            <div className="max-w-3xl space-y-3 relative z-10">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] sm:text-xs font-mono font-bold bg-amber-400/15 text-amber-700 dark:text-amber-400 border border-amber-400/30">
+                  SYSTEM READY
+                </span>
+                <span className="text-slate-400 dark:text-slate-500 text-xs font-mono">·</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">Multi-Subject Daily Flow Engine</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
+                Master Your Backlog with <span className="text-amber-500 dark:text-amber-400">Tracker 360</span>
               </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                Select chapters from your curriculum, click individual lecture cards, set default 2-hour sessions, and let the scheduler automatically rotate subjects between Physics, Chemistry, and Mathematics every day.
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
+                Tracker 360 eliminates study fatigue through automated subject rotation. Select chapters, pick individual 2-hour lecture sessions, and generate a day-by-day roadmap with 1-click calendar sync and printable PDF checklists.
               </p>
+            </div>
 
-              <div className="pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowWizard(true)}
-                  className="px-7 py-3.5 min-h-[46px] rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm flex items-center gap-2.5 transition shadow-md"
-                >
-                  <Zap className="w-5 h-5 fill-current" />
-                  <span>LAUNCH TRACKER 360 WIZARD</span>
-                </button>
+            {/* 3-Step Interactive Blueprint Strip */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-6 border-t border-slate-200/50 dark:border-slate-800/80 mt-6">
+              <div className="p-3.5 rounded-xl liquid-glass-pill space-y-1">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-bold font-mono">
+                  <span className="w-5 h-5 rounded-full bg-amber-400/20 flex items-center justify-center text-[11px] font-black">1</span>
+                  <span>SELECT CHAPTERS &amp; LECS</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Browse your syllabus and tap specific lecture cards (default 2 hours per lecture) with practice questions.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl liquid-glass-pill space-y-1">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-bold font-mono">
+                  <span className="w-5 h-5 rounded-full bg-amber-400/20 flex items-center justify-center text-[11px] font-black">2</span>
+                  <span>CALIBRATE DAILY CAPACITY</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Set daily study hours and target deadline. The engine auto-computes buffer days to prevent burnout.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl liquid-glass-pill space-y-1">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-bold font-mono">
+                  <span className="w-5 h-5 rounded-full bg-amber-400/20 flex items-center justify-center text-[11px] font-black">3</span>
+                  <span>DAILY ROTATION &amp; SYNC</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Physics ➔ Chemistry ➔ Maths rotate automatically with 15-minute breaks and 1-click Google Calendar sync.
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Feature Pillars */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2 shadow-sm">
-              <div className="w-9 h-9 rounded-xl bg-amber-400/15 text-amber-600 dark:text-amber-400 border border-amber-400/30 flex items-center justify-center font-bold">
-                <Repeat className="w-5 h-5" />
-              </div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Subject Rotation</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Alternates between Physics, Chemistry, and Mathematics so you avoid study fatigue and make balanced progress daily.
-              </p>
+          {/* 1-Click Starter Presets - Instant Creation */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider font-mono">
+                Start Instantly · Choose a Blueprint
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">1-click automated setup</span>
             </div>
 
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2 shadow-sm">
-              <div className="w-9 h-9 rounded-xl bg-amber-400/15 text-amber-600 dark:text-amber-400 border border-amber-400/30 flex items-center justify-center font-bold">
-                <BookOpen className="w-5 h-5" />
-              </div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Card-Based Lecture Selection</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Select chapters directly from your syllabus. Pick individual lectures with 2-hour default durations that map straight to tasks.
-              </p>
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              {/* Preset 1: 60-Day Sprint */}
+              <div className="p-4 sm:p-5 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-4 group">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-400/15 text-amber-700 dark:text-amber-400 border border-amber-400/30">
+                      HIGH INTENSITY
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                      4.0h / day
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <span>60-Day Recovery Sprint</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    2 lectures/day rotating across Physics, Chemistry, and Math. Ideal for rapid syllabus recovery with 3 buffer days.
+                  </p>
+                </div>
 
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2 shadow-sm">
-              <div className="w-9 h-9 rounded-xl bg-amber-400/15 text-amber-600 dark:text-amber-400 border border-amber-400/30 flex items-center justify-center font-bold">
-                <RotateCcw className="w-5 h-5" />
+                <button
+                  type="button"
+                  onClick={() => handleQuickCreatePlan('60day')}
+                  className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                >
+                  <span>Launch 60-Day Sprint</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Anti-Overload Recovery</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Missed a day? Minimal-diff re-planning spreads missed hours across future buffer days smoothly with no overwhelming 10-hour days.
-              </p>
+
+              {/* Preset 2: 90-Day Comprehensive */}
+              <div className="p-4 sm:p-5 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-4 group">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30">
+                      BALANCED PACE
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                      3.5h / day
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-cyan-500" />
+                    <span>90-Day Deep Coverage</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Comprehensive chapter coverage with built-in revision cycles, 5 buffer recovery days, and scheduled chapter tests.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickCreatePlan('90day')}
+                  className="w-full py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border border-slate-700"
+                >
+                  <span>Launch 90-Day Plan</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Preset 3: Custom Architecture Wizard */}
+              <div className="p-4 sm:p-5 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-4 group">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30">
+                      FULL CONTROL
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                      Custom Specs
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Sliders className="w-4 h-4 text-purple-500" />
+                    <span>Custom Blueprint Setup</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Handpick specific chapters from your syllabus, click individual lecture badges, set exact study windows, and configure custom hours.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowWizard(true)}
+                  className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+                >
+                  <span>Launch Custom Wizard</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -620,20 +799,21 @@ export default function BacklogHQ() {
 
       {/* MODE 3: ACTIVE PLAN COMMAND CENTER */}
       {backlogPlan && !showWizard && (
-        <div className="space-y-6">
-          {/* Top 4 Stat Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
-            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
+        <div className="space-y-5">
+          {/* Top 4 Stat Cards - High Density, Liquid Glass Specular Aesthetic */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+            {/* Card 1: Lectures Left */}
+            <div className="p-3 sm:p-4 rounded-xl liquid-glass liquid-glass-card flex flex-col justify-between min-h-[76px] sm:min-h-[88px]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Lectures Left</span>
-                <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Lectures Left</span>
+                <BookOpen className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               </div>
-              <div>
-                <p className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 dark:text-white font-mono">
+              <div className="mt-1">
+                <p className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums leading-tight">
                   {Math.max(0, backlogPlan.metrics.totalLectures - (planStats?.completedLecs || 0))}
-                  <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-normal ml-1 sm:ml-1.5">/ {backlogPlan.metrics.totalLectures}</span>
+                  <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-normal ml-1">/ {backlogPlan.metrics.totalLectures}</span>
                 </p>
-                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mt-1.5 sm:mt-2 overflow-hidden">
+                <div className="w-full bg-slate-200/60 dark:bg-slate-800/80 rounded-full h-1 mt-1.5 overflow-hidden">
                   <div
                     className="bg-amber-400 h-full rounded-full transition-all duration-500"
                     style={{
@@ -644,80 +824,81 @@ export default function BacklogHQ() {
               </div>
             </div>
 
-            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
+            {/* Card 2: Workload Hours */}
+            <div className="p-3 sm:p-4 rounded-xl liquid-glass liquid-glass-card flex flex-col justify-between min-h-[76px] sm:min-h-[88px]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Workload Hours</span>
-                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Workload</span>
+                <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               </div>
-              <div>
-                <p className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 dark:text-white font-mono">
+              <div className="mt-1">
+                <p className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums leading-tight">
                   {backlogPlan.metrics.totalWorkloadHours}h
                 </p>
-                <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-400/90 mt-0.5 sm:mt-1 font-mono truncate">
-                  ~{+(backlogPlan.settings.targetDailyMinutes / 60).toFixed(1)}h / study day
+                <p className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 font-mono mt-0.5 truncate">
+                  ~{+(backlogPlan.settings.targetDailyMinutes / 60).toFixed(1)}h / day
                 </p>
               </div>
             </div>
 
-            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
+            {/* Card 3: Target Deadline */}
+            <div className="p-3 sm:p-4 rounded-xl liquid-glass liquid-glass-card flex flex-col justify-between min-h-[76px] sm:min-h-[88px]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Target Deadline</span>
-                <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Target Date</span>
+                <Calendar className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               </div>
-              <div>
-                <p className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white font-mono truncate">
+              <div className="mt-1">
+                <p className="text-sm sm:text-xl font-black text-slate-900 dark:text-white font-mono tabular-nums leading-tight truncate">
                   {backlogPlan.settings.deadlineDate}
                 </p>
-                <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-400/90 mt-0.5 sm:mt-1 font-mono truncate">
-                  Projected: {backlogPlan.metrics.projectedCompletionDate}
+                <p className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 font-mono mt-0.5 truncate">
+                  Proj: {backlogPlan.metrics.projectedCompletionDate}
                 </p>
               </div>
             </div>
 
-            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between h-28 sm:h-32 shadow-sm">
+            {/* Card 4: Plan Health */}
+            <div className="p-3 sm:p-4 rounded-xl liquid-glass liquid-glass-card flex flex-col justify-between min-h-[76px] sm:min-h-[88px]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Plan Health</span>
-                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Health</span>
+                <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               </div>
-              <div>
-                <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="mt-1">
+                <div className="flex items-center gap-1.5">
                   {getHealthBadge(backlogPlan.metrics.feasibilityStatus)}
                 </div>
-                <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 sm:mt-2 font-mono">
+                <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
                   Score: <span className="text-slate-900 dark:text-white font-bold">{backlogPlan.metrics.healthScore}/100</span>
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Subject Rotation Banner */}
-          <div className="p-3 sm:p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-400/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-xs shadow-sm">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-amber-400/15 text-amber-600 dark:text-amber-400 shrink-0">
-                <Repeat className="w-4 h-4" />
-              </div>
-              <span className="text-slate-700 dark:text-slate-300 text-[11px] sm:text-xs">
-                <strong className="text-slate-900 dark:text-white">Active Rotation Loop:</strong> Tasks interleave sequentially across subjects to maximize focus.
+          {/* Compact Subject Rotation Ticker with Liquid Glass */}
+          <div className="px-3.5 py-2.5 rounded-xl liquid-glass flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="text-slate-600 dark:text-slate-400 text-xs font-medium">
+                <strong className="text-slate-900 dark:text-white font-semibold">Interleaved Loop:</strong> Sequential daily subject rotation
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-              <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold font-mono text-cyan-700 dark:text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">
+            <div className="flex items-center gap-1.5 font-mono text-[11px] self-start sm:self-auto">
+              <span className="px-2 py-0.5 rounded font-bold text-cyan-700 dark:text-cyan-400 bg-cyan-500/10 border border-cyan-500/20">
                 Physics
               </span>
-              <span className="text-slate-400 dark:text-slate-500 text-[10px]">➔</span>
-              <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold font-mono text-purple-700 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20">
+              <span className="text-slate-400">→</span>
+              <span className="px-2 py-0.5 rounded font-bold text-purple-700 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20">
                 Chemistry
               </span>
-              <span className="text-slate-400 dark:text-slate-500 text-[10px]">➔</span>
-              <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold font-mono text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20">
+              <span className="text-slate-400">→</span>
+              <span className="px-2 py-0.5 rounded font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20">
                 Mathematics
               </span>
             </div>
           </div>
 
-          {/* Section Navigation Tabs (Optimized for Mobile & Touch) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5 sm:pb-3 overflow-x-auto no-scrollbar">
+          {/* Section Navigation Tabs (Liquid Glass Pills) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 border-b border-slate-200/80 dark:border-slate-800/80 pb-2 sm:pb-2.5 overflow-x-auto no-scrollbar">
             {[
               { id: 'journey', label: 'Progress & Journey', icon: TrendingUp },
               { id: 'today', label: "Today's Mission", icon: Target },
@@ -732,10 +913,10 @@ export default function BacklogHQ() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-3 sm:px-4 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl font-bold text-xs flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap shrink-0 ${
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[42px] rounded-lg sm:rounded-xl font-bold text-xs flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap shrink-0 cursor-pointer ${
                     isActive
                       ? 'bg-amber-400 text-slate-950 shadow-sm'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 shadow-sm'
+                      : 'liquid-glass-pill text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -846,146 +1027,237 @@ export default function BacklogHQ() {
             </div>
           )}
 
-          {/* TAB 2: CURRICULUM & LECTURES TRACKER */}
+          {/* TAB 2: CURRICULUM & LECTURES TRACKER (RESPONSIVE ACCORDION & SUBJECT FILTERS) */}
           {activeTab === 'curriculum' && (
-            <div className="space-y-6">
-              {backlogPlan.subjects.map(sub => {
-                const totalSubjectLecs = sub.chapters.reduce(
-                  (acc, c) => acc + (c.selectedLectures?.length ?? c.lecturesRemaining),
-                  0
-                );
+            <div className="space-y-4">
+              {/* Header & Filter Controls */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-amber-500" />
+                      <span>Curriculum &amp; Lectures Tracker</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Enrolled chapters organized by subject. Tap any chapter row to expand or collapse individual lecture cards.
+                    </p>
+                  </div>
 
-                return (
-                  <div
-                    key={sub.id}
-                    className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sub.color }} />
-                        <h3 className="text-base font-bold text-slate-900 dark:text-white">{sub.name} Chapters & Lectures</h3>
-                        <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-950 text-xs font-mono font-bold text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-800">
-                          {totalSubjectLecs} Total Lectures
-                        </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleExpandAllChapters(true)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                    >
+                      Expand All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleExpandAllChapters(false)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                    >
+                      Collapse All
+                    </button>
+                  </div>
+                </div>
+
+                {/* Subject Switcher Filters */}
+                <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/80 overflow-x-auto no-scrollbar">
+                  {[
+                    { id: 'all', label: 'All Subjects' },
+                    { id: 'Physics', label: 'Physics' },
+                    { id: 'Chemistry', label: 'Chemistry' },
+                    { id: 'Mathematics', label: 'Mathematics' }
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setCurriculumSubjectFilter(f.id as any)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                        curriculumSubjectFilter === f.id
+                          ? 'bg-amber-400 text-slate-950 font-black shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Subject Chapter Groups */}
+              {backlogPlan.subjects
+                .filter(sub => curriculumSubjectFilter === 'all' || sub.name === curriculumSubjectFilter)
+                .map(sub => {
+                  const totalSubjectLecs = sub.chapters.reduce(
+                    (acc, c) => acc + (c.selectedLectures?.length ?? c.lecturesRemaining),
+                    0
+                  );
+
+                  return (
+                    <div
+                      key={sub.id}
+                      className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3.5 shadow-xs"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sub.color }} />
+                          <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                            {sub.name}
+                          </h4>
+                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300">
+                            {sub.chapters.length} chapters · {totalSubjectLecs} lecs
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddChapter(sub.name, sub.color)}
+                          className="px-3 py-1.5 min-h-[36px] rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition self-start sm:self-auto shadow-xs cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Select Chapter ({sub.name})</span>
+                        </button>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAddChapter(sub.name, sub.color)}
-                        className="px-3 py-1.5 min-h-[38px] rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-1.5 transition self-start sm:self-auto shadow-sm"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Select Chapter ({sub.name})</span>
-                      </button>
-                    </div>
+                      <div className="space-y-2">
+                        {sub.chapters.length === 0 ? (
+                          <p className="text-xs text-slate-400 dark:text-slate-500 py-4 text-center font-mono">
+                            No chapters enrolled yet for {sub.name}. Click "Select Chapter" to choose chapters and lectures.
+                          </p>
+                        ) : (
+                          sub.chapters.map(chap => {
+                            const lecs = chap.selectedLectures && chap.selectedLectures.length > 0
+                              ? chap.selectedLectures
+                              : Array.from({ length: chap.lecturesRemaining }, (_, i) => i + 1);
 
-                    <div className="space-y-3">
-                      {sub.chapters.length === 0 ? (
-                        <p className="text-xs text-slate-400 dark:text-slate-500 py-3 text-center font-mono">
-                          No chapters enrolled yet for {sub.name}. Click "Select Chapter" to choose chapters and lectures.
-                        </p>
-                      ) : (
-                        sub.chapters.map(chap => {
-                          const lecs = chap.selectedLectures && chap.selectedLectures.length > 0
-                            ? chap.selectedLectures
-                            : Array.from({ length: chap.lecturesRemaining }, (_, i) => i + 1);
+                            const isExpanded = expandedChapterIds[chap.id] ?? false;
+                            const totalHours = +((lecs.length * (chap.lectureDurationMinutes || 120)) / 60).toFixed(1);
 
-                          return (
-                            <div
-                              key={chap.id}
-                              className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/20">
+                            return (
+                              <div
+                                key={chap.id}
+                                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/70 overflow-hidden transition"
+                              >
+                                {/* Collapsible Chapter Header Row */}
+                                <div
+                                  onClick={() => toggleChapterExpand(chap.id)}
+                                  className="p-3 sm:p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-100/70 dark:hover:bg-slate-900/70 transition"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <span className="text-[10px] sm:text-xs font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20 shrink-0">
                                       #{chap.order}
                                     </span>
-                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{chap.name}</h4>
-                                  </div>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
-                                    {lecs.length} lectures enrolled • {chap.lectureDurationMinutes || 120} min per lecture (Total: {+((lecs.length * (chap.lectureDurationMinutes || 120)) / 60).toFixed(1)} hrs)
-                                  </p>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditChapter(chap, sub.color)}
-                                  className="px-3 py-1.5 min-h-[36px] rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-700 dark:text-amber-400 border border-slate-300 dark:border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition shrink-0"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                  <span>Edit Lectures</span>
-                                </button>
-                              </div>
-
-                              {/* Lecture Cards Grid */}
-                              <div>
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider block mb-1.5">
-                                  Selected Lectures:
-                                </span>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {lecs.map(num => (
-                                    <div
-                                      key={num}
-                                      className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-amber-100 dark:bg-amber-400/15 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-400/30 flex items-center gap-1"
-                                    >
-                                      <span>Lec {num}</span>
+                                    <div className="min-w-0">
+                                      <h5 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                                        {chap.name}
+                                      </h5>
+                                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                                        {lecs.length} lecs · {totalHours}h workload
+                                        {chap.practice?.enabled && ` · ${chap.practice.questionCount} Qs`}
+                                      </p>
                                     </div>
-                                  ))}
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenEditChapter(chap, sub.color);
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-700 dark:text-amber-400 border border-slate-300 dark:border-slate-700 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                                      title="Edit selected lectures and practice count"
+                                    >
+                                      <Edit3 className="w-3 h-3" />
+                                      <span className="hidden sm:inline">Edit</span>
+                                    </button>
+                                    <div className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                      {isExpanded ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                      ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
+
+                                {/* Expanded Lecture Cards Grid */}
+                                {isExpanded && (
+                                  <div className="p-3.5 pt-0 border-t border-slate-200/80 dark:border-slate-800/80 mt-2 space-y-2.5">
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider pt-2">
+                                      <span>Enrolled Lecture Sessions ({chap.lectureDurationMinutes || 120} min each):</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {lecs.map(num => (
+                                        <div
+                                          key={num}
+                                          className="px-2.5 py-1 min-h-[32px] rounded-lg text-xs font-mono font-bold bg-amber-100 dark:bg-amber-400/15 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-400/30 flex items-center gap-1 shadow-2xs"
+                                        >
+                                          <span>Lec {num}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          );
-                        })
-                      )}
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           )}
 
-          {/* TAB 3: ROADMAP TIMELINE */}
+          {/* TAB 3: ROADMAP TIMELINE & INTERACTIVE CHECKLIST */}
           {activeTab === 'roadmap' && (
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Full Roadmap Schedule</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Day-by-day plan with automatic subject rotation</p>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-amber-500" />
+                    <span>Day-by-Day Roadmap Schedule</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Multi-subject rotation checklist. Tap any task checkbox to mark completed and gain XP directly.
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={handleExportPdf}
-                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                    title="Generate and download complete printable day-wise checklist PDF"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Download PDF Roadmap Checklist</span>
+                    <span>Download PDF Roadmap</span>
                   </button>
 
                   {/* Filter Tabs */}
                   <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs overflow-x-auto no-scrollbar">
-                  {(['all', 'lecture', 'practice', 'revision', 'test'] as const).map(f => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => setActiveDayFilter(f)}
-                      className={`px-3 py-1.5 rounded-lg capitalize font-semibold transition whitespace-nowrap ${
-                        activeDayFilter === f
-                          ? 'bg-amber-400 text-slate-950 font-bold'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {f}
-                    </button>
-                  ))}
+                    {(['all', 'lecture', 'practice', 'revision', 'test'] as const).map(f => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setActiveDayFilter(f)}
+                        className={`px-2.5 py-1 rounded-lg capitalize font-bold text-xs transition whitespace-nowrap cursor-pointer ${
+                          activeDayFilter === f
+                            ? 'bg-amber-400 text-slate-950 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
 
               {/* Days List */}
-              <div className="space-y-3 max-h-[540px] overflow-y-auto pr-2 custom-calendar-scrollbar">
+              <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1.5 custom-calendar-scrollbar">
                 {(backlogPlan.roadmap || []).map(day => {
                   const dayTasks = day.tasks.filter(t => {
                     if (activeDayFilter === 'all') return true;
@@ -998,49 +1270,34 @@ export default function BacklogHQ() {
                   return (
                     <div
                       key={day.dayIndex}
-                      className={`p-4 rounded-xl border transition flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                      className={`p-3.5 sm:p-4 rounded-xl border transition flex flex-col md:flex-row md:items-center justify-between gap-3 ${
                         isToday
-                          ? 'bg-amber-50/50 dark:bg-slate-950 border-amber-400 dark:border-amber-400 shadow-sm'
+                          ? 'bg-amber-50/50 dark:bg-slate-950 border-amber-400 dark:border-amber-400 shadow-xs'
                           : 'bg-slate-50/70 dark:bg-slate-950/70 border-slate-200 dark:border-slate-800'
                       }`}
                     >
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
                         <div
-                          className={`w-11 h-11 rounded-xl flex flex-col items-center justify-center font-mono shrink-0 border ${
+                          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex flex-col items-center justify-center font-mono shrink-0 border ${
                             isToday
                               ? 'bg-amber-400 text-slate-950 font-black border-amber-300'
                               : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
                           }`}
                         >
-                          <span className="text-[9px] uppercase font-bold">Day</span>
-                          <span className="text-sm font-bold">{day.dayIndex}</span>
+                          <span className="text-[8px] sm:text-[9px] uppercase font-bold">Day</span>
+                          <span className="text-xs sm:text-sm font-bold">{day.dayIndex}</span>
                         </div>
 
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                             <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">{day.date}</span>
                             {isToday && (
-                              <span className="px-2 py-0.2 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-amber-400 text-slate-950">
                                 TODAY
                               </span>
                             )}
-                            {day.tasks.length > 0 && day.tasks.every(dt =>
-                              todos.some(
-                                todo =>
-                                  todo.isBacklogTask &&
-                                  todo.completed &&
-                                  (todo.id === dt.id ||
-                                    (todo.backlogChapterId === dt.chapterId &&
-                                      todo.backlogTaskType === dt.type &&
-                                      (dt.lectureNumber ? todo.lectureNumber === dt.lectureNumber : true)))
-                              )
-                            ) && (
-                              <span className="px-2 py-0.2 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
-                                COMPLETED
-                              </span>
-                            )}
                             <span
-                              className={`px-2 py-0.2 rounded text-[10px] font-bold ${
+                              className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
                                 day.dayType === 'TEST'
                                   ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30'
                                   : day.dayType === 'REVISION'
@@ -1074,22 +1331,23 @@ export default function BacklogHQ() {
                               return (
                                 <div
                                   key={t.id}
-                                  className={`flex items-center gap-2 text-xs flex-wrap transition ${
+                                  onClick={() => {
+                                    if (matchingTodo) handleToggleTask(matchingTodo);
+                                  }}
+                                  className={`flex items-center gap-2 text-xs flex-wrap p-1.5 rounded-lg transition cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-900/60 ${
                                     isCompleted
                                       ? 'text-slate-400 dark:text-slate-500 line-through'
-                                      : 'text-slate-700 dark:text-slate-200'
+                                      : 'text-slate-800 dark:text-slate-200'
                                   }`}
+                                  title="Click to toggle completed"
                                 >
                                   {isCompleted ? (
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                                   ) : (
-                                    <span
-                                      className="w-2 h-2 rounded-full shrink-0"
-                                      style={{ backgroundColor: subColor }}
-                                    />
+                                    <div className="w-4 h-4 rounded border border-slate-300 dark:border-slate-600 hover:border-amber-400 shrink-0" />
                                   )}
                                   <span
-                                    className="font-bold text-[11px] px-1 py-0.2 rounded font-mono"
+                                    className="font-bold text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded font-mono"
                                     style={{
                                       color: subColor,
                                       backgroundColor: `${subColor}15`
@@ -1097,10 +1355,10 @@ export default function BacklogHQ() {
                                   >
                                     {t.subject}
                                   </span>
-                                  <span className="font-medium">{t.title}</span>
-                                  <span className="text-slate-400 dark:text-slate-500 font-mono">({t.durationMinutes}m)</span>
+                                  <span className="font-semibold text-xs">{t.title}</span>
+                                  <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px]">({t.durationMinutes}m)</span>
                                   {isCompleted && (
-                                    <span className="no-underline text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                    <span className="no-underline text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                                       Done
                                     </span>
                                   )}
@@ -1111,11 +1369,11 @@ export default function BacklogHQ() {
                         </div>
                       </div>
 
-                      <div className="text-left md:text-right shrink-0">
+                      <div className="text-left md:text-right shrink-0 pt-1 md:pt-0 border-t md:border-t-0 border-slate-200/60 dark:border-slate-800/60">
                         <span className="text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">
                           {Math.floor(day.totalMinutes / 60)}h {day.totalMinutes % 60}m
                         </span>
-                        <span className="text-[11px] text-slate-400 dark:text-slate-500 block">estimated</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-mono">total day workload</span>
                       </div>
                     </div>
                   );

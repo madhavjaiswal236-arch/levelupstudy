@@ -46,7 +46,7 @@ interface BacklogWizardProps {
   initialPlan?: BacklogPlan | null;
 }
 
-const DEFAULT_SUBJECTS: BacklogSubject[] = [
+export const DEFAULT_SUBJECTS: BacklogSubject[] = [
   {
     id: 'sub-phy',
     name: 'Physics',
@@ -810,23 +810,23 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 sticky bottom-0 -mx-4 -mb-6 p-3 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 z-20 sm:static sm:p-0 sm:bg-transparent sm:border-0 sm:m-0">
             {metrics.totalLectures === 0 && (
               <p className="text-xs text-rose-400 font-semibold flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span>Please enroll at least 1 chapter and lecture to proceed.</span>
               </p>
             )}
-            <div className="ml-auto">
+            <div className="ml-auto w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => {
                   if (metrics.totalLectures > 0) setStep(2);
                 }}
                 disabled={metrics.totalLectures === 0}
-                className={`px-6 py-3 rounded-xl font-black text-sm shadow-sm flex items-center gap-2 transition ${
+                className={`w-full sm:w-auto px-6 py-3 rounded-xl font-black text-sm shadow-sm flex items-center justify-center gap-2 transition cursor-pointer ${
                   metrics.totalLectures > 0
-                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer'
+                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
                     : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
                 }`}
               >
@@ -958,20 +958,20 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
             </div>
           </div>
 
-          <div className="flex justify-between pt-2">
+          <div className="flex items-center justify-between gap-3 pt-2 sticky bottom-0 -mx-4 -mb-6 p-3 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 z-20 sm:static sm:p-0 sm:bg-transparent sm:border-0 sm:m-0">
             <button
               type="button"
               onClick={() => setStep(1)}
-              className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition"
+              className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs sm:text-sm transition cursor-pointer"
             >
               Back to Chapters
             </button>
             <button
               type="button"
               onClick={() => setStep(3)}
-              className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-sm flex items-center gap-2 transition"
+              className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm shadow-sm flex items-center gap-1.5 sm:gap-2 transition cursor-pointer"
             >
-              <span>Calibrate Deadline & Pace</span>
+              <span>Calibrate Pace</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -1445,20 +1445,20 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
             </div>
           </div>
 
-          <div className="flex justify-between pt-2">
+          <div className="flex items-center justify-between gap-3 pt-2 sticky bottom-0 -mx-4 -mb-6 p-3 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 z-20 sm:static sm:p-0 sm:bg-transparent sm:border-0 sm:m-0">
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition"
+              className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs sm:text-sm transition cursor-pointer"
             >
               Back to Summary
             </button>
             <button
               type="button"
               onClick={() => setStep(4)}
-              className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-sm flex items-center gap-2 transition"
+              className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm shadow-sm flex items-center gap-1.5 sm:gap-2 transition cursor-pointer"
             >
-              <span>Preview Rotation Roadmap</span>
+              <span>Preview Roadmap</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -1590,18 +1590,18 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
             ))}
           </div>
 
-          <div className="flex justify-between pt-2">
+          <div className="flex items-center justify-between gap-3 pt-2 sticky bottom-0 -mx-4 -mb-6 p-3 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 z-20 sm:static sm:p-0 sm:bg-transparent sm:border-0 sm:m-0">
             <button
               type="button"
               onClick={() => setStep(3)}
-              className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition"
+              className="px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs sm:text-sm transition cursor-pointer"
             >
               Back
             </button>
             <button
               type="button"
               onClick={handleCommitPlan}
-              className="px-8 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-md flex items-center gap-2 transition"
+              className="px-5 sm:px-8 py-2.5 sm:py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm shadow-md flex items-center gap-1.5 sm:gap-2 transition cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>COMMIT & START TRACKER 360</span>

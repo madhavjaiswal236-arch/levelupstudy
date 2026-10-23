@@ -238,10 +238,10 @@ export const ChapterLectureModal: React.FC<ChapterLectureModalProps> = ({
           exit={{ opacity: 0, scale: 0.96, y: 12 }}
           transition={{ duration: 0.18 }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]"
+          className="w-full max-w-2xl liquid-glass-modal rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]"
         >
           {/* Header Bar */}
-          <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-slate-200/50 dark:border-slate-800/80 bg-white/40 dark:bg-slate-900/70 backdrop-blur-md flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               {modalStep === 2 && !existingChapter && (
                 <button

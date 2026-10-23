@@ -227,19 +227,19 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
           initial={{ opacity: 0, scale: 0.96, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 12 }}
-          className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto"
+          className="relative w-full max-w-xl liquid-glass-modal rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto"
         >
           {/* Header */}
-          <div className="p-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div className="p-5 sm:p-6 bg-white/40 dark:bg-slate-900/60 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-800/80 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-amber-400/15 text-amber-400 border border-amber-400/30">
                 <Sliders className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white tracking-wide">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-wide">
                   Tracker 360: What-If Simulator
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Experiment with daily study pace and deadlines without affecting your active roadmap
                 </p>
               </div>
