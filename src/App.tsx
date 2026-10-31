@@ -235,6 +235,44 @@ function AppContent() {
   useAuthToken();
   const processedHistoryRef = useRef(new Set<string>());
 
+  // Mobile Scroll-driven Header & Navbar Transitions:
+  // - Downward scroll: LevelUp Study and Navbar vanish upwards smoothly
+  // - Upward scroll at any position: Navbar re-emerges
+  // - Reaching the top of the page: LevelUp Study header re-emerges alongside the Navbar
+  const [scrollDirection, setScrollDirection] = useState<"up" | "down">("up");
+  const [isAtTop, setIsAtTop] = useState(true);
+  const lastScrollYRef = useRef(0);
+  const scrollTickingRef = useRef(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!scrollTickingRef.current) {
+        window.requestAnimationFrame(() => {
+          const currentY = window.scrollY || document.documentElement.scrollTop;
+          const diff = currentY - lastScrollYRef.current;
+          
+          const atTop = currentY <= 24;
+          setIsAtTop(atTop);
+
+          // Use delta threshold of 6px to avoid micro-jitter on mobile touches
+          if (Math.abs(diff) > 6) {
+            if (diff > 0) {
+              setScrollDirection("down");
+            } else {
+              setScrollDirection("up");
+            }
+            lastScrollYRef.current = currentY;
+          }
+          scrollTickingRef.current = false;
+        });
+        scrollTickingRef.current = true;
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const [forceLoaded, setForceLoaded] = useState(false);
 
   useEffect(() => {
@@ -2213,9 +2251,13 @@ function AppContent() {
         onStartTask={handleStartTask}
       />
 
-      {/* Top Navigation */}
+      {/* Top Navigation Bar with Mobile Scroll-Vanishing & Dynamic Re-emergence */}
       <nav
-        className="relative z-10 w-full border-b dark:border-white/5 border-black/5 dark:bg-[#0a0f16]/80 bg-white flex items-center justify-between px-3 py-2 md:px-6 md:py-3"
+        className={`sticky top-0 z-40 w-full border-b dark:border-white/5 border-black/5 dark:bg-[#0a0f16]/90 bg-white/90 backdrop-blur-xl flex items-center justify-between px-3 py-2 md:px-6 md:py-3 transition-all duration-300 ease-out ${
+          !isAtTop && scrollDirection === "down"
+            ? "-translate-y-full opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto"
+            : "translate-y-0 opacity-100 pointer-events-auto shadow-sm dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+        }`}
         style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
       >
         {/* Empty div for flex balance if needed, or theme toggle placeholder */}
@@ -2466,8 +2508,14 @@ function AppContent() {
         </div>
       </nav>
 
-      {/* Main Header */}
-      <header className="relative pt-4 pb-2 px-2 md:pt-12 md:pb-6 md:px-6 text-center shrink-0">
+      {/* Main Brand Header - Smoothly vanishes on mobile when scrolling down, only re-emerges when reaching the top */}
+      <header
+        className={`relative text-center shrink-0 transition-all duration-400 ease-out overflow-hidden md:overflow-visible ${
+          isAtTop
+            ? "opacity-100 translate-y-0 max-h-[300px] pt-4 pb-2 px-2 md:pt-12 md:pb-6 md:px-6 pointer-events-auto"
+            : "opacity-0 -translate-y-6 max-h-0 pt-0 pb-0 px-2 pointer-events-none md:opacity-100 md:translate-y-0 md:max-h-none md:pt-12 md:pb-6 md:px-6 md:pointer-events-auto md:overflow-visible"
+        }`}
+      >
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}

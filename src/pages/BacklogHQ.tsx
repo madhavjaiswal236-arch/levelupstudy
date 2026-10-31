@@ -75,8 +75,11 @@ export default function BacklogHQ() {
     updateTask,
     addXp,
     saveStateToCloudNow,
-    playerName
+    playerName,
+    exportLocalBackup
   } = useAppContext();
+
+  const todayStr = useMemo(() => getLocalDateString(), []);
 
   const handleExportPdf = () => {
     if (!backlogPlan) return;
@@ -248,12 +251,36 @@ export default function BacklogHQ() {
     setExpandedChapterIds(nextState);
   };
 
-  const handleQuickCreatePlan = (preset: '60day' | '90day') => {
-    const days = preset === '60day' ? 60 : 90;
-    const targetDailyMinutes = preset === '60day' ? 240 : 210;
+  const [customTargetDate, setCustomTargetDate] = useState<string>(() => {
+    return addDaysToDate(todayStr, 75);
+  });
+
+  const handleQuickCreatePlan = (preset: '60day' | '90day' | 'custom', customDeadlineDate?: string) => {
+    let days = 60;
+    let deadline = '';
+    let targetDailyMinutes = 240;
+    let buffer = 3;
+
+    if (preset === 'custom') {
+      deadline = customDeadlineDate || customTargetDate;
+      const todayTime = new Date(todayStr).getTime();
+      const targetTime = new Date(deadline).getTime();
+      days = Math.max(14, Math.round((targetTime - todayTime) / (1000 * 3600 * 24)));
+      buffer = Math.min(10, Math.max(2, Math.round(days * 0.06)));
+      targetDailyMinutes = Math.min(360, Math.max(120, Math.round((280 * 60) / days)));
+    } else if (preset === '90day') {
+      days = 90;
+      targetDailyMinutes = 210;
+      buffer = 5;
+      deadline = addDaysToDate(todayStr, days);
+    } else {
+      days = 60;
+      targetDailyMinutes = 240;
+      buffer = 3;
+      deadline = addDaysToDate(todayStr, days);
+    }
+
     const targetDailyLectures = 2;
-    const buffer = preset === '60day' ? 3 : 5;
-    const deadline = addDaysToDate(todayStr, days);
 
     const newSettings: BacklogPlanSettings = {
       startDate: todayStr,
@@ -302,8 +329,6 @@ export default function BacklogHQ() {
 
     saveStateToCloudNow({ backlogPlan: newPlan, todos: updatedTodos });
   };
-
-  const todayStr = useMemo(() => getLocalDateString(), []);
 
   // Today's Backlog Tasks from context
   const todaysBacklogTasks = useMemo(() => {
@@ -545,11 +570,20 @@ export default function BacklogHQ() {
             <button
               type="button"
               onClick={handleExportPdf}
-              className="px-3.5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-3 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm whitespace-nowrap shrink-0 cursor-pointer"
               title="Export complete day-wise roadmap with checkboxes as a printable PDF"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={exportLocalBackup}
+              className="px-3 h-9 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm whitespace-nowrap shrink-0 cursor-pointer"
+              title="Export complete 100% data snapshot (Tracker 360, day-wise tasks, syllabus masteries, study profile & sleep hours) for cloning onto another device"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export All (.json)</span>
             </button>
             <button
               type="button"
@@ -700,93 +734,129 @@ export default function BacklogHQ() {
               <span className="text-[11px] font-mono text-slate-400">1-click automated setup</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
               {/* Preset 1: 60-Day Sprint */}
-              <div className="p-4 sm:p-5 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-4 group">
-                <div className="space-y-2">
+              <div className="p-3.5 sm:p-4 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-3 group">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-400/15 text-amber-700 dark:text-amber-400 border border-amber-400/30">
                       HIGH INTENSITY
                     </span>
-                    <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                    <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400">
                       4.0h / day
                     </span>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                     <Zap className="w-4 h-4 text-amber-500" />
-                    <span>60-Day Recovery Sprint</span>
+                    <span>60-Day Sprint</span>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    2 lectures/day rotating across Physics, Chemistry, and Math. Ideal for rapid syllabus recovery with 3 buffer days.
+                    2 lectures/day rotating across Physics, Chemistry, and Math with 3 buffer days.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => handleQuickCreatePlan('60day')}
-                  className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                  className="w-full py-2 sm:py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
                 >
-                  <span>Launch 60-Day Sprint</span>
+                  <span>Launch 60-Day</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
 
               {/* Preset 2: 90-Day Comprehensive */}
-              <div className="p-4 sm:p-5 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-4 group">
-                <div className="space-y-2">
+              <div className="p-3.5 sm:p-4 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-3 group">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30">
                       BALANCED PACE
                     </span>
-                    <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                    <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400">
                       3.5h / day
                     </span>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-cyan-500" />
-                    <span>90-Day Deep Coverage</span>
+                    <span>90-Day Coverage</span>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Comprehensive chapter coverage with built-in revision cycles, 5 buffer recovery days, and scheduled chapter tests.
+                    Built-in revision cycles, 5 buffer recovery days, and scheduled chapter tests.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => handleQuickCreatePlan('90day')}
-                  className="w-full py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border border-slate-700"
+                  className="w-full py-2 sm:py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border border-slate-700"
                 >
-                  <span>Launch 90-Day Plan</span>
+                  <span>Launch 90-Day</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {/* Preset 3: Custom Architecture Wizard */}
-              <div className="p-4 sm:p-5 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-4 group">
-                <div className="space-y-2">
+              {/* Preset 3: Custom Target Exam Date (Bug 5A) */}
+              <div className="p-3.5 sm:p-4 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-3 group border-emerald-500/30">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                      EXAM DATE TARGET
+                    </span>
+                    <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      {Math.max(1, Math.round((new Date(customTargetDate).getTime() - new Date(todayStr).getTime()) / (1000 * 3600 * 24)))} days
+                    </span>
+                  </div>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-emerald-500" />
+                    <span>Custom Target Date</span>
+                  </h3>
+                  <div className="pt-1">
+                    <input
+                      type="date"
+                      value={customTargetDate}
+                      min={addDaysToDate(todayStr, 7)}
+                      onChange={(e) => setCustomTargetDate(e.target.value)}
+                      className="w-full text-xs font-mono font-bold px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-emerald-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickCreatePlan('custom')}
+                  className="w-full py-2 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                >
+                  <span>Launch Exam Plan</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Preset 4: Custom Architecture Wizard */}
+              <div className="p-3.5 sm:p-4 rounded-2xl liquid-glass liquid-glass-card flex flex-col justify-between space-y-3 group">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30">
                       FULL CONTROL
                     </span>
-                    <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                    <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400">
                       Custom Specs
                     </span>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                     <Sliders className="w-4 h-4 text-purple-500" />
-                    <span>Custom Blueprint Setup</span>
+                    <span>Custom Blueprint</span>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Handpick specific chapters from your syllabus, click individual lecture badges, set exact study windows, and configure custom hours.
+                    Handpick specific chapters, select individual lecture badges, set study windows.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setShowWizard(true)}
-                  className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+                  className="w-full py-2 sm:py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border border-slate-200 dark:border-slate-700"
                 >
-                  <span>Launch Custom Wizard</span>
+                  <span>Launch Wizard</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>

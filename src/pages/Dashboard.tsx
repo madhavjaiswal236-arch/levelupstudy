@@ -41,7 +41,9 @@ import {
   Lock as LockIcon,
   AlertCircle,
   Layers,
+  Download,
 } from "lucide-react";
+import { exportRoadmapToPdf } from "@/lib/backlog/exportPdf";
 import { useAppContext, SyllabusData, getLogicalDate, getStandardDateKey, isSameLogicalDay } from "@/context/AppContext";
 import TimeBar from "@/components/TimeBar";
 import JeeSessionLogger from "@/components/JeeSessionLogger";
@@ -271,6 +273,20 @@ const Dashboard = React.memo(function Dashboard() {
     backlogPlan,
     scheduleProfile,
   } = useAppContext();
+
+  const studyPlanRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isLoaded) {
+      const hash = typeof window !== "undefined" ? window.location.hash : "";
+      if (hash === "#study-plan" || hash === "#study-plan-section") {
+        const timer = setTimeout(() => {
+          studyPlanRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 350);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isLoaded]);
 
   const { activeStep, setActiveStep, hasCompleted } = useTour();
 
@@ -1317,7 +1333,7 @@ const Dashboard = React.memo(function Dashboard() {
         : 300;
       const eightHourGoal = Math.round(days * 8 * 300 + Math.max(0, xp || 0));
       setTotalXpGoal(eightHourGoal);
-      setDailyTarget(2400);
+      setDailyTarget((prev) => (prev && prev <= 500 ? prev : 100));
     }
     setIsClass11SetupDone(true);
   };
@@ -2714,17 +2730,29 @@ const Dashboard = React.memo(function Dashboard() {
                   </div>
 
                   {backlogPlan && (
-                    <div className="mt-4 pt-3 border-t dark:border-blue-900/40 border-blue-200/50 flex justify-center">
+                    <div className="mt-4 pt-3 border-t dark:border-blue-900/40 border-blue-200/50 flex flex-wrap items-center justify-center gap-2">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           window.dispatchEvent(new CustomEvent("open-tracker360-goalbox"));
                         }}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-xs font-mono font-bold hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-xs font-mono font-bold hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
                       >
                         <Layers className="w-4 h-4 text-amber-500 animate-pulse" />
                         <span>View Tracker 360 Daily Roadmap</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          exportRoadmapToPdf(backlogPlan, playerName || "Student", todos);
+                        }}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
+                        title="Download complete day-wise checklist PDF"
+                      >
+                        <Download className="w-3.5 h-3.5 text-white" />
+                        <span>Download PDF Roadmap</span>
                       </button>
                     </div>
                   )}
@@ -2860,6 +2888,8 @@ const Dashboard = React.memo(function Dashboard() {
         position="top"
       >
         <motion.div
+          id="study-plan-section"
+          ref={studyPlanRef}
           variants={itemVariants}
           initial="hidden"
           whileInView="show"

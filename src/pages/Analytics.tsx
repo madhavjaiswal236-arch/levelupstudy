@@ -804,10 +804,10 @@ const Analytics = React.memo(function Analytics() {
  </CardTitle>
  <CardDescription>Monitor your trajectory, study hours, and XP progression over time.</CardDescription>
  </CardHeader>
- <CardContent>
- <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
- <div className="lg:col-span-1 space-y-6">
- <div className="p-5 dark:bg-black bg-slate-50 rounded-xl border dark:border-slate-700 border-slate-300/50 relative overflow-hidden">
+ <CardContent className="space-y-8">
+ <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+ <div className="lg:col-span-1 flex flex-col gap-4">
+ <div className="p-4 sm:p-5 dark:bg-black bg-slate-50 rounded-xl border dark:border-slate-700 border-slate-300/50 relative overflow-hidden">
  <div className="absolute -top-8 -right-8 w-24 h-24 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none" />
  <h4 className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wide mb-1">XP This Week</h4>
  <div className="flex items-end justify-between">
@@ -819,7 +819,7 @@ const Analytics = React.memo(function Analytics() {
  <p className="text-[10px] text-slate-500 mt-2 font-mono">VS last week ({lastWeekXP} XP)</p>
  </div>
 
- <div className="p-5 dark:bg-black bg-slate-50 rounded-xl border dark:border-slate-700 border-slate-300/50 relative overflow-hidden">
+ <div className="p-4 sm:p-5 dark:bg-black bg-slate-50 rounded-xl border dark:border-slate-700 border-slate-300/50 relative overflow-hidden">
  <div className="absolute -top-8 -right-8 w-24 h-24 bg-purple-500/10 rounded-full blur-[40px] pointer-events-none" />
  <h4 className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wide mb-1">Hours This Week</h4>
  <div className="flex items-end justify-between">
@@ -830,12 +830,54 @@ const Analytics = React.memo(function Analytics() {
  </div>
  <p className="text-[10px] text-slate-500 mt-2 font-mono">VS last week ({lastWeekHours}h)</p>
  </div>
+ </div>
 
- <div className="mt-8">
- <h4 className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wide mb-3 flex items-center gap-2">
- Intensity Heatmap (30 Days)
+ <div className="lg:col-span-3 flex flex-col h-full p-4 sm:p-5 dark:bg-black/60 bg-white rounded-xl border dark:border-slate-800 border-slate-200">
+ <h4 className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wide flex items-center gap-2">
+ <Activity className="w-4 h-4 text-cyan-500" />
+ Weekly Study Timeline & Growth Trajectory
  </h4>
- <div className="flex flex-wrap gap-1.5 group">
+ <div className="flex-1 min-h-[260px] sm:min-h-[280px] mt-3">
+ <ResponsiveContainer width="100%" height="100%">
+ <BarChart data={trackerData}>
+ <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+ <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+ <YAxis yAxisId="left" stroke="#a855f7" fontSize={11} tickLine={false} axisLine={false} hide />
+ <YAxis yAxisId="right" orientation="right" stroke="#3b82f6" fontSize={11} tickLine={false} axisLine={false} />
+ <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }} />
+ <Legend wrapperStyle={{ fontSize: '12px', marginTop: '10px' }} />
+ <Bar yAxisId="left" dataKey="hours" name="Hours Studied" fill="#a855f7" radius={[4, 4, 0, 0]} />
+ <Line yAxisId="right" type="monotone" dataKey="xp" name="XP Earned" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#0f172a', stroke: '#3b82f6', strokeWidth: 2, r: 4 }} activeDot={{ r: 6, fill: '#3b82f6' }} />
+ </BarChart>
+ </ResponsiveContainer>
+ </div>
+ </div>
+ </div>
+
+ {/* Consistency Heatmap shifted below the weekly timeline */}
+ <div className="p-4 sm:p-6 rounded-2xl dark:bg-black/40 bg-slate-50 border dark:border-slate-800 border-slate-200 space-y-4">
+ <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b dark:border-slate-800 border-slate-200/60 pb-3">
+ <div>
+ <h4 className="text-sm font-bold dark:text-emerald-400 text-emerald-700 uppercase tracking-wide flex items-center gap-2">
+ <TrendingUp className="w-4 h-4" />
+ 30-Day Consistency Heatmap
+ </h4>
+ <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+ Visual daily log of your study persistence and consistency yield over the past month.
+ </p>
+ </div>
+ <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-500">
+ <span>Less</span>
+ <span className="w-3 h-3 rounded-xs dark:bg-slate-800 bg-slate-200 border border-slate-700/50" />
+ <span className="w-3 h-3 rounded-xs bg-emerald-900/60 border border-emerald-800" />
+ <span className="w-3 h-3 rounded-xs bg-emerald-700 border border-emerald-600" />
+ <span className="w-3 h-3 rounded-xs bg-emerald-500 border border-emerald-400" />
+ <span className="w-3 h-3 rounded-xs bg-emerald-400 border border-emerald-300" />
+ <span>More</span>
+ </div>
+ </div>
+
+ <div className="flex flex-wrap gap-2 group pt-1">
  {heatmapData.map((day, i) => {
  const bgColors = [
  'dark:bg-slate-800 bg-slate-100/50 dark:border-slate-800 border-slate-200', 
@@ -850,34 +892,13 @@ const Analytics = React.memo(function Analytics() {
  return (
  <div 
  key={`i-${i}`} 
- className={`w-[1.2rem] h-[1.2rem] rounded-sm border text-center relative cursor-help transition-all hover:scale-125 hover:z-10 ${colorClass}`}
- title={`${day.date}\n${day.isMissed ? 'Missed: ' + day.missedReason : day.xp + ' XP'}`}
+ className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md border text-center flex items-center justify-center text-[10px] font-mono font-bold cursor-help transition-all hover:scale-125 hover:z-10 shadow-xs ${colorClass}`}
+ title={`${day.date.toDateString()}\n${day.isMissed ? 'Missed: ' + day.missedReason : day.hours + ' Hours Studied'}`}
  >
+ {day.hours > 0 ? `${day.hours}h` : ''}
  </div>
  );
  })}
- </div>
- </div>
- </div>
-
- <div className="lg:col-span-3 flex flex-col h-full">
- <h4 className="text-xs font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wide flex items-center gap-2">
- Growth Activity Trajectory
- </h4>
- <div className="flex-1 min-h-[300px] mt-4">
- <ResponsiveContainer width="100%" height="100%">
- <BarChart data={trackerData}>
- <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
- <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
- <YAxis yAxisId="left" stroke="#a855f7" fontSize={11} tickLine={false} axisLine={false} hide />
- <YAxis yAxisId="right" orientation="right" stroke="#3b82f6" fontSize={11} tickLine={false} axisLine={false} />
- <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }} />
- <Legend wrapperStyle={{ fontSize: '12px', marginTop: '10px' }} />
- <Bar yAxisId="left" dataKey="hours" name="Hours Studied" fill="#a855f7" radius={[4, 4, 0, 0]} />
- <Line yAxisId="right" type="monotone" dataKey="xp" name="XP Earned" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#0f172a', stroke: '#3b82f6', strokeWidth: 2, r: 4 }} activeDot={{ r: 6, fill: '#3b82f6' }} />
- </BarChart>
- </ResponsiveContainer>
- </div>
  </div>
  </div>
  </CardContent>

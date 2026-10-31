@@ -629,7 +629,7 @@ const Settings = React.memo(function Settings() {
                   <div
                     onClick={() => {
                       setTotalXpGoal(eightHourGoalVal);
-                      setDailyTarget(2400);
+                      setDailyTarget((prev) => (prev && prev <= 500 ? prev : 100));
                     }}
                     className={`p-4 md:p-5 rounded-2xl border transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                       isEightHourSelected
@@ -1111,30 +1111,37 @@ const Settings = React.memo(function Settings() {
                 </div>
               </div>
 
-              {/* JSON Backup & Recovery */}
-              <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-purple-500" />
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Offline Local Backup (.json)
+              {/* JSON Full Data Snapshot & Cross-Device Clone */}
+              <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-purple-500/30 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-purple-500 shrink-0" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Full Data Snapshot &amp; Device Clone (.json)
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                    100% Comprehensive
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Export or import a direct JSON snapshot file for manual safekeeping.
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Exports complete state: Tracker 360 roadmap, enrolled lectures, day-wise tasks, syllabus masteries, sleep/study schedule profile, XP &amp; level, streak, arcade passes, and custom calendar dates. Ideal for creating an exact second copy on any new device or phone.
                 </p>
 
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     onClick={exportLocalBackup}
-                    className="flex items-center justify-center gap-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-bold py-2 px-3 rounded-lg text-xs font-mono transition-all border border-purple-500/20 cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-3 rounded-lg text-xs font-mono transition-all shadow-sm cursor-pointer active:scale-95"
+                    title="Download 100% complete data bundle as JSON"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    Export (.json)
+                    <span>Export All Data (.json)</span>
                   </button>
 
-                  <label className="flex items-center justify-center gap-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-bold py-2 px-3 rounded-lg text-xs font-mono transition-all border border-purple-500/20 cursor-pointer">
+                  <label className="flex items-center justify-center gap-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-bold py-2.5 px-3 rounded-lg text-xs font-mono transition-all border border-purple-500/30 cursor-pointer active:scale-95">
                     <Upload className="w-3.5 h-3.5" />
-                    Import (.json)
+                    <span>Import on New Device</span>
                     <input
                       ref={fileInputRef}
                       type="file"

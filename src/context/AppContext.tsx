@@ -245,6 +245,7 @@ interface AppState {
   focusBadges: number;
   setFocusBadges: React.Dispatch<React.SetStateAction<number>>;
   syllabus: SyllabusData;
+  setSyllabus: React.Dispatch<React.SetStateAction<SyllabusData>>;
   activeBoost: { multiplier: number; expiresAt: number } | null;
   appStartDate: string;
   setAppStartDate: React.Dispatch<React.SetStateAction<string>>;
@@ -599,6 +600,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const [consistencyBroken, setConsistencyBroken] = useState(false);
+  const saveStateToCloudNowRef = useRef<any>(null);
   const [xp, setXp] = useState(0);
   const [xpGainedToday, setXpGainedToday] = useState(0);
   const [spentXpToday, setSpentXpToday] = useState(0);
@@ -637,8 +639,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         if (typeof window !== "undefined") {
           localStorage.setItem("levelup_app_start_date", key);
+          const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (raw) {
+            try {
+              const p = JSON.parse(raw);
+              p.appStartDate = key;
+              localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(p));
+              localStorage.setItem(`${LOCAL_STORAGE_KEY}_backup`, JSON.stringify(p));
+            } catch (err) {}
+          }
         }
       } catch (e) {}
+      queueMicrotask(() => {
+        saveStateToCloudNowRef.current?.({ appStartDate: key });
+      });
       return key;
     });
   }, []);
@@ -860,6 +874,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (mergedState.notificationSettings !== undefined) setNotificationSettings(mergedState.notificationSettings);
     if (mergedState.totalXpGoal !== undefined) setTotalXpGoal(mergedState.totalXpGoal);
     if (mergedState.ongoingChapters !== undefined) setOngoingChapters(mergedState.ongoingChapters);
+    if (mergedState.scheduleProfile !== undefined && mergedState.scheduleProfile) {
+      setScheduleProfile(mergedState.scheduleProfile);
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("LEVELUP_SCHEDULE_PROFILE", JSON.stringify(mergedState.scheduleProfile));
+        }
+      } catch (e) {}
+    }
+    if (mergedState.extendedSettings !== undefined && mergedState.extendedSettings) {
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("app_settings_extended", JSON.stringify(mergedState.extendedSettings));
+        }
+      } catch (e) {}
+    }
   }, []);
 
   const notifyCalendarMutation = useCallback(() => {
@@ -1046,6 +1075,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (parsed.notificationSettings) {
         setNotificationSettings(parsed.notificationSettings);
       }
+      if (parsed.scheduleProfile) {
+        setScheduleProfile(parsed.scheduleProfile);
+        try {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("LEVELUP_SCHEDULE_PROFILE", JSON.stringify(parsed.scheduleProfile));
+          }
+        } catch (e) {}
+      }
+      if (parsed.extendedSettings) {
+        try {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("app_settings_extended", JSON.stringify(parsed.extendedSettings));
+          }
+        } catch (e) {}
+      }
     };
 
     const loadState = async () => {
@@ -1155,6 +1199,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notificationSettings,
         totalXpGoal,
         ongoingChapters,
+        scheduleProfile,
+        extendedSettings: (() => {
+          try {
+            const es = typeof localStorage !== "undefined" ? localStorage.getItem("app_settings_extended") : null;
+            return es ? JSON.parse(es) : null;
+          } catch (e) { return null; }
+        })(),
         lastSyncTimestamp: lastSyncTimestampRef.current || now,
       };
 
@@ -1227,6 +1278,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notificationSettings,
     totalXpGoal,
     ongoingChapters,
+    scheduleProfile,
+    appStartDate,
   ]);
 
   // Dedicated single-instance listener for page unload, visibility hidden and mobile pause
@@ -1670,6 +1723,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [isLoaded, isCloudSyncComplete, firebaseUser],
   );
+  saveStateToCloudNowRef.current = saveStateToCloudNow;
 
   const updateTask = useCallback((id: number | string, updates: Partial<Todo>) => {
     let updatedTodosList: Todo[] = [];
@@ -2557,22 +2611,219 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const exportLocalBackup = useCallback(() => {
     try {
-      const stateToExport = latestStateRef.current;
-      const jsonString = JSON.stringify(stateToExport, null, 2);
+      const baseState = latestStateRef.current || {};
+
+      let storedBacklogPlan = null;
+      let storedScheduleProfile = null;
+      let storedExtendedSettings = null;
+      let storedStoreItems = null;
+      let storedArcadeKeys = null;
+      let storedArcadeCodes = null;
+      let storedTheme = null;
+      let storedTour = null;
+      let storedVisited = null;
+      let storedStartDate = null;
+      const localStorageDump: Record<string, string> = {};
+
+      if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+        try {
+          const bp = localStorage.getItem("jee_tracker_backlog_plan");
+          if (bp) storedBacklogPlan = JSON.parse(bp);
+        } catch (e) {}
+
+        try {
+          const sp = localStorage.getItem("LEVELUP_SCHEDULE_PROFILE");
+          if (sp) storedScheduleProfile = JSON.parse(sp);
+        } catch (e) {}
+
+        try {
+          const es = localStorage.getItem("app_settings_extended");
+          if (es) storedExtendedSettings = JSON.parse(es);
+        } catch (e) {}
+
+        try {
+          const si = localStorage.getItem("store_items");
+          if (si) storedStoreItems = JSON.parse(si);
+        } catch (e) {}
+
+        try {
+          const ak = localStorage.getItem("arcade_purchased_keys");
+          if (ak) storedArcadeKeys = JSON.parse(ak);
+        } catch (e) {}
+
+        try {
+          const ac = localStorage.getItem("arcade_issued_codes");
+          if (ac) storedArcadeCodes = JSON.parse(ac);
+        } catch (e) {}
+
+        try {
+          storedTheme = localStorage.getItem("theme");
+          storedTour = localStorage.getItem("app_tour_completed");
+          storedVisited = localStorage.getItem("visited_tabs");
+          storedStartDate = localStorage.getItem("levelup_app_start_date");
+        } catch (e) {}
+
+        // Complete dictionary of all localStorage keys for zero-loss recovery
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k) {
+              const val = localStorage.getItem(k);
+              if (val !== null) {
+                localStorageDump[k] = val;
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      const activeBacklogPlan = backlogPlan || baseState.backlogPlan || storedBacklogPlan || null;
+      const activeScheduleProfile = scheduleProfile || baseState.scheduleProfile || storedScheduleProfile || DEFAULT_SCHEDULE_PROFILE;
+      const activeStartDate = appStartDate || baseState.appStartDate || storedStartDate || getStandardDateKey(getLogicalDate());
+
+      const fullExportBundle = {
+        _exportMetadata: {
+          app: "LevelUp JEE Tracker 360",
+          version: "2.6.0",
+          exportDate: new Date().toISOString(),
+          format: "full_state_snapshot",
+          sourceDevice: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
+        },
+        // Core Identity & Game Progression
+        playerName: playerName || baseState.playerName || "Player 1",
+        xp: xp ?? baseState.xp ?? 0,
+        level: level ?? baseState.level ?? 1,
+        questionsSolved: questionsSolved ?? baseState.questionsSolved ?? 0,
+        streakDays: streakDays ?? baseState.streakDays ?? 0,
+        accuracy: accuracy ?? baseState.accuracy ?? 0,
+        speedScore: speedScore ?? baseState.speedScore ?? 0,
+        focusBadges: focusBadges ?? baseState.focusBadges ?? 0,
+        xpGainedToday: xpGainedToday ?? baseState.xpGainedToday ?? 0,
+        spentXpToday: spentXpToday ?? baseState.spentXpToday ?? 0,
+        totalSpentXp: totalSpentXp ?? baseState.totalSpentXp ?? 0,
+        hoursStudiedToday: hoursStudiedToday ?? baseState.hoursStudiedToday ?? 0,
+        lastStudyDate: lastStudyDate || baseState.lastStudyDate || getStandardDateKey(getLogicalDate()),
+        appStartDate: activeStartDate,
+
+        // Goals & Calibration
+        dailyTarget: dailyTarget ?? baseState.dailyTarget ?? 100,
+        totalXpGoal: totalXpGoal ?? baseState.totalXpGoal ?? 800000,
+        class11EndDate: class11EndDate ?? baseState.class11EndDate ?? null,
+        isClass11SetupDone: Boolean(isClass11SetupDone || baseState.isClass11SetupDone),
+        activeBoost: activeBoost ?? baseState.activeBoost ?? null,
+
+        // Academic Curriculum & Masteries
+        syllabus: syllabus || baseState.syllabus || initialSyllabusData,
+        ongoingChapters: ongoingChapters || baseState.ongoingChapters || {},
+        backlogPriorities: backlogPriorities || baseState.backlogPriorities || {},
+
+        // Tracker 360 Full Roadmap Plan & Enrolled Lectures
+        backlogPlan: activeBacklogPlan,
+
+        // Tasks & Mission Lists
+        todos: todos || baseState.todos || [],
+        loggedTasksToday: loggedTasksToday || baseState.loggedTasksToday || [],
+        pendingTasks: pendingTasks || baseState.pendingTasks || [],
+
+        // Study History & Analytics
+        history: history || baseState.history || [],
+        practiceSessions: practiceSessions || baseState.practiceSessions || [],
+        habits: habits || baseState.habits || [],
+        lifeMetrics: lifeMetrics || baseState.lifeMetrics || [],
+        monthlyGoals: monthlyGoals || baseState.monthlyGoals || [],
+
+        // Student Schedule Engine Profile
+        scheduleProfile: activeScheduleProfile,
+
+        // Extended App Settings (Pomo, Rollover, Deep Work, Main Goal)
+        extendedSettings: storedExtendedSettings || baseState.extendedSettings || {
+          rolloverTime: "03:00",
+          pomoTime: 25,
+          deepWorkTime: 50,
+          mainGoal: "Crack JEE 2026",
+        },
+        notificationSettings: notificationSettings || baseState.notificationSettings || null,
+
+        // Boss Day & Cosmetics
+        lastBossDayDate: lastBossDayDate ?? baseState.lastBossDayDate ?? null,
+        bossDayTargetXp: bossDayTargetXp ?? baseState.bossDayTargetXp ?? null,
+        bossDayCompleted: Boolean(bossDayCompleted || baseState.bossDayCompleted),
+        equippedTitle: equippedTitle || baseState.equippedTitle || "",
+        equippedAura: equippedAura || baseState.equippedAura || "",
+        unlockedItems: unlockedItems || baseState.unlockedItems || [],
+        hasSeenRules: Boolean(hasSeenRules || baseState.hasSeenRules),
+
+        // Store & Arcade
+        storeItems: storedStoreItems || baseState.storeItems || null,
+        arcadePurchasedKeys: storedArcadeKeys || baseState.arcadePurchasedKeys || null,
+        arcadeIssuedCodes: storedArcadeCodes || baseState.arcadeIssuedCodes || null,
+
+        // UI & Shell Environment
+        theme: storedTheme || "dark",
+        appTourCompleted: storedTour || null,
+        visitedTabs: storedVisited || null,
+
+        // Complete key-value dump for flawless cross-device cloning
+        localStorageDump,
+      };
+
+      const jsonString = JSON.stringify(fullExportBundle, null, 2);
       const blob = new Blob([jsonString], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
+      const safeName = (playerName || "student").toLowerCase().replace(/[^a-z0-9]/g, "_");
       const dateStr = new Date().toISOString().split("T")[0];
       a.href = url;
-      a.download = `jee_tracker_backup_${dateStr}.json`;
+      a.download = `levelup_tracker360_full_backup_${safeName}_${dateStr}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error("Failed to export local backup:", e);
+      console.error("Failed to export complete backup:", e);
     }
-  }, []);
+  }, [
+    playerName,
+    xp,
+    level,
+    questionsSolved,
+    streakDays,
+    accuracy,
+    speedScore,
+    focusBadges,
+    xpGainedToday,
+    spentXpToday,
+    totalSpentXp,
+    hoursStudiedToday,
+    lastStudyDate,
+    appStartDate,
+    dailyTarget,
+    totalXpGoal,
+    class11EndDate,
+    isClass11SetupDone,
+    activeBoost,
+    syllabus,
+    ongoingChapters,
+    backlogPriorities,
+    backlogPlan,
+    todos,
+    loggedTasksToday,
+    pendingTasks,
+    history,
+    practiceSessions,
+    habits,
+    lifeMetrics,
+    monthlyGoals,
+    scheduleProfile,
+    notificationSettings,
+    lastBossDayDate,
+    bossDayTargetXp,
+    bossDayCompleted,
+    equippedTitle,
+    equippedAura,
+    unlockedItems,
+    hasSeenRules,
+  ]);
 
   const importLocalBackup = useCallback((jsonContent: string): { success: boolean; message: string } => {
     try {
@@ -2581,25 +2832,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, message: "Invalid backup format: root must be a valid JSON object." };
       }
 
+      const data = parsed.data && typeof parsed.data === "object" && !Array.isArray(parsed.data) ? parsed.data : parsed;
+
       // Schema validation & sanity checks against corrupted or malicious backups
-      if (parsed.xp !== undefined && (typeof parsed.xp !== "number" || isNaN(parsed.xp) || parsed.xp < 0)) {
+      if (data.xp !== undefined && (typeof data.xp !== "number" || isNaN(data.xp) || data.xp < 0)) {
         return { success: false, message: "Corrupted backup: XP must be a non-negative number." };
       }
-      if (parsed.level !== undefined && (typeof parsed.level !== "number" || isNaN(parsed.level) || parsed.level < 1)) {
+      if (data.level !== undefined && (typeof data.level !== "number" || isNaN(data.level) || data.level < 1)) {
         return { success: false, message: "Corrupted backup: Level must be a positive integer." };
       }
-      if (parsed.todos !== undefined && !Array.isArray(parsed.todos)) {
+      if (data.todos !== undefined && !Array.isArray(data.todos)) {
         return { success: false, message: "Corrupted backup: 'todos' must be an array." };
       }
-      if (parsed.history !== undefined && !Array.isArray(parsed.history)) {
+      if (data.history !== undefined && !Array.isArray(data.history)) {
         return { success: false, message: "Corrupted backup: 'history' must be an array." };
       }
-      if (parsed.syllabus !== undefined && (typeof parsed.syllabus !== "object" || Array.isArray(parsed.syllabus))) {
+      if (data.syllabus !== undefined && (typeof data.syllabus !== "object" || Array.isArray(data.syllabus))) {
         return { success: false, message: "Corrupted backup: 'syllabus' must be a valid object." };
       }
 
-      const currentLocal = latestStateRef.current;
-      const { mergedState } = reconcileState(currentLocal, parsed);
+      const currentLocal = latestStateRef.current || {};
+      const { mergedState } = reconcileState(currentLocal, data);
+
+      // Deep restore to localStorage so all components find their data immediately on this device
+      if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+        try {
+          if (mergedState.backlogPlan) {
+            localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(mergedState.backlogPlan));
+          }
+          if (mergedState.scheduleProfile) {
+            localStorage.setItem("LEVELUP_SCHEDULE_PROFILE", JSON.stringify(mergedState.scheduleProfile));
+          }
+          if (mergedState.extendedSettings || data.extendedSettings || data.app_settings_extended) {
+            localStorage.setItem("app_settings_extended", JSON.stringify(mergedState.extendedSettings || data.extendedSettings || data.app_settings_extended));
+          }
+          if (mergedState.appStartDate || data.appStartDate) {
+            localStorage.setItem("levelup_app_start_date", mergedState.appStartDate || data.appStartDate);
+          }
+          if (data.storeItems) {
+            localStorage.setItem("store_items", JSON.stringify(data.storeItems));
+          }
+          if (data.arcadePurchasedKeys) {
+            localStorage.setItem("arcade_purchased_keys", JSON.stringify(data.arcadePurchasedKeys));
+          }
+          if (data.arcadeIssuedCodes) {
+            localStorage.setItem("arcade_issued_codes", JSON.stringify(data.arcadeIssuedCodes));
+          }
+          if (data.theme) {
+            localStorage.setItem("theme", data.theme);
+            if (data.theme === "dark") document.documentElement.classList.add("dark");
+            else document.documentElement.classList.remove("dark");
+          }
+          if (data.appTourCompleted !== undefined) {
+            localStorage.setItem("app_tour_completed", typeof data.appTourCompleted === "string" ? data.appTourCompleted : JSON.stringify(data.appTourCompleted));
+          }
+          if (data.visitedTabs !== undefined) {
+            localStorage.setItem("visited_tabs", typeof data.visitedTabs === "string" ? data.visitedTabs : JSON.stringify(data.visitedTabs));
+          }
+
+          // Hydrate from localStorageDump for any extra keys
+          if (data.localStorageDump && typeof data.localStorageDump === "object") {
+            Object.entries(data.localStorageDump).forEach(([k, v]) => {
+              if (typeof v === "string" && !localStorage.getItem(k)) {
+                localStorage.setItem(k, v);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn("Error hydrating localStorage keys during backup import:", e);
+        }
+      }
 
       isRemoteSyncingRef.current = true;
       applyStateSnapshot(mergedState);
@@ -2611,13 +2913,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
       } else {
         localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+        localStorage.setItem(`${LOCAL_STORAGE_KEY}_backup`, jsonString);
       }
 
-      return { success: true, message: `Backup restored successfully (${mergedState.xp || 0} XP, ${(mergedState.todos || []).length} tasks)!` };
+      // If user is logged into Firebase, immediately push the complete cloned state to Firestore
+      if (firebaseUser?.uid) {
+        saveUserDataToCloud(firebaseUser.uid, mergedState, true).catch((e) => {
+          console.warn("Cloud push after import failed:", e);
+        });
+        lastSavedCloudJsonRef.current = jsonString;
+        hasUnsavedLocalChangesRef.current = false;
+      }
+
+      const tasksCount = (mergedState.todos || []).length;
+      const historyDays = (mergedState.history || []).length;
+      const hasPlan = Boolean(mergedState.backlogPlan);
+
+      return {
+        success: true,
+        message: `Device Synchronized! Restored ${mergedState.playerName || 'Player'}, ${mergedState.xp || 0} XP (Lvl ${mergedState.level || 1}), ${tasksCount} tasks, ${historyDays} study history days${hasPlan ? ', and full Tracker 360 roadmap' : ''}.`,
+      };
     } catch (e: any) {
-      return { success: false, message: `Failed to parse backup file: ${e?.message || String(e)}` };
+      return { success: false, message: `Failed to parse and restore backup file: ${e?.message || String(e)}` };
     }
-  }, [applyStateSnapshot]);
+  }, [applyStateSnapshot, firebaseUser]);
 
   const scheduleBacklogTask = useCallback(
     async (task: Todo): Promise<void> => {
@@ -2665,6 +2984,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       focusBadges,
       setFocusBadges,
       syllabus,
+      setSyllabus,
       activeBoost,
       appStartDate,
       setAppStartDate,

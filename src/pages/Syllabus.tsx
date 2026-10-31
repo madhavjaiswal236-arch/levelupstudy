@@ -12,6 +12,9 @@ import {
   PlayCircle,
   X,
   TrendingDown,
+  Check,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useAppContext } from "@/context/AppContext";
 import { getLocalDateString, getTaskScheduledDate } from "@/lib/utils";
@@ -30,6 +33,7 @@ const Syllabus = React.memo(function Syllabus() {
     syllabus,
     isLoaded,
     todos,
+    setTodos,
     practiceSessions,
     pendingTasks,
     backlogPriorities,
@@ -38,6 +42,8 @@ const Syllabus = React.memo(function Syllabus() {
     setOngoingChapters,
     history,
     loggedTasksToday,
+    updateChapterStats,
+    addXp,
   } = useAppContext();
   const [activeSubject, setActiveSubject] = useState<
     "Physics" | "Chemistry" | "Mathematics"
@@ -48,6 +54,7 @@ const Syllabus = React.memo(function Syllabus() {
     "All" | "Must-Do" | "Review"
   >("All");
   const [categoryFilter, setCategoryFilter] = useState<string>("All");
+  const [isPriorityFocusExpanded, setIsPriorityFocusExpanded] = useState(false);
 
   const { activeStep, setActiveStep, hasCompleted } = useTour();
 
@@ -208,17 +215,17 @@ const Syllabus = React.memo(function Syllabus() {
   };
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-4 sm:space-y-6 md:space-y-8 pb-12">
       <motion.header
         variants={itemVariants}
         initial="hidden"
         animate="show"
       >
-        <h1 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-500">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-500">
           SYLLABUS & INTEL
         </h1>
-        <p className="dark:text-red-400 text-red-700 font-mono text-sm mt-1 flex items-center gap-2">
-          <BrainCircuit className="w-4 h-4" />
+        <p className="dark:text-red-400 text-red-700 font-mono text-xs sm:text-sm mt-0.5 sm:mt-1 flex items-center gap-1.5 sm:gap-2">
+          <BrainCircuit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           CHAPTER-LEVEL INTELLIGENCE SYSTEM
         </p>
       </motion.header>
@@ -227,25 +234,67 @@ const Syllabus = React.memo(function Syllabus() {
         variants={itemVariants}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+        className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6"
       >
-        {/* AI Priority Warning */}
-        <TiltWrapper tiltAmount={4} className="lg:col-span-2">
-          <Card className="border-amber-500/50 bg-amber-500/10 shadow-md hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-            <CardContent className="p-6 flex items-start gap-4">
-              <AlertTriangle className="w-8 h-8 dark:text-amber-400 text-amber-700 shrink-0" />
-              <div>
-                <h3 className="text-lg font-bold dark:text-amber-400 text-amber-700 uppercase tracking-wider">
-                  Priority Focus Areas
-                </h3>
-                <p className="dark:text-slate-300 text-slate-600 mt-1">
+        {/* AI Priority Warning - Contracted on mobile without deleting or reducing text */}
+        <TiltWrapper tiltAmount={3} className="lg:col-span-2">
+          <Card className="border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/[0.08] backdrop-blur-md shadow-sm transition-all duration-300 rounded-xl sm:rounded-2xl overflow-hidden">
+            <CardContent className="p-3.5 sm:p-5 md:p-6 flex flex-col justify-between">
+              {/* Header row with icon, title, badge, and mobile expand/contract toggle */}
+              <div 
+                onClick={() => setIsPriorityFocusExpanded(prev => !prev)}
+                className="flex items-center justify-between gap-2 cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                  <div className="p-1 sm:p-1.5 rounded-lg bg-amber-500/20 text-amber-500 shrink-0">
+                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 dark:text-amber-400" />
+                  </div>
+                  <h3 className="text-xs sm:text-sm md:text-base font-bold dark:text-amber-400 text-amber-600 uppercase tracking-wider truncate">
+                    Priority Focus Areas
+                  </h3>
+                  {weakChapters.length > 0 && (
+                    <span className="text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                      {weakChapters.length} {weakChapters.length === 1 ? "Chapter" : "Chapters"} &lt; 50%
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsPriorityFocusExpanded(prev => !prev);
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/15 hover:bg-amber-500/25 px-2.5 py-1 rounded-lg transition-all shrink-0 active:scale-95"
+                  aria-expanded={isPriorityFocusExpanded}
+                  aria-label={isPriorityFocusExpanded ? "Contract focus details" : "Expand full focus details"}
+                >
+                  <span className="hidden xs:inline sm:inline">
+                    {isPriorityFocusExpanded ? "Contract" : "Details"}
+                  </span>
+                  {isPriorityFocusExpanded ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+
+              {/* Text content - contracted on mobile by default, expandable with 100% text preserved */}
+              <div 
+                onClick={() => setIsPriorityFocusExpanded(prev => !prev)}
+                className="mt-2 sm:mt-2.5 cursor-pointer"
+              >
+                <p className={`text-xs sm:text-sm dark:text-slate-200 text-slate-700 leading-relaxed transition-all ${
+                  isPriorityFocusExpanded ? "" : "line-clamp-2 md:line-clamp-none"
+                }`}>
                   {weakChapters.length > 0 ? (
                     <>
                       Your accuracy in{" "}
                       {weakChapters.slice(0, 2).map((c, i) => (
                         <span key={c.id || c.name || i}>
                           {i > 0 && " and "}
-                          <strong className="dark:text-white text-slate-900">{c.name}</strong>
+                          <strong className="dark:text-white text-slate-900 font-semibold">{c.name}</strong>
                         </span>
                       ))}
                       {" "}is currently below 50%. Since these are high-weightage topics, dedicating extra review time here will yield significant improvements in your overall score.
@@ -254,6 +303,16 @@ const Syllabus = React.memo(function Syllabus() {
                     "You are doing great! Keep practicing high-weightage topics to maintain your momentum."
                   )}
                 </p>
+
+                {/* Mobile tap indicator */}
+                <div className="md:hidden flex items-center gap-1 text-[10px] text-amber-600/80 dark:text-amber-400/80 font-medium mt-1">
+                  <span>{isPriorityFocusExpanded ? "Tap to contract" : "Tap to view full analysis"}</span>
+                  {isPriorityFocusExpanded ? (
+                    <ChevronUp className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -262,26 +321,26 @@ const Syllabus = React.memo(function Syllabus() {
         {/* Backlog Tracker */}
         <Card
           onClick={() => setShowBacklogs(true)}
-          className="border-orange-500/30 bg-orange-500/5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-pointer overflow-hidden lg:col-span-1"
+          className="border-orange-500/30 bg-orange-500/5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-pointer overflow-hidden lg:col-span-1 rounded-xl sm:rounded-2xl"
         >
-          <CardContent className="p-6 flex flex-col justify-center h-full">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-bold dark:text-orange-400 text-orange-600 uppercase tracking-wider flex items-center gap-2">
-                <Clock className="w-4 h-4" />
+          <CardContent className="p-3.5 sm:p-5 md:p-6 flex flex-col justify-center h-full">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <h3 className="text-xs sm:text-sm font-bold dark:text-orange-400 text-orange-600 uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Pending Backlogs
               </h3>
-              <span className="text-2xl font-black font-mono dark:text-white text-slate-900">
+              <span className="text-xl sm:text-2xl font-black font-mono dark:text-white text-slate-900">
                 {totalBacklogTasks}
               </span>
             </div>
-            <p className="text-xs dark:text-slate-400 text-slate-600 mb-4">
+            <p className="text-[11px] sm:text-xs dark:text-slate-400 text-slate-600 mb-2.5 sm:mb-4">
               Recovery Target:{" "}
               <strong className="dark:text-orange-400 text-orange-600">
                 2 tasks daily
               </strong>{" "}
               to clear before mock season.
             </p>
-            <div className="h-2 dark:bg-black bg-slate-50 rounded-full overflow-hidden mb-2">
+            <div className="h-1.5 sm:h-2 dark:bg-black bg-slate-50 rounded-full overflow-hidden mb-2">
               <div
                 className="h-full bg-orange-500 transition-all duration-1000"
                 style={{
@@ -289,8 +348,8 @@ const Syllabus = React.memo(function Syllabus() {
                 }}
               />
             </div>
-            <div className="text-center mt-2">
-              <span className="text-[10px] text-orange-500/70 font-bold uppercase tracking-widest bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20">
+            <div className="text-center mt-1 sm:mt-2">
+              <span className="text-[10px] text-orange-500/80 font-bold uppercase tracking-widest bg-orange-500/10 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full border border-orange-500/20">
                 Open Backlog HQ ⬈
               </span>
             </div>
@@ -678,6 +737,151 @@ const Syllabus = React.memo(function Syllabus() {
                         </>
                       );
                     })()}
+                  </div>
+                </div>
+
+                {/* Interactive Lecture Tracker & Mastery */}
+                <div className="pt-4 border-t dark:border-slate-800 border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-bold dark:text-slate-400 text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                      <PlayCircle className="w-4 h-4 text-cyan-500" />
+                      <span>Lecture Progress</span>
+                    </h3>
+                    <div className="flex items-center gap-1.5 text-xs font-mono text-slate-500 dark:text-slate-400">
+                      <span>Total:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentTotal = selectedChapterDetail.lectures || 8;
+                          if (currentTotal > 1) {
+                            const newTotal = currentTotal - 1;
+                            const newLast = Math.min(selectedChapterDetail.lastLectureNumber || 0, newTotal);
+                            const newMastery = Math.min(100, Math.round((newLast / newTotal) * 100));
+                            const newStatus = newMastery >= 100 ? "green" : newMastery >= 40 ? "yellow" : "red";
+                            updateChapterStats(activeSubject, selectedChapterDetail.name, {
+                              lectures: newTotal,
+                              lastLectureNumber: newLast,
+                              mastery: newMastery,
+                              status: newStatus,
+                            });
+                            setSelectedChapterDetail((prev: any) => ({
+                              ...prev,
+                              lectures: newTotal,
+                              lastLectureNumber: newLast,
+                              mastery: newMastery,
+                              status: newStatus,
+                            }));
+                          }
+                        }}
+                        className="w-5 h-5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300"
+                        title="Decrease lecture count"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold text-slate-900 dark:text-white px-1">
+                        {selectedChapterDetail.lectures || 8}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentTotal = selectedChapterDetail.lectures || 8;
+                          const newTotal = currentTotal + 1;
+                          const lastLec = selectedChapterDetail.lastLectureNumber || 0;
+                          const newMastery = Math.min(100, Math.round((lastLec / newTotal) * 100));
+                          updateChapterStats(activeSubject, selectedChapterDetail.name, {
+                            lectures: newTotal,
+                            mastery: newMastery,
+                          });
+                          setSelectedChapterDetail((prev: any) => ({
+                            ...prev,
+                            lectures: newTotal,
+                            mastery: newMastery,
+                          }));
+                        }}
+                        className="w-5 h-5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300"
+                        title="Increase lecture count"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                    Tap a lecture to toggle completion (+50 XP per lecture).
+                  </p>
+
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                    {Array.from({ length: selectedChapterDetail.lectures || 8 }, (_, i) => {
+                      const lecNum = i + 1;
+                      const isCompleted = (selectedChapterDetail.lastLectureNumber || 0) >= lecNum;
+
+                      return (
+                        <button
+                          key={lecNum}
+                          type="button"
+                          onClick={() => {
+                            const currentLast = selectedChapterDetail.lastLectureNumber || 0;
+                            const totalLecs = selectedChapterDetail.lectures || 8;
+                            const newLast = currentLast === lecNum ? lecNum - 1 : lecNum;
+                            const newMastery = Math.min(100, Math.round((newLast / totalLecs) * 100));
+                            const newStatus =
+                              newMastery >= 100
+                                ? "green"
+                                : newMastery >= 40
+                                ? "yellow"
+                                : newLast > 0
+                                ? "yellow"
+                                : "red";
+
+                            if (newLast > currentLast) {
+                              const xpAward = (newLast - currentLast) * 50;
+                              addXp(xpAward);
+                            }
+
+                            updateChapterStats(activeSubject, selectedChapterDetail.name, {
+                              lastLectureNumber: newLast,
+                              lectures: totalLecs,
+                              mastery: newMastery,
+                              status: newStatus,
+                            });
+
+                            // Sync matching todos
+                            setTodos((prevTodos) =>
+                              prevTodos.map((todo) => {
+                                if (
+                                  todo.chapter === selectedChapterDetail.name &&
+                                  (todo.type === "Lecture" || todo.backlogTaskType === "lecture") &&
+                                  todo.lectureNumber !== undefined
+                                ) {
+                                  return { ...todo, completed: todo.lectureNumber <= newLast };
+                                }
+                                return todo;
+                              })
+                            );
+
+                            setSelectedChapterDetail((prev: any) => ({
+                              ...prev,
+                              lastLectureNumber: newLast,
+                              mastery: newMastery,
+                              status: newStatus,
+                            }));
+                          }}
+                          className={`p-2 rounded-xl text-xs font-mono font-bold flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                            isCompleted
+                              ? "bg-emerald-500/15 border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 shadow-xs"
+                              : "bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1">
+                            {isCompleted && <Check className="w-3 h-3 text-emerald-500 stroke-[3]" />}
+                            <span>Lec {lecNum}</span>
+                          </div>
+                          <span className="text-[10px] font-normal opacity-75">
+                            {isCompleted ? "Done" : "+50 XP"}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

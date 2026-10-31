@@ -224,13 +224,13 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
   const { playerName } = useAppContext();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* 1. STATUS COCKPIT: ON TRACK / AHEAD / BEHIND WITH LIQUID GLASS */}
-      <div className="p-5 sm:p-6 rounded-2xl liquid-glass shadow-sm transition-all">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 pb-5 border-b border-slate-200/60 dark:border-slate-800/80">
-          <div className="flex items-start gap-4">
+      <div className="p-3.5 sm:p-6 rounded-2xl liquid-glass shadow-sm transition-all">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 sm:gap-5 pb-3.5 sm:pb-5 border-b border-slate-200/60 dark:border-slate-800/80">
+          <div className="flex items-start gap-3 sm:gap-4">
             <div
-              className={`p-3 sm:p-3.5 rounded-2xl shrink-0 transition-all ${
+              className={`p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl shrink-0 transition-all ${
                 trajectory.status === 'AHEAD'
                   ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                   : trajectory.status === 'ON_TRACK'
@@ -240,19 +240,19 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
                   : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
               }`}
             >
-              {trajectory.status === 'AHEAD' && <TrendingUp className="w-6 h-6 sm:w-7 sm:h-7" />}
-              {trajectory.status === 'ON_TRACK' && <Target className="w-6 h-6 sm:w-7 sm:h-7" />}
-              {trajectory.status === 'BEHIND' && <Clock className="w-6 h-6 sm:w-7 sm:h-7" />}
-              {trajectory.status === 'CRITICAL' && <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7" />}
+              {trajectory.status === 'AHEAD' && <TrendingUp className="w-5 h-5 sm:w-7 sm:h-7" />}
+              {trajectory.status === 'ON_TRACK' && <Target className="w-5 h-5 sm:w-7 sm:h-7" />}
+              {trajectory.status === 'BEHIND' && <Clock className="w-5 h-5 sm:w-7 sm:h-7" />}
+              {trajectory.status === 'CRITICAL' && <AlertTriangle className="w-5 h-5 sm:w-7 sm:h-7" />}
             </div>
 
             <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5">
+                <h2 className="text-base sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
                   {trajectory.statusTitle}
                 </h2>
                 <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border ${
+                  className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-mono font-bold border ${
                     trajectory.status === 'AHEAD'
                       ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
                       : trajectory.status === 'ON_TRACK'
@@ -269,28 +269,28 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
                     : 'Pace Synchronized'}
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
+              <p className="text-[11px] sm:text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-normal sm:leading-relaxed">
                 {trajectory.statusDesc}
               </p>
             </div>
           </div>
 
           {/* Quick Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start lg:self-auto">
             <button
               type="button"
               onClick={() => exportRoadmapToPdf(plan, playerName || "Student", todos)}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-black transition shadow-sm flex items-center gap-1.5 cursor-pointer"
               title="Download full day-wise roadmap with checkboxes in PDF format"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export PDF Roadmap</span>
+              <span>Export PDF</span>
             </button>
             {onOpenSimulator && (
               <button
                 type="button"
                 onClick={onOpenSimulator}
-                className="px-3.5 py-2 rounded-xl liquid-glass-pill text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl liquid-glass-pill text-slate-700 dark:text-slate-200 text-[11px] sm:text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
                 <span>Adjust Pace</span>
@@ -300,7 +300,7 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectTab('today')}
-                className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] sm:text-xs font-black transition shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
                 <span>Today's Tasks</span>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -310,7 +310,7 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
         </div>
 
         {/* 2. PROGRESS GAUGES & METRICS STRIP (LIQUID GLASS SPECULAR CARDS) */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5 pt-4 sm:pt-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5 pt-3 sm:pt-5">
           {/* Progress % */}
           <div className="p-2.5 sm:p-4 rounded-xl liquid-glass-pill flex flex-col justify-between">
             <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider font-mono">
@@ -422,18 +422,18 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
       </div>
 
       {/* 3. THE BACKLOG JOURNEY: CHAPTER-BY-CHAPTER EXECUTION PIPELINE */}
-      <div className="p-5 sm:p-6 rounded-2xl liquid-glass shadow-sm space-y-6">
+      <div className="p-3.5 sm:p-6 rounded-2xl liquid-glass shadow-sm space-y-4 sm:space-y-6">
         <div>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-amber-400/15 text-amber-600 dark:text-amber-400">
-                <BookOpen className="w-5 h-5" />
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <div className="p-1.5 sm:p-2 rounded-xl bg-amber-400/15 text-amber-600 dark:text-amber-400">
+                <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                <h3 className="text-sm sm:text-lg font-bold text-slate-900 dark:text-white">
                   Backlog Completion Journey
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
                   Priority sequence per subject (#1 ➔ #2 ➔ #3). Each chapter clears lectures, practice, revision, and test sequentially.
                 </p>
               </div>
@@ -446,11 +446,11 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
         </div>
 
         {/* Subject Columns / Accordion Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5">
           {subjectProgress.map(sub => (
             <div
               key={sub.id}
-              className="p-4 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between space-y-4"
+              className="p-3 sm:p-5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between space-y-3 sm:space-y-4"
             >
               {/* Subject Title & Progress Bar */}
               <div>

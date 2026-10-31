@@ -57,12 +57,12 @@ export const DEFAULT_SUBJECTS: BacklogSubject[] = [
         name: "Newton's Laws of Motion",
         subject: 'Physics',
         order: 1,
-        selectedLectures: [1, 2, 3, 4, 5],
-        lecturesRemaining: 5,
+        selectedLectures: [],
+        lecturesRemaining: 0,
         lectureDurationMinutes: 120, // 2 Hours default
         totalLecturesInChapter: 15,
         practice: {
-          enabled: true,
+          enabled: false,
           questionCount: 45,
           estimatedMinutesPerQuestion: 2.5
         }
@@ -72,12 +72,12 @@ export const DEFAULT_SUBJECTS: BacklogSubject[] = [
         name: 'Work, Power & Energy',
         subject: 'Physics',
         order: 2,
-        selectedLectures: [1, 2, 3, 4],
-        lecturesRemaining: 4,
+        selectedLectures: [],
+        lecturesRemaining: 0,
         lectureDurationMinutes: 120, // 2 Hours default
         totalLecturesInChapter: 12,
         practice: {
-          enabled: true,
+          enabled: false,
           questionCount: 40,
           estimatedMinutesPerQuestion: 2.5
         }
@@ -94,12 +94,12 @@ export const DEFAULT_SUBJECTS: BacklogSubject[] = [
         name: 'Structure of Atom',
         subject: 'Chemistry',
         order: 1,
-        selectedLectures: [1, 2, 3, 4],
-        lecturesRemaining: 4,
+        selectedLectures: [],
+        lecturesRemaining: 0,
         lectureDurationMinutes: 120, // 2 Hours default
         totalLecturesInChapter: 14,
         practice: {
-          enabled: true,
+          enabled: false,
           questionCount: 40,
           estimatedMinutesPerQuestion: 2
         }
@@ -109,12 +109,12 @@ export const DEFAULT_SUBJECTS: BacklogSubject[] = [
         name: 'Chemical Bonding and Molecular Structure',
         subject: 'Chemistry',
         order: 2,
-        selectedLectures: [1, 2, 3, 4, 5],
-        lecturesRemaining: 5,
+        selectedLectures: [],
+        lecturesRemaining: 0,
         lectureDurationMinutes: 120, // 2 Hours default
         totalLecturesInChapter: 16,
         practice: {
-          enabled: true,
+          enabled: false,
           questionCount: 50,
           estimatedMinutesPerQuestion: 2
         }
@@ -131,12 +131,12 @@ export const DEFAULT_SUBJECTS: BacklogSubject[] = [
         name: 'Quadratic Equations',
         subject: 'Mathematics',
         order: 1,
-        selectedLectures: [1, 2, 3, 4],
-        lecturesRemaining: 4,
+        selectedLectures: [],
+        lecturesRemaining: 0,
         lectureDurationMinutes: 120, // 2 Hours default
         totalLecturesInChapter: 12,
         practice: {
-          enabled: true,
+          enabled: false,
           questionCount: 45,
           estimatedMinutesPerQuestion: 3
         }
@@ -146,12 +146,12 @@ export const DEFAULT_SUBJECTS: BacklogSubject[] = [
         name: 'Sequences and Series',
         subject: 'Mathematics',
         order: 2,
-        selectedLectures: [1, 2, 3, 4, 5],
-        lecturesRemaining: 5,
+        selectedLectures: [],
+        lecturesRemaining: 0,
         lectureDurationMinutes: 120, // 2 Hours default
         totalLecturesInChapter: 15,
         practice: {
-          enabled: true,
+          enabled: false,
           questionCount: 40,
           estimatedMinutesPerQuestion: 3
         }

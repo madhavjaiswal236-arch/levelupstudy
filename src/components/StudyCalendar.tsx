@@ -1325,9 +1325,12 @@ export function StudyCalendar({
                 style={{
                   left: `${colIndex * (100 / visibleDays.length)}%`,
                   width: `${100 / visibleDays.length}%`,
+                  touchAction: "pan-y",
                 }}
                 onPointerDown={(e) => {
                   if (e.button !== 0) return; // Only left click
+                  const isTouch = e.pointerType === "touch";
+                  const pointerStartTime = Date.now();
                   const startClientX = e.clientX;
                   const startClientY = e.clientY;
                   let isDragActive = false;
@@ -1381,29 +1384,44 @@ export function StudyCalendar({
                   ) => {
                     const deltaX = Math.abs(moveEvent.clientX - startClientX);
                     const deltaY = Math.abs(moveEvent.clientY - startClientY);
+                    const elapsed = Date.now() - pointerStartTime;
 
                     if (!isDragActive) {
-                      if (deltaY > 6 || deltaX > 6) {
-                        isDragActive = true;
-                        hasMovedRef.current = true;
-                        try {
-                          if (target.setPointerCapture) {
-                            target.setPointerCapture(e.pointerId);
-                          }
-                        } catch (err) {
-                          console.debug("Pointer capture not supported or failed", err);
-                        }
-                        document.body.classList.add("is-dragging");
-
-                        if (visualSelectionRef.current) {
-                          visualSelectionRef.current.style.display = "block";
-                          visualSelectionRef.current.style.left = `calc(${colIndex * (100 / visibleDays.length)}% + 4px)`;
-                          visualSelectionRef.current.style.width = `calc(${100 / visibleDays.length}% - 8px)`;
-                          visualSelectionRef.current.style.top = `${startHour * 80}px`;
-                          visualSelectionRef.current.style.height = `${40}px`;
+                      // On touch devices, swipe gestures must be allowed to scroll naturally without creating tasks!
+                      if (isTouch) {
+                        // Only activate drag-create if user did a deliberate long-press (>350ms) before dragging, or significant horizontal drag
+                        if ((deltaY > 28 && elapsed > 350) || deltaX > 32) {
+                          isDragActive = true;
+                          hasMovedRef.current = true;
+                          document.body.classList.add("is-dragging");
+                        } else {
+                          // Normal touch scroll - ignore drag selection
+                          return;
                         }
                       } else {
-                        return;
+                        // Desktop mouse interaction
+                        if (deltaY > 8 || deltaX > 8) {
+                          isDragActive = true;
+                          hasMovedRef.current = true;
+                          try {
+                            if (target.setPointerCapture) {
+                              target.setPointerCapture(e.pointerId);
+                            }
+                          } catch (err) {
+                            console.debug("Pointer capture not supported or failed", err);
+                          }
+                          document.body.classList.add("is-dragging");
+                        } else {
+                          return;
+                        }
+                      }
+
+                      if (visualSelectionRef.current) {
+                        visualSelectionRef.current.style.display = "block";
+                        visualSelectionRef.current.style.left = `calc(${colIndex * (100 / visibleDays.length)}% + 4px)`;
+                        visualSelectionRef.current.style.width = `calc(${100 / visibleDays.length}% - 8px)`;
+                        visualSelectionRef.current.style.top = `${startHour * 80}px`;
+                        visualSelectionRef.current.style.height = `${40}px`;
                       }
                     }
 

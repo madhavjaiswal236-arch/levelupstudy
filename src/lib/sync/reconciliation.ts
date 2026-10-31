@@ -66,6 +66,7 @@ export function mergeTaskArrays(
       const baseTask = localIsNewer ? { ...cloud, ...local } : { ...local, ...cloud };
       mergedMap.set(id, {
         ...baseTask,
+        updatedAt: Math.max((local as any).updatedAt || 0, (cloud as any).updatedAt || 0, localUpdated, cloudUpdated) || Date.now(),
         // Completion reversibility based on newest mutation timestamp
         completed: (localUpdated > 0 || cloudUpdated > 0)
           ? (localIsNewer ? Boolean(local.completed) : Boolean(cloud.completed))
@@ -407,10 +408,9 @@ export function reconcileState(
 
   const xp = Math.max(localState.xp || 0, cloudState.xp || 0);
   const level = Math.max(localState.level || 1, cloudState.level || 1);
-  const questionsSolved = Math.max(
-    localState.questionsSolved || 0,
-    cloudState.questionsSolved || 0
-  );
+  const questionsSolved = localIsNewer
+    ? (localState.questionsSolved ?? cloudState.questionsSolved ?? 0)
+    : (cloudState.questionsSolved ?? localState.questionsSolved ?? 0);
   // Streak integrity: use the streak from the state with the most recent study activity / timestamp
   const streakDays = localIsNewer
     ? (localState.streakDays ?? cloudState.streakDays ?? 0)
@@ -461,12 +461,6 @@ export function reconcileState(
 
   const mergedTs = Math.max(localTs, cloudTs, Date.now());
 
-  // Non-destructive base state
-  const baseState = {
-    ...cloudState,
-    ...localState,
-  };
-
   // Retain cloud strings/objects if local has empty defaults
   const playerName = (localState.playerName && localState.playerName !== "Player 1")
     ? localState.playerName
@@ -474,9 +468,41 @@ export function reconcileState(
 
   const appStartDate = localState.appStartDate || cloudState.appStartDate || null;
 
+  // Backlog plan: preserve whichever side has active enrolled chapters/roadmap
+  let backlogPlan = null;
+  const localHasPlan = localState.backlogPlan && (localState.backlogPlan.subjects || []).length > 0;
+  const cloudHasPlan = cloudState.backlogPlan && (cloudState.backlogPlan.subjects || []).length > 0;
+  if (localHasPlan && cloudHasPlan) {
+    backlogPlan = localIsNewer ? localState.backlogPlan : cloudState.backlogPlan;
+  } else {
+    backlogPlan = localState.backlogPlan || cloudState.backlogPlan || null;
+  }
+
+  // Schedule profile
+  const scheduleProfile = localState.scheduleProfile || cloudState.scheduleProfile || null;
+
+  // Extended settings (pomo, rollover, deepwork)
+  const extendedSettings = {
+    ...(cloudState.extendedSettings || cloudState.app_settings_extended || {}),
+    ...(localState.extendedSettings || localState.app_settings_extended || {}),
+  };
+
   const mergedState = {
     ...cloudState,
     ...localState,
+    // Explicitly enforce merged collections (do not let empty arrays override non-empty ones)
+    todos,
+    loggedTasksToday,
+    pendingTasks,
+    history,
+    practiceSessions,
+    syllabus,
+    habits,
+    monthlyGoals,
+    lifeMetrics,
+    backlogPlan,
+    scheduleProfile,
+    extendedSettings,
     appStartDate,
     xp,
     level,
@@ -490,6 +516,32 @@ export function reconcileState(
     spentXpToday,
     lastStudyDate,
     playerName,
+    totalXpGoal: localState.totalXpGoal || cloudState.totalXpGoal || 800000,
+    dailyTarget: localState.dailyTarget || cloudState.dailyTarget || 100,
+    class11EndDate: localState.class11EndDate || cloudState.class11EndDate || null,
+    isClass11SetupDone: Boolean(localState.isClass11SetupDone || cloudState.isClass11SetupDone),
+    backlogPriorities: {
+      ...(cloudState.backlogPriorities || {}),
+      ...(localState.backlogPriorities || {})
+    },
+    ongoingChapters: {
+      ...(cloudState.ongoingChapters || {}),
+      ...(localState.ongoingChapters || {})
+    },
+    unlockedItems: Array.from(new Set([
+      ...(cloudState.unlockedItems || []),
+      ...(localState.unlockedItems || [])
+    ])),
+    equippedTitle: localState.equippedTitle || cloudState.equippedTitle || "",
+    equippedAura: localState.equippedAura || cloudState.equippedAura || "",
+    notificationSettings: localState.notificationSettings || cloudState.notificationSettings || null,
+    storeItems: localState.storeItems || cloudState.storeItems || null,
+    arcadePurchasedKeys: localState.arcadePurchasedKeys || cloudState.arcadePurchasedKeys || null,
+    arcadeIssuedCodes: localState.arcadeIssuedCodes || cloudState.arcadeIssuedCodes || null,
+    localStorageDump: {
+      ...(cloudState.localStorageDump || {}),
+      ...(localState.localStorageDump || {})
+    },
     lastSyncTimestamp: mergedTs,
   };
 

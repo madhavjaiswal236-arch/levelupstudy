@@ -3,6 +3,8 @@ import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAut
 import { 
   getFirestore, 
   initializeFirestore, 
+  persistentLocalCache,
+  persistentMultipleTabManager,
   memoryLocalCache, 
   memoryLruGarbageCollector,
   setLogLevel,
@@ -41,7 +43,7 @@ export const firestoreDatabaseId: string =
 const app = getApps().length > 0 ? getApp() : initializeApp(mergedFirebaseConfig);
 export const auth = getAuth(app);
 
-// Suppress internal lease warnings and configure robust in-memory caching to eliminate multi-tab lease contentions
+// Suppress internal lease warnings
 if (typeof window !== 'undefined') {
   try {
     setLogLevel('error');
@@ -51,13 +53,22 @@ if (typeof window !== 'undefined') {
 let dbInstance;
 if (typeof window !== 'undefined') {
   try {
+    // Attempt multi-tab persistent cache first for full offline capability
     dbInstance = initializeFirestore(app, {
-      localCache: memoryLocalCache({
-        garbageCollector: memoryLruGarbageCollector(),
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
       }),
     }, firestoreDatabaseId);
   } catch (e) {
-    dbInstance = getFirestore(app, firestoreDatabaseId);
+    try {
+      dbInstance = initializeFirestore(app, {
+        localCache: memoryLocalCache({
+          garbageCollector: memoryLruGarbageCollector(),
+        }),
+      }, firestoreDatabaseId);
+    } catch (e2) {
+      dbInstance = getFirestore(app, firestoreDatabaseId);
+    }
   }
 } else {
   dbInstance = getFirestore(app, firestoreDatabaseId);
