@@ -2625,14 +2625,27 @@ function AppContent() {
           </AnimatePresence>
         </div>
 
-        {/* Footer */}
-        <footer className="mt-12 py-6 text-center border-t dark:border-white/5 border-black/5">
-          <p className="dark:text-slate-400 text-slate-600 font-medium text-sm tracking-wide">
-            Made with{" "}
-            <span className="dark:text-red-400 text-red-700 animate-pulse inline-block">
-              ❤️
-            </span>{" "}
-            by Madhav
+        {/* Footer with Compliance Links */}
+        <footer className="mt-12 py-6 text-center border-t dark:border-white/5 border-black/5 space-y-2">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs font-medium dark:text-slate-400 text-slate-600">
+            <a href="/home.html" className="hover:text-cyan-500 transition-colors">
+              About &amp; Google Data Usage
+            </a>
+            <span className="opacity-40">•</span>
+            <a href="/privacy.html" className="hover:text-cyan-500 transition-colors">
+              Privacy Policy
+            </a>
+            <span className="opacity-40">•</span>
+            <a href="/terms.html" className="hover:text-cyan-500 transition-colors">
+              Terms of Service
+            </a>
+            <span className="opacity-40">•</span>
+            <a href="mailto:madhavjaiswal236@gmail.com" className="hover:text-cyan-500 transition-colors">
+              Contact
+            </a>
+          </div>
+          <p className="dark:text-slate-500 text-slate-400 text-xs tracking-wide">
+            LevelUp Study (Tracker 360) • Hosted on verified domain <span className="font-mono">levelupstudy.vercel.app</span>
           </p>
         </footer>
       </main>

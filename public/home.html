@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LevelUp Study - High-Performance Study & Backlog Intelligence Ecosystem</title>
+  <meta name="description" content="LevelUp Study is a gamified, adaptive academic productivity and JEE backlog recovery ecosystem featuring Tracker 360, syllabus mastery analytics, and Google Calendar integration.">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --cyan: #06b6d4;
+      --cyan-glow: rgba(6, 182, 212, 0.2);
+      --amber: #f59e0b;
+      --purple: #a855f7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 0;
+    }
+    header {
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .nav-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .brand img {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+    }
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #38bdf8, #06b6d4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-link:hover {
+      color: var(--cyan);
+    }
+    .cta-btn {
+      background: linear-gradient(135deg, #0284c7, #06b6d4);
+      color: #ffffff;
+      padding: 8px 18px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 14px var(--cyan-glow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .cta-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4);
+    }
+    .hero {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 72px 24px 48px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      border-radius: 9999px;
+      color: var(--cyan);
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 3rem;
+      line-height: 1.15;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero h1 span {
+      background: linear-gradient(135deg, #38bdf8, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 760px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .section {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+    .section-title {
+      font-size: 1.85rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .section-subtitle {
+      color: var(--text-muted);
+      text-align: center;
+      max-width: 680px;
+      margin: 0 auto 40px;
+      font-size: 1rem;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 28px;
+      backdrop-filter: blur(12px);
+    }
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 1.4rem;
+    }
+    .feature-card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+    .feature-card p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .transparency-box {
+      background: rgba(14, 165, 233, 0.06);
+      border: 1px solid rgba(14, 165, 233, 0.25);
+      border-radius: 20px;
+      padding: 40px;
+      margin-top: 24px;
+    }
+    .transparency-box h2 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+      color: #38bdf8;
+    }
+    .transparency-box p {
+      font-size: 1rem;
+      color: #cbd5e1;
+      margin-bottom: 20px;
+      line-height: 1.7;
+    }
+    .scope-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (min-width: 768px) {
+      .scope-list {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    .scope-card {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .scope-card h4 {
+      font-size: 1rem;
+      color: #22d3ee;
+      margin-bottom: 8px;
+      font-family: monospace;
+    }
+    .scope-card p {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.5;
+    }
+    .compliance-notice {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 10px;
+      padding: 16px 20px;
+      color: #a7f3d0;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    footer {
+      border-top: 1px solid var(--card-border);
+      background: rgba(9, 13, 22, 0.95);
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover {
+      color: var(--cyan);
+    }
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2.2rem; }
+      .hero p { font-size: 1rem; }
+      .transparency-box { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <header>
+    <div class="nav-container">
+      <a href="/home.html" class="brand">
+        <img src="/favicon.svg" alt="LevelUp Study Logo">
+        <span class="brand-title">LevelUp Study</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#transparency" class="nav-link">Google Data Usage</a>
+        <a href="/privacy.html" class="nav-link">Privacy Policy</a>
+        <a href="/terms.html" class="nav-link">Terms</a>
+        <a href="/" class="cta-btn">Launch App</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main>
+    <section class="hero">
+      <div class="badge">
+        <span>⚡</span> Official Study Intelligence Platform
+      </div>
+      <h1>Master Your Syllabus with <span>Tracker 360</span></h1>
+      <p>
+        LevelUp Study is a gamified productivity ecosystem designed for high-performance students. 
+        Track chapter mastery, eliminate academic backlogs with automated recovery roadmaps, and sync your study schedules effortlessly.
+      </p>
+      <div class="hero-actions">
+        <a href="/" class="cta-btn" style="padding: 12px 28px; font-size: 1rem;">Open LevelUp Study App &rarr;</a>
+        <a href="/privacy.html" class="nav-link" style="padding: 12px 20px; border: 1px solid var(--card-border); border-radius: 10px;">Read Privacy Policy</a>
+      </div>
+    </section>
+
+    <!-- Core App Functionality (Fulfills Google Requirement 2) -->
+    <section id="features" class="section">
+      <h2 class="section-title">Core Application Features</h2>
+      <p class="section-subtitle">
+        Everything competitive exam students need to stay on track, analyze chapter accuracy, and maintain a 100% study streak.
+      </p>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;">📊</div>
+          <h3>Tracker 360 Adaptive Roadmaps</h3>
+          <p>
+            Generates day-wise backlog recovery schedules with target exam dates, lecture-by-lecture tracking, and printable PDF roadmaps with checkboxes.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">🎯</div>
+          <h3>Syllabus Command & Heatmaps</h3>
+          <p>
+            Detailed chapter-level intelligence across Physics, Chemistry, and Mathematics with accuracy metrics, weightage tiers, and weak-area alerts.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">📅</div>
+          <h3>Google Calendar & Tasks Sync</h3>
+          <p>
+            One-click synchronization that creates study blocks with 15-minute breaks on your personal Google Calendar and syncs daily todos to Google Tasks.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">⚔️</div>
+          <h3>Gamified Progression (XP & Streaks)</h3>
+          <p>
+            Earn experience points by solving questions and completing lectures. Unlock avatar ranks and maintain a non-reverting daily consistency streak.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">⏱️</div>
+          <h3>Deep Focus & Session Logging</h3>
+          <p>
+            Built-in Pomodoro timers and JEE practice test session loggers that record speed, accuracy, and error counts across exam chapters.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">🔄</div>
+          <h3>Cross-Device Cloud Sync</h3>
+          <p>
+            Seamless real-time synchronization between your desktop browser and Android phone powered by Cloud Firestore and Google Authentication.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Google Data Usage Transparency (Fulfills Google Requirement 3 & Sensitive Scope Justification) -->
+    <section id="transparency" class="section">
+      <div class="transparency-box">
+        <h2>Transparent Google User Data Disclosure</h2>
+        <p>
+          LevelUp Study respects your privacy. We only request permissions necessary to provide study scheduling features. 
+          Below is a complete and transparent explanation of each Google OAuth permission we use:
+        </p>
+
+        <div class="scope-list">
+          <div class="scope-card">
+            <h4>Google Calendar (auth/calendar)</h4>
+            <p>
+              <strong>Purpose:</strong> Used solely to push scheduled study slots, revision blocks, and exam milestones into your Google Calendar with automated 15-minute rest breaks. We do not read, delete, or modify any unrelated events on your calendar.
+            </p>
+          </div>
+
+          <div class="scope-card">
+            <h4>Google Tasks (auth/tasks)</h4>
+            <p>
+              <strong>Purpose:</strong> Used to export your daily chapter goals, practice quotas, and backlog action items into Google Tasks so you can check them off from any device.
+            </p>
+          </div>
+
+          <div class="scope-card">
+            <h4>Google Account Profile & Email</h4>
+            <p>
+              <strong>Purpose:</strong> Used to securely sign you in and bind your personal study stats, streaks, and syllabus mastery to your account across web and mobile sessions.
+            </p>
+          </div>
+
+          <div class="scope-card">
+            <h4>Cloud Firestore Storage</h4>
+            <p>
+              <strong>Purpose:</strong> Stores your private syllabus completion records and XP logs protected by zero-trust security rules. Data is strictly isolated to your own User ID.
+            </p>
+          </div>
+        </div>
+
+        <div class="compliance-notice">
+          <strong>Google Limited Use Policy Compliance:</strong><br>
+          LevelUp Study's use and transfer of information received from Google APIs adheres strictly to the 
+          <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style="color: #a7f3d0; text-decoration: underline;">Google API Services User Data Policy</a>, 
+          including the <em>Limited Use</em> requirements. We never sell user data, share data with third parties, or use your data for advertising or AI model training.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer with Links to Privacy Policy & Terms (Fulfills Google Requirement 5) -->
+  <footer>
+    <div class="footer-links">
+      <a href="/home.html">Home</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Service</a>
+      <a href="/">Launch App</a>
+      <a href="mailto:madhavjaiswal236@gmail.com">Contact Developer</a>
+    </div>
+    <p>&copy; 2026 LevelUp Study (Tracker 360). All rights reserved.</p>
+    <p style="font-size: 0.8rem; margin-top: 8px; color: #64748b;">
+      Developer: Madhav Jaiswal &bull; Contact: madhavjaiswal236@gmail.com &bull; Hosted on verified domain levelupstudy.vercel.app
+    </p>
+  </footer>
+
+</body>
+</html>
