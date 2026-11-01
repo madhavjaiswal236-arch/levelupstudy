@@ -3,8 +3,6 @@ import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAut
 import { 
   getFirestore, 
   initializeFirestore, 
-  persistentLocalCache,
-  persistentMultipleTabManager,
   memoryLocalCache, 
   memoryLruGarbageCollector,
   setLogLevel,
@@ -53,22 +51,14 @@ if (typeof window !== 'undefined') {
 let dbInstance;
 if (typeof window !== 'undefined') {
   try {
-    // Attempt multi-tab persistent cache first for full offline capability
+    // Robust in-memory caching to eliminate multi-tab lease contentions and IndexedDB batchId desyncs
     dbInstance = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
+      localCache: memoryLocalCache({
+        garbageCollector: memoryLruGarbageCollector(),
       }),
     }, firestoreDatabaseId);
   } catch (e) {
-    try {
-      dbInstance = initializeFirestore(app, {
-        localCache: memoryLocalCache({
-          garbageCollector: memoryLruGarbageCollector(),
-        }),
-      }, firestoreDatabaseId);
-    } catch (e2) {
-      dbInstance = getFirestore(app, firestoreDatabaseId);
-    }
+    dbInstance = getFirestore(app, firestoreDatabaseId);
   }
 } else {
   dbInstance = getFirestore(app, firestoreDatabaseId);
@@ -240,10 +230,12 @@ const processSaveQueue = async (userId: string): Promise<boolean> => {
           err?.message?.includes('exhausted') ||
           err?.message?.includes('offline') ||
           err?.message?.includes('backend') ||
-          err?.message?.includes('Could not reach');
+          err?.message?.includes('Could not reach') ||
+          err?.message?.includes('INTERNAL ASSERTION FAILED') ||
+          err?.message?.includes('Unexpected state');
 
         if (isOfflineOrThrottled) {
-          console.warn(`[Firestore Queue] Throttling active (attempt ${failureCount}). Backing off:`, err?.message || err);
+          console.warn(`[Firestore Queue] Network/SDK transient state (attempt ${failureCount}). Backing off:`, err?.message || err);
         } else {
           handleFirestoreError(err, OperationType.WRITE, path);
         }
