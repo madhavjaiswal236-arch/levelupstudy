@@ -57,7 +57,8 @@ import { getLocalDateString } from '@/lib/utils';
 import {
   createCalendarEvent,
   rescheduleCalendarEvents,
-  fetchGoogleCalendarEvents
+  fetchGoogleCalendarEvents,
+  batchDeleteCalendarEvents,
 } from '@/lib/calendar';
 import {
   getAccessTokenSync,
@@ -316,10 +317,43 @@ export default function BacklogHQ() {
     const newTodos = generateTodosFromRoadmap(roadmap, newPlan.id);
     setBacklogPlan(newPlan);
 
+    const planStartDate = roadmap[0]?.date || newSettings.startDate || getLocalDateString();
+    const planEndDate = roadmap[roadmap.length - 1]?.date || planStartDate;
+
+    // Collect all previous tasks scheduled between planStartDate and planEndDate
+    // or any old backlog tasks so the new plan gets a 100% clean schedule
+    const tasksToClear = todos.filter((t) => {
+      if (t.isDeleted) return false;
+      if (t.isBacklogTask) return true;
+      const taskDate = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : null);
+      if (taskDate && taskDate >= planStartDate && taskDate <= planEndDate) {
+        return true;
+      }
+      return false;
+    });
+
+    const calendarEventIdsToDelete = tasksToClear
+      .filter((t) => t.calendarEventId && !t.calendarEventId.startsWith("local-"))
+      .map((t) => t.calendarEventId!);
+
+    if (calendarEventIdsToDelete.length > 0) {
+      batchDeleteCalendarEvents(calendarEventIdsToDelete).catch((err) =>
+        console.warn("Background calendar cleanup failed:", err),
+      );
+    }
+
     let updatedTodos: typeof todos = [];
-    setTodos(prev => {
-      const nonBacklog = prev.filter(t => !t.isBacklogTask);
-      updatedTodos = [...nonBacklog, ...newTodos];
+    setTodos((prev) => {
+      // Remove all tasks in the new plan's date window so old tasks never collide with the new roadmap
+      const preserved = prev.filter((t) => {
+        if (t.isBacklogTask) return false;
+        const taskDate = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : null);
+        if (taskDate && taskDate >= planStartDate && taskDate <= planEndDate) {
+          return false;
+        }
+        return true;
+      });
+      updatedTodos = [...preserved, ...newTodos];
       return updatedTodos;
     });
 
@@ -399,6 +433,15 @@ export default function BacklogHQ() {
 
   const handleDeletePlan = () => {
     if (window.confirm("Are you sure you want to reset and delete your Backlog Plan? This will remove all scheduled backlog tasks from your daily study plan.")) {
+      // Clean up remote Google Calendar events so no orphaned events linger
+      const oldCalendarEventIds = todos
+        .filter(t => t.isBacklogTask && t.calendarEventId && !t.calendarEventId.startsWith("local-"))
+        .map(t => t.calendarEventId);
+
+      if (oldCalendarEventIds.length > 0) {
+        batchDeleteCalendarEvents(oldCalendarEventIds).catch(err => console.warn("Background calendar cleanup failed:", err));
+      }
+
       setBacklogPlan(null);
       let updatedTodos: typeof todos = [];
       const now = Date.now();

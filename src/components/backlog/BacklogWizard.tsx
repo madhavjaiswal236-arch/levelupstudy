@@ -39,6 +39,7 @@ import { ChapterLectureModal } from './ChapterLectureModal';
 import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
 import { getLocalDateString } from '@/lib/utils';
 import { formatTime12h } from '@/lib/studyBlock';
+import { batchDeleteCalendarEvents } from '@/lib/calendar';
 
 interface BacklogWizardProps {
   onComplete: () => void;
@@ -161,7 +162,7 @@ export const DEFAULT_SUBJECTS: BacklogSubject[] = [
 ];
 
 export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCancel, initialPlan }) => {
-  const { setBacklogPlan, setTodos, saveStateToCloudNow, scheduleProfile, setScheduleProfile } = useAppContext();
+  const { todos, setBacklogPlan, setTodos, saveStateToCloudNow, scheduleProfile, setScheduleProfile } = useAppContext();
 
   // Wizard Steps: 1. Setup Chapters & Lectures -> 2. Review Backlog -> 3. Capacity & Rotation -> 4. Roadmap & Commit
   const [step, setStep] = useState<number>(1);
@@ -488,6 +489,31 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
     // Save to context
     setBacklogPlan(newPlan);
 
+    const planStartDate = roadmap[0]?.date || currentSettings.startDate || getLocalDateString();
+    const planEndDate = roadmap[roadmap.length - 1]?.date || planStartDate;
+
+    // Collect all previous uncompleted tasks scheduled in the plan window [planStartDate, planEndDate]
+    // or previous backlog tasks so they do not collide with the new roadmap
+    const tasksToClear = (todos || []).filter((t) => {
+      if (t.isDeleted || t.completed) return false;
+      if (t.isBacklogTask) return true;
+      const taskDate = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : null);
+      if (taskDate && taskDate >= planStartDate && taskDate <= planEndDate) {
+        return true;
+      }
+      return false;
+    });
+
+    const calendarEventIdsToDelete = tasksToClear
+      .filter((t) => t.calendarEventId && !t.calendarEventId.startsWith("local-"))
+      .map((t) => t.calendarEventId!);
+
+    if (calendarEventIdsToDelete.length > 0) {
+      batchDeleteCalendarEvents(calendarEventIdsToDelete).catch((err) =>
+        console.warn("Background calendar cleanup failed:", err),
+      );
+    }
+
     // Save directly to dedicated fallback key in localStorage
     if (typeof window !== "undefined") {
       try {
@@ -497,10 +523,17 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
       }
     }
 
-    // Replace previous backlog tasks with new ones while preserving all completed work & preventing duplicates
+    // Replace previous tasks in the plan window with new ones while preserving completed work outside the window
     let updatedTodos: any[] = [];
     setTodos(prev => {
-      const nonBacklog = prev.filter(t => !t.isBacklogTask);
+      const preservedNonBacklog = prev.filter(t => {
+        if (t.isBacklogTask) return false;
+        const taskDate = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : null);
+        if (taskDate && taskDate >= planStartDate && taskDate <= planEndDate) {
+          return false;
+        }
+        return true;
+      });
       const completedBacklog = prev.filter(t => t.isBacklogTask && t.completed);
 
       // Filter out new tasks that were already completed using canonical signature generator
@@ -514,7 +547,7 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
         return !sigs.some(s => completedSignatures.has(s));
       });
 
-      updatedTodos = [...nonBacklog, ...completedBacklog, ...deduplicatedNew];
+      updatedTodos = [...preservedNonBacklog, ...completedBacklog, ...deduplicatedNew];
       return updatedTodos;
     });
 

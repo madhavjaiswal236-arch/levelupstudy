@@ -25,6 +25,7 @@ import { reconstructPlanFromTodos } from "@/lib/backlog/engine";
 import { getLevelFromXp, getLocalDateString, isCurrentDayTask, getLogicalDate, setCachedRolloverTime } from "@/lib/utils";
 export { getLogicalDate, setCachedRolloverTime };
 import { sanitizeAndHealTodos } from "@/lib/studyBlock";
+import { deleteCalendarEvent, deleteGoogleTask } from "@/lib/calendar";
 import { StudentScheduleProfile, DEFAULT_SCHEDULE_PROFILE } from "@/lib/coach/student-model/profile";
 export type { StudentScheduleProfile };
 import { Preferences } from "@capacitor/preferences";
@@ -1752,7 +1753,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     );
 
-    if (updates.completed !== undefined) {
+    if (updates.isDeleted === true) {
+      const targetTask = latestStateRef.current.todos.find((t) => String(t.id) === String(id));
+      if (targetTask?.calendarEventId && !targetTask.calendarEventId.startsWith("local-")) {
+        deleteCalendarEvent(targetTask.calendarEventId).catch((err) =>
+          console.warn("Failed to delete Google Calendar event on task deletion:", err),
+        );
+      }
+      if (targetTask?.calendarTaskId) {
+        deleteGoogleTask(targetTask.calendarTaskId).catch((err) =>
+          console.warn("Failed to delete Google Task on task deletion:", err),
+        );
+      }
+    }
+
+    if (updates.completed !== undefined || updates.isDeleted !== undefined) {
       queueMicrotask(() => {
         saveStateToCloudNow({ todos: updatedTodosList });
       });

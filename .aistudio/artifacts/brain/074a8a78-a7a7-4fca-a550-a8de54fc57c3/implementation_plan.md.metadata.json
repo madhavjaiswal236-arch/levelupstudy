@@ -1,6 +1,6 @@
 {
-  "summary": "Comprehensive implementation plan addressing newly introduced defects (backup restoration partial data loss, unvalidated logSession parameters, React hook order violation in lunar-gravity-card, task reconciliation metadata overwrite) and unresolved audit issues (Android Firebase project alignment, vitest dependency installation, dead 3D asset pruning for 502kB savings, and back-button/timer re-render optimizations).",
-  "updatedAt": "2026-10-15T04:41:27.821382840Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Implementation plan to fix Google Calendar stale event resurrection, implement automatic cleanup of old study plan events, hide non-study calendar clutter, and align with security audit findings.",
+  "updatedAt":  "2026-11-02T01:05:41.849347284Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

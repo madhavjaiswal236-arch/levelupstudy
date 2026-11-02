@@ -240,26 +240,47 @@ export async function markCalendarEventCompleted(eventId: string, isCompleted: b
  }
 }
 
-export async function deleteCalendarEvent(eventId: string) {
- if (!eventId) return false;
- let token = await getAccessToken();
- if (!token) return false;
+export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
+  if (!eventId || eventId.startsWith('local-')) return false;
+  let token = await getAccessToken();
+  if (!token) return false;
 
- try {
- const res = await fetchGoogleApi(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, 'DELETE');
+  try {
+    const res = await fetchGoogleApi(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, 'DELETE');
 
- if (!res.ok && res.status !== 410) { // 410 Gone is fine, it means already deleted
- if (res.status === 401) {
- await invalidateOAuthToken();
- }
- return false;
- }
- 
- return true;
- } catch (err) {
- console.error('Failed to delete Calendar event:', err);
- return false;
- }
+    if (!res.ok && res.status !== 410 && res.status !== 404) {
+      if (res.status === 401) {
+        await invalidateOAuthToken();
+      }
+      return false;
+    }
+    
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete Calendar event:', eventId, err);
+    return false;
+  }
+}
+
+export async function batchDeleteCalendarEvents(eventIds: (string | undefined | null)[]): Promise<number> {
+  const validIds = Array.from(new Set(eventIds.filter((id): id is string => Boolean(id && !id.startsWith('local-')))));
+  if (validIds.length === 0) return 0;
+
+  let token = await getAccessToken();
+  if (!token) return 0;
+
+  let deletedCount = 0;
+  const concurrency = 4;
+  for (let i = 0; i < validIds.length; i += concurrency) {
+    const chunk = validIds.slice(i, i + concurrency);
+    const results = await Promise.allSettled(chunk.map((id) => deleteCalendarEvent(id)));
+    results.forEach((r) => {
+      if (r.status === 'fulfilled' && r.value) {
+        deletedCount++;
+      }
+    });
+  }
+  return deletedCount;
 }
 
 export async function rescheduleCalendarEvents(eventsToReschedule: { eventId: string, startTime: Date, endTime: Date }[]) {

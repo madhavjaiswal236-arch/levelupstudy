@@ -209,10 +209,10 @@ export function StudyCalendar({
             deduplicatedList.push(t);
           });
 
-          // Step 2: Keep times synced with Google Calendar
+          // Step 2: Keep times synced with Google Calendar for active todos
           const next = deduplicatedList.map((t) => {
             if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
-              const match = events.find((e: any) => e.id === t.calendarEventId);
+              const match = events.find((e: any) => e.id === t.calendarEventId && e.status !== "cancelled");
               if (match && match.start?.dateTime && match.end?.dateTime) {
                 const mStart = new Date(match.start.dateTime).toISOString();
                 const mEnd = new Date(match.end.dateTime).toISOString();
@@ -224,7 +224,7 @@ export function StudyCalendar({
             } else if ((!t.calendarEventId || t.calendarEventId.startsWith("local-")) && t.startTime) {
               const tStartMs = new Date(t.startTime).getTime();
               const match = events.find((e: any) => {
-                if (!e.start?.dateTime) return false;
+                if (!e.start?.dateTime || e.status === "cancelled") return false;
                 const eStartMs = new Date(e.start.dateTime).getTime();
                 const sameSummary =
                   e.summary?.trim().toLowerCase() === t.text?.trim().toLowerCase() ||
@@ -311,47 +311,10 @@ export function StudyCalendar({
         }
       });
 
-    // 2. Map external Google events, strictly excluding any that match a local task
-    const externalGoogleEvents = googleEvents
-      .filter((g) => {
-        if (!g.start?.dateTime || !g.end?.dateTime) return false;
-        const gStartMs = new Date(g.start.dateTime).getTime();
-
-        // Check if matching non-deleted local todo exists by event ID OR by title + start time
-        const isMatchedInLocal = todos.some((t) => {
-          if (t.isDeleted) return false;
-          if (t.calendarEventId === g.id) return true;
-          if (t.startTime) {
-            const tStartMs = new Date(t.startTime).getTime();
-            const sameTitle =
-              t.text?.trim().toLowerCase() === g.summary?.trim().toLowerCase() ||
-              g.summary?.trim().toLowerCase().includes(t.text?.trim().toLowerCase() || "");
-            if (sameTitle && Math.abs(tStartMs - gStartMs) <= 3 * 60 * 1000) {
-              return true;
-            }
-          }
-          return false;
-        });
-
-        return !isMatchedInLocal;
-      })
-      .map((g) => {
-        return {
-          id: `gcal-${g.id}`,
-          title: g.summary || "(Google Event)",
-          subject: "Google Calendar",
-          calendarEventId: g.id,
-          start: new Date(g.start.dateTime),
-          end: new Date(g.end.dateTime),
-          completed: g.summary?.startsWith("[Done]") || false,
-          isExternalGoogleEvent: true,
-          htmlLink: g.htmlLink,
-          todo: undefined,
-        };
-      });
-
-    // 3. Final unified list deduplicated by time & summary
-    const combined = [...localEvents, ...externalGoogleEvents];
+    // 2. Render only active, non-deleted study tasks belonging to the student's study plan
+    // In accordance with user preference, external non-study events and old orphaned Google Calendar items
+    // are strictly excluded from the study timetable so they never resurrect as ghost tasks.
+    const combined = [...localEvents];
     const finalSeen = new Set<string>();
     const deduplicatedCombined = combined.filter((ev) => {
       const key = `${ev.title?.trim().toLowerCase()}_${ev.start.getTime()}`;
