@@ -1,0 +1,9 @@
+name = "levelup-token-refresher"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+ALLOWED_ORIGIN = "*"
+# Set these securely using: npx wrangler secret put GOOGLE_CLIENT_ID
+# and: npx wrangler secret put GOOGLE_CLIENT_SECRET
+

@@ -1429,7 +1429,13 @@ const Dashboard = React.memo(function Dashboard() {
   }, [studyPlanFilter, todayTodos, allTodos, sortByPriority]);
 
   return (
-    <div className="space-y-4 md:space-y-8">
+    <div className="space-y-4 md:space-y-8 relative">
+      {/* Ambient Cosmic Mesh Depth */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden -z-10">
+        <div className="absolute -top-32 left-1/4 w-[500px] h-[500px] bg-cyan-500/10 dark:bg-cyan-500/15 rounded-full blur-[120px]" />
+        <div className="absolute top-96 -right-32 w-[450px] h-[450px] bg-indigo-500/10 dark:bg-indigo-500/15 rounded-full blur-[130px]" />
+        <div className="absolute top-[800px] left-[-100px] w-[500px] h-[500px] bg-purple-500/10 dark:bg-purple-500/12 rounded-full blur-[140px]" />
+      </div>
       <AnimatePresence>
         {showLiveDay && (
           <LiveDayOverlay onClose={() => setShowLiveDay(false)} />
@@ -2143,21 +2149,25 @@ const Dashboard = React.memo(function Dashboard() {
       >
         <div className="flex justify-between items-start w-full md:w-auto">
           <div>
-            <h1 className="text-2xl md:text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r dark:from-white dark:to-slate-500 from-slate-900 to-slate-600">
+            <h1 className="text-2xl md:text-4xl font-black tracking-tight dark:text-white text-slate-900 drop-shadow-sm">
               OVERVIEW
             </h1>
-            <p className="dark:text-cyan-400 text-cyan-700 font-mono text-[10px] md:text-sm mt-0.5 md:mt-1 flex items-center gap-1 md:gap-2">
-              <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-500 animate-pulse shadow-md shrink-0" />
-              SYSTEM ONLINE{" "}
-              <span className="hidden md:inline">• MENTOR MODE ACTIVE</span>
+            <p className="dark:text-cyan-400 text-cyan-700 font-mono text-[10px] md:text-xs mt-1 flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+              </span>
+              <span className="font-semibold tracking-wider">SYSTEM ONLINE</span>
+              <span className="opacity-40">•</span>
+              <span className="opacity-90">MENTOR MODE ACTIVE</span>
             </p>
           </div>
           <div className="block md:hidden">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-900 border border-slate-800">
               <Shield
                 className={`w-4 h-4 ${getRankInfo(level).color} ${getGlowClass(getRankInfo(level).color)}`}
               />
-              <span className="text-xs font-bold dark:text-white text-slate-900">
+              <span className="text-xs font-bold dark:text-white text-slate-900 font-mono">
                 LVL {level}
               </span>
             </div>
@@ -2165,14 +2175,9 @@ const Dashboard = React.memo(function Dashboard() {
         </div>
         <div className="flex flex-col sm:flex-row gap-2 md:gap-4 w-full md:w-auto">
           {isBoostActive && (
-            <div className="flex justify-center items-center gap-1 md:gap-2 bg-amber-500/20 border border-amber-500/50 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-lg dark:text-amber-400 text-amber-700 font-bold animate-pulse text-xs md:text-base">
-              <motion.div
-                whileHover={{ scale: 1.3, rotate: 15 }}
-                className="relative z-10"
-              >
-                <Zap className="w-4 h-4 md:w-5 md:h-5 text-amber-500 dark:text-amber-400 icon-glow-amber" />
-              </motion.div>
-              {activeBoost.multiplier}x BOOST
+            <div className="flex justify-center items-center gap-1.5 md:gap-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 px-3 py-2 md:px-4 md:py-2 rounded-xl text-amber-500 dark:text-amber-400 font-bold text-xs md:text-sm shadow-sm">
+              <Zap className="w-4 h-4 md:w-4.5 md:h-4.5 animate-bounce" />
+              {activeBoost.multiplier}x BOOST ACTIVE
             </div>
           )}
 
@@ -2183,20 +2188,21 @@ const Dashboard = React.memo(function Dashboard() {
             />
           ) : (
             <div className="flex gap-2 w-full md:w-auto">
-              <Button
+              <motion.button
+                whileHover={{ scale: 1.03, y: -1 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={handleStartStudyClick}
-                variant="default"
-                size="lg"
-                className="w-full md:w-auto gap-2 font-bold tracking-widest bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500 shadow-md group overflow-hidden h-12 md:h-11 rounded-xl md:rounded-lg text-xs md:text-sm"
+                className="w-full md:w-auto px-6 py-2.5 h-12 md:h-11 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs md:text-sm tracking-wider uppercase shadow-[0_4px_20px_rgba(6,182,212,0.35)] hover:shadow-[0_6px_28px_rgba(6,182,212,0.55)] transition-all duration-300 flex items-center justify-center gap-2.5 border border-cyan-400/40 relative overflow-hidden group cursor-pointer"
               >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
                 <motion.div
-                  whileHover={{ scale: 1.2, rotate: 15 }}
-                  transition={{ type: "spring", stiffness: 200, damping: 10 }}
+                  whileHover={{ rotate: 15 }}
+                  transition={{ type: "spring", stiffness: 300 }}
                 >
-                  <Play className="w-4 h-4 md:w-5 md:h-5 fill-current drop-shadow-md group-hover:scale-110 transition-transform" />
+                  <Play className="w-4 h-4 md:w-4.5 md:h-4.5 fill-current drop-shadow-sm group-hover:scale-110 transition-transform" />
                 </motion.div>
-                START STUDY
-              </Button>
+                <span>START STUDY</span>
+              </motion.button>
             </div>
           )}
         </div>
@@ -2231,7 +2237,7 @@ const Dashboard = React.memo(function Dashboard() {
 
         {/* JEE Performance Insight & Pro Tip */}
         <div className={`h-full ${!class11EndDate ? "xl:col-span-5" : "xl:col-span-2"}`}>
-          <Card className="h-full dark:bg-black bg-slate-50 dark:border-slate-800 border-slate-200 rounded-3xl md:rounded-2xl relative shadow-lg md:shadow-none p-4 md:p-5 flex flex-col justify-between">
+          <Card className="h-full dark:bg-slate-900/85 bg-white/95 dark:border-slate-800/80 border-slate-200/90 rounded-2xl relative shadow-md hover:shadow-xl transition-all duration-300 p-4 md:p-5 flex flex-col justify-between backdrop-blur-md border hover:border-blue-500/30 group">
             <div className="flex flex-col justify-center flex-1">
               <div className="flex items-center justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2">
@@ -2293,7 +2299,7 @@ const Dashboard = React.memo(function Dashboard() {
           nextStep="dashboard-tasks"
         >
           <TiltWrapper tiltAmount={2} className="h-full">
-            <Card className="relative overflow-visible dark:border-white/5 border-black/5 md:border-cyan-500/30 shadow-md md:shadow-md hover:-translate-y-1 hover:shadow-md md:hover:shadow-md transition-all duration-300 group h-full dark:bg-slate-900 bg-white md:dark:bg-black rounded-3xl md:rounded-lg">
+            <Card className="relative overflow-visible dark:border-cyan-500/30 border-slate-200 shadow-xl hover:shadow-2xl transition-all duration-500 group h-full dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-black bg-white rounded-3xl md:rounded-2xl border backdrop-blur-md">
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/10 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-all duration-1000 -translate-x-full group-hover:translate-x-full ease-in-out pointer-events-none z-20" />
               <div className="absolute -top-12 -right-12 w-48 h-48 bg-cyan-500/10 rounded-full blur-[60px] pointer-events-none" />
               <CardHeader className="flex flex-row items-start md:items-center justify-between relative z-10 pt-4 px-5 md:pt-5 md:px-6 pb-0 gap-2">
@@ -2369,35 +2375,31 @@ const Dashboard = React.memo(function Dashboard() {
                     <circle
                       cx="50"
                       cy="50"
-                      r="45"
+                      r="44"
                       fill="none"
-                      stroke="rgba(255,255,255,0.05)"
-                      strokeWidth="8"
+                      stroke="currentColor"
+                      className="text-slate-200 dark:text-slate-800/80"
+                      strokeWidth="7"
                     />
                     <motion.circle
                       cx="50"
                       cy="50"
-                      r="45"
+                      r="44"
                       fill="none"
-                      stroke="url(#cyan-gradient)"
-                      strokeWidth="8"
+                      stroke="url(#cyan-blue-gradient)"
+                      strokeWidth="7"
                       strokeLinecap="round"
-                      strokeDasharray="283"
-                      initial={{ strokeDashoffset: 283 }}
-                      animate={{ strokeDashoffset: 283 - 283 * levelProgress }}
-                      transition={{ duration: 2, ease: "easeOut" }}
-                      className="drop-shadow-md"
+                      strokeDasharray="276.46"
+                      initial={{ strokeDashoffset: 276.46 }}
+                      animate={{ strokeDashoffset: 276.46 - 276.46 * levelProgress }}
+                      transition={{ duration: 1.8, ease: [0.16, 1, 0.3, 1] }}
+                      className="filter drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]"
                     />
                     <defs>
-                      <linearGradient
-                        id="cyan-gradient"
-                        x1="0%"
-                        y1="0%"
-                        x2="100%"
-                        y2="0%"
-                      >
+                      <linearGradient id="cyan-blue-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%" stopColor="#06b6d4" />
-                        <stop offset="100%" stopColor="#3b82f6" />
+                        <stop offset="50%" stopColor="#3b82f6" />
+                        <stop offset="100%" stopColor="#8b5cf6" />
                       </linearGradient>
                     </defs>
                   </svg>
@@ -2909,22 +2911,22 @@ const Dashboard = React.memo(function Dashboard() {
               </h2>
 
               {/* View Selector: Today (Current Day) vs All Tasks */}
-              <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
+              <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-xs shadow-inner">
                 <button
                   type="button"
                   onClick={() => setStudyPlanFilter("today")}
-                  className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-2 font-medium cursor-pointer ${
                     studyPlanFilter === "today"
-                      ? "bg-cyan-500 text-black font-bold shadow-sm"
-                      : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-medium"
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold shadow-md"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
                   }`}
                   title="Show only tasks scheduled for today"
                 >
                   <span>Today</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
                       studyPlanFilter === "today"
-                        ? "bg-black/20 text-black font-bold"
+                        ? "bg-black/20 text-white font-bold"
                         : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
@@ -2934,18 +2936,18 @@ const Dashboard = React.memo(function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setStudyPlanFilter("all")}
-                  className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-2 font-medium cursor-pointer ${
                     studyPlanFilter === "all"
-                      ? "bg-cyan-500 text-black font-bold shadow-sm"
-                      : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-medium"
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold shadow-md"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
                   }`}
                   title="Show full study plan roadmap across all days"
                 >
                   <span>All Tasks</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
                       studyPlanFilter === "all"
-                        ? "bg-black/20 text-black font-bold"
+                        ? "bg-black/20 text-white font-bold"
                         : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
@@ -2967,7 +2969,7 @@ const Dashboard = React.memo(function Dashboard() {
                 variant="default"
                 size="sm"
                 onClick={() => setShowCalendar(true)}
-                className="h-8 px-3 text-white border-none rounded-[7px] font-bold gap-1.5 bg-[rgb(0,140,255)] uppercase tracking-[2px] text-[11px] transition-[box-shadow] duration-500 shadow-[0_0_25px_rgb(0,140,255)] hover:shadow-[0_0_5px_rgb(0,140,255),0_0_25px_rgb(0,140,255),0_0_50px_rgb(0,140,255),0_0_100px_rgb(0,140,255)]"
+                className="h-9 px-4 rounded-xl font-bold gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs shadow-md shadow-blue-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
               >
                 <Calendar className="w-4 h-4 text-white" />
                 Calendar

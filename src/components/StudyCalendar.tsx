@@ -20,8 +20,10 @@ import {
   ArrowRight,
   Menu,
   BrainCircuit,
+  Download,
 } from "lucide-react";
 import { SpacedMemoryWidget } from "./coach/SpacedMemoryWidget";
+import { downloadIcsFile } from "../lib/calendar/exportIcs";
 import {
   getAccessToken,
   getAccessTokenSync,
@@ -582,6 +584,16 @@ export function StudyCalendar({
       return false;
     }
     return true;
+  };
+
+  
+  const handleExportOfflineIcs = () => {
+    const success = downloadIcsFile(todos);
+    if (success) {
+      showToast("Offline schedule (.ics) generated! Open it to import all study sessions into your phone's calendar.", "success");
+    } else {
+      showToast("No scheduled study sessions to export. Schedule some tasks first!", "info");
+    }
   };
 
   const handleCalendarSync = async (isManual: boolean = false) => {

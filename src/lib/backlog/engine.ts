@@ -13,8 +13,20 @@ import { getLocalDateString } from '@/lib/utils';
 export { getTaskSignature, getTaskSignaturesWithLegacy } from './signature';
 
 export function calculateDateDiffDays(startDateStr: string, endDateStr: string): number {
-  const [sy, sm, sd] = startDateStr.split('-').map(Number);
-  const [ey, em, ed] = endDateStr.split('-').map(Number);
+  if (!startDateStr || !endDateStr) return 1;
+  const sClean = startDateStr.includes('T') ? startDateStr.split('T')[0] : startDateStr;
+  const eClean = endDateStr.includes('T') ? endDateStr.split('T')[0] : endDateStr;
+  const [sy, sm, sd] = sClean.split('-').map(Number);
+  const [ey, em, ed] = eClean.split('-').map(Number);
+  if (isNaN(sy) || isNaN(sm) || isNaN(sd) || isNaN(ey) || isNaN(em) || isNaN(ed)) {
+    const s = new Date(startDateStr);
+    const e = new Date(endDateStr);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      const diff = e.getTime() - s.getTime();
+      return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)) + 1);
+    }
+    return 1;
+  }
   const start = new Date(sy, sm - 1, sd);
   const end = new Date(ey, em - 1, ed);
   const diffTime = end.getTime() - start.getTime();
@@ -22,7 +34,20 @@ export function calculateDateDiffDays(startDateStr: string, endDateStr: string):
 }
 
 export function addDaysToDate(dateStr: string, daysToAdd: number): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!dateStr || typeof dateStr !== 'string') return dateStr;
+  const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const [y, m, d] = cleanDate.split('-').map(Number);
+  if (isNaN(y) || isNaN(m) || isNaN(d)) {
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+      parsed.setDate(parsed.getDate() + daysToAdd);
+      const year = parsed.getFullYear();
+      const month = String(parsed.getMonth() + 1).padStart(2, '0');
+      const day = String(parsed.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return dateStr;
+  }
   const date = new Date(y, m - 1, d + daysToAdd);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -186,8 +211,10 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
     const subTasks: InternalTaskItem[] = [];
 
     sortedChapters.forEach(chap => {
-      const lectureList = chap.selectedLectures && chap.selectedLectures.length > 0
+      const lectureList = (chap.selectedLectures && chap.selectedLectures.length > 0)
         ? [...chap.selectedLectures].sort((a, b) => a - b)
+        : ((chap as any).lectures && Array.isArray((chap as any).lectures) && (chap as any).lectures.length > 0)
+        ? [...(chap as any).lectures].sort((a: number, b: number) => a - b)
         : Array.from({ length: Math.max(0, chap.lecturesRemaining || 0) }, (_, i) => i + 1);
 
       const lecs = lectureList.length;

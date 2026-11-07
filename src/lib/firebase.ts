@@ -370,6 +370,45 @@ export const subscribeToCloudUserData = (userId: string, callback: (data: any, m
 
 let cachedAccessToken: string | null = null;
 let cachedTokenExpiresAt: number = 0;
+
+let cachedRefreshToken: string | null = null;
+
+export const persistRefreshToken = async (token: string | null) => {
+  cachedRefreshToken = token;
+  try {
+    if (token) {
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.set({ key: 'google_refresh_token', value: token });
+      } else {
+        localStorage.setItem('google_refresh_token', token);
+      }
+    } else {
+      if (Capacitor.isNativePlatform()) {
+        await Preferences.remove({ key: 'google_refresh_token' });
+      } else {
+        localStorage.removeItem('google_refresh_token');
+      }
+    }
+  } catch (e) {
+    console.warn('Refresh token persistence error:', e);
+  }
+};
+
+export const getRefreshToken = async (): Promise<string | null> => {
+  if (cachedRefreshToken) return cachedRefreshToken;
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const res = await Preferences.get({ key: 'google_refresh_token' });
+      cachedRefreshToken = res.value;
+    } else {
+      cachedRefreshToken = localStorage.getItem('google_refresh_token');
+    }
+  } catch (e) {
+    console.warn('Failed to hydrate refresh token:', e);
+  }
+  return cachedRefreshToken;
+};
+
 let pendingSignInPromise: Promise<{ user: User; accessToken: string } | null> | null = null;
 
 const persistOAuthToken = async (token: string | null, expiresAt: number) => {
@@ -400,6 +439,7 @@ const persistOAuthToken = async (token: string | null, expiresAt: number) => {
 
 export const invalidateOAuthToken = async () => {
   await persistOAuthToken(null, 0);
+  await persistRefreshToken(null);
   try {
     sessionStorage.removeItem('google_access_token');
   } catch (e) {}
@@ -564,8 +604,6 @@ export const getAccessToken = async (): Promise<string | null> => {
 let refreshPromise: Promise<string | null> | null = null;
 
 export const refreshGoogleToken = async (): Promise<string | null> => {
-  if (!auth.currentUser) return null;
-  
   if (refreshPromise) {
     console.log("Token refresh already in progress, waiting...");
     return refreshPromise;
@@ -573,30 +611,65 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
 
   refreshPromise = (async () => {
     try {
+      // 1. If in-memory token is still fresh, return it immediately
       if (Date.now() < cachedTokenExpiresAt && cachedAccessToken) {
         return cachedAccessToken;
       }
 
+      // 2. Native Android / iOS platform (Capacitor)
       if (Capacitor.isNativePlatform()) {
-        const result = await FirebaseAuthentication.signInWithGoogle({
-          scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
-        });
-        if (result.credential?.accessToken) {
-          const exp = Date.now() + 3500 * 1000;
-          await persistOAuthToken(result.credential.accessToken, exp);
-          return cachedAccessToken;
+        try {
+          const result = await FirebaseAuthentication.signInWithGoogle({
+            scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
+          });
+          if (result.credential?.accessToken) {
+            const exp = Date.now() + 3500 * 1000;
+            await persistOAuthToken(result.credential.accessToken, exp);
+            return cachedAccessToken;
+          }
+        } catch (nativeErr) {
+          console.warn('Native Google re-auth failed, attempting stored refresh_token:', nativeErr);
         }
-        return null;
       }
 
-      // In browser web mode, do not trigger background popups that will be blocked without user gesture.
-      // Returning null informs the caller that user gesture interactive re-auth is needed.
-      console.warn('OAuth token expired or missing in memory. Interactive authentication required.');
+      // 3. Web & Offline-to-Online Silent Refresh:
+      // Even if 1 hour (or 10 hours) passed while the user was offline, as soon as the device
+      // reconnects to the network, use the stored refresh_token to obtain a brand new 1-hour access_token!
+      const refreshToken = await getRefreshToken();
+      if (refreshToken) {
+        try {
+          const res = await fetch('/api/auth/google/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.access_token) {
+              const exp = Date.now() + (data.expires_in || 3500) * 1000;
+              await persistOAuthToken(data.access_token, exp);
+              console.log('Successfully refreshed Google Calendar access token silently after offline period!');
+              return data.access_token;
+            }
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            console.warn('Backend refresh returned non-ok status:', res.status, errData);
+            if (errData?.details?.includes('invalid_grant') || errData?.error?.includes('invalid_grant')) {
+              console.warn('Google refresh token revoked or expired. User re-consent required.');
+              await persistRefreshToken(null);
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('Network error during background token refresh:', fetchErr);
+        }
+      }
+
+      console.warn('OAuth token expired and no valid refresh token found. Interactive login required.');
       return null;
     } catch (error) {
       console.error("Failed to refresh token:", error);
+      return null;
     }
-    return null;
   })();
 
   try {
@@ -604,6 +677,137 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
   } finally {
     refreshPromise = null;
   }
+};
+
+
+/**
+ * Connect Google Calendar with offline access (Authorization Code flow).
+ * Exchanges the code for both an access_token and a permanent refresh_token.
+ */
+export const connectGoogleCalendarOffline = async (
+  code: string,
+  redirectUri?: string
+): Promise<{ accessToken: string; refreshToken?: string } | null> => {
+  try {
+    const res = await fetch('/api/auth/google/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, redirect_uri: redirectUri }),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.details || 'Failed to exchange authorization code');
+    }
+    const data = await res.json();
+    if (data.access_token) {
+      const exp = Date.now() + (data.expires_in || 3500) * 1000;
+      await persistOAuthToken(data.access_token, exp);
+      if (data.refresh_token) {
+        await persistRefreshToken(data.refresh_token);
+      }
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('Failed to connect Google Calendar offline:', err);
+    throw err;
+  }
+};
+
+
+/**
+ * Opens a Google OAuth consent popup requesting offline access (refresh_token).
+ * Exchanges the code seamlessly with the backend so user never has to re-authenticate every hour.
+ */
+export const startGoogleOfflineAuthFlow = async (
+  customClientId?: string
+): Promise<{ accessToken: string; refreshToken?: string } | null> => {
+  if (typeof window === 'undefined') return null;
+
+  let clientId = customClientId || firebaseAppletConfig.oAuthClientId;
+  if (!clientId) {
+    try {
+      const cfgRes = await fetch('/api/auth/google/config');
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        if (cfg.clientId) clientId = cfg.clientId;
+      }
+    } catch (e) {}
+  }
+
+  if (!clientId) {
+    throw new Error('Google OAuth Client ID is not configured. Please set GOOGLE_CLIENT_ID or oAuthClientId.');
+  }
+
+  const redirectUri = `${window.location.origin}/api/auth/google/callback`;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks',
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+  });
+
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+  const width = 500;
+  const height = 650;
+  const left = window.screenX + (window.outerWidth - width) / 2;
+  const top = window.screenY + (window.outerHeight - height) / 2;
+
+  const popup = window.open(
+    authUrl,
+    'google_offline_auth',
+    `width=${width},height=${height},left=${left},top=${top},status=0,toolbar=0,location=0,menubar=0`
+  );
+
+  if (!popup) {
+    window.location.href = authUrl;
+    return null;
+  }
+
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+
+    const messageHandler = async (event: MessageEvent) => {
+      if (event.data && event.data.type === 'GOOGLE_AUTH_CALLBACK') {
+        window.removeEventListener('message', messageHandler);
+        clearInterval(checkTimer);
+        resolved = true;
+
+        if (event.data.error) {
+          return reject(new Error(event.data.error));
+        }
+
+        if (event.data.code) {
+          try {
+            const tokens = await connectGoogleCalendarOffline(event.data.code, redirectUri);
+            return resolve(tokens);
+          } catch (err) {
+            return reject(err);
+          }
+        }
+        reject(new Error('No authorization code received from Google.'));
+      }
+    };
+
+    window.addEventListener('message', messageHandler);
+
+    const checkTimer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkTimer);
+        window.removeEventListener('message', messageHandler);
+        if (!resolved) {
+          reject(new Error('Google authentication window was closed.'));
+        }
+      }
+    }, 1000);
+  });
 };
 
 export const logout = async () => {

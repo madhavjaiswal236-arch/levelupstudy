@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "virtual:firebase-config": path.resolve(__dirname, "./firebase-applet-config.json"),
     },
   },
 });

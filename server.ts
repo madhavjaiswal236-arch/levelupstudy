@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import express from 'express';
 import path from 'path';
+import googleAuthRouter from './src/server/googleAuth';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -67,6 +68,9 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api/', apiLimiter);
+
+// Health check endpoint
+app.use('/api/auth/google', googleAuthRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
