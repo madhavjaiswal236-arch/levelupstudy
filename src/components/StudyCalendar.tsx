@@ -25,8 +25,10 @@ import { SpacedMemoryWidget } from "./coach/SpacedMemoryWidget";
 import {
   getAccessToken,
   getAccessTokenSync,
+  getRefreshToken,
   googleSignIn,
   refreshGoogleToken,
+  startGoogleOfflineAuthFlow,
   auth,
 } from "../lib/firebase";
 import { useAppContext, Todo } from "../context/AppContext";
@@ -569,8 +571,36 @@ export function StudyCalendar({
       }
     }
     if (!token) {
+      // 1. If device is offline, apply timeline locally with zero popups
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        console.log("Device is offline. Applying timeline locally without Google login popup.");
+        return false;
+      }
+
+      // 2. If user already has a stored refresh token, they have ALREADY authorized Google Calendar once!
+      // NEVER show a popup again; background refresh will silently sync once connection stabilizes.
+      const hasRefreshToken = Boolean(await getRefreshToken());
+      if (hasRefreshToken) {
+        console.log("Google refresh token already stored. Skipping redundant login popup.");
+        return false;
+      }
+
+      // 3. Only if user has NEVER authorized Google Calendar before, show the one-time connection:
       if (isManual) {
-        showToast("Connecting to Google Calendar...", "info");
+        showToast("Connecting to Google Calendar (one-time setup)...", "info");
+        try {
+          const cfgRes = await fetch('/api/auth/google/config');
+          if (cfgRes.ok) {
+            const cfg = await cfgRes.json();
+            if (cfg.configured) {
+              const offlineRes = await startGoogleOfflineAuthFlow();
+              if (offlineRes?.accessToken) return true;
+            }
+          }
+        } catch (e) {
+          console.warn("Offline auth flow fallback to standard login:", e);
+        }
+
         const loginRes = await googleSignIn();
         if (!loginRes) {
           throw new Error(

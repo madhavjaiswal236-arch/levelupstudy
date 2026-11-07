@@ -12,3 +12,5 @@ coverage/
 *.py
 android/app/google-services.json
 arcade_pass_codes.md
+client_secret*.json
+public/assets/aistudio/client_secret*

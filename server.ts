@@ -24,6 +24,26 @@ if (!defaultClientId) {
   }
 }
 
+if (!defaultClientSecret) {
+  try {
+    const assetDir = path.resolve(process.cwd(), 'public/assets/aistudio');
+    if (fs.existsSync(assetDir)) {
+      const files = fs.readdirSync(assetDir);
+      const secretFile = files.find(f => f.startsWith('client_secret') && f.endsWith('.json'));
+      if (secretFile) {
+        const secretContent = JSON.parse(fs.readFileSync(path.join(assetDir, secretFile), 'utf8'));
+        const webCfg = secretContent.web || secretContent.installed;
+        if (webCfg) {
+          if (!defaultClientId && webCfg.client_id) defaultClientId = webCfg.client_id;
+          if (!defaultClientSecret && webCfg.client_secret) defaultClientSecret = webCfg.client_secret;
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
 googleAuthRouter.get('/config', (_req: express.Request, res: express.Response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID || defaultClientId;
   const hasSecret = !!(process.env.GOOGLE_CLIENT_SECRET || defaultClientSecret);

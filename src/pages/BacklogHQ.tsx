@@ -62,8 +62,10 @@ import {
 } from '@/lib/calendar';
 import {
   getAccessTokenSync,
+  getRefreshToken,
   refreshGoogleToken,
   googleSignIn,
+  startGoogleOfflineAuthFlow,
   auth
 } from '@/lib/firebase';
 
@@ -103,15 +105,41 @@ export default function BacklogHQ() {
         try { token = await refreshGoogleToken(); } catch (e) {}
       }
       if (!token) {
-        try {
-          const res = await googleSignIn();
-          if (!res) {
-            setIsSyncingCalendar(false);
-            setSyncMessage(null);
-            return;
+        // 1. If offline, do not trigger popups
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          console.log("Device is offline. Skipping Google Calendar remote sync popup.");
+        } else {
+          // 2. If user already has a stored refresh token, DO NOT show login popup!
+          const hasRefreshToken = Boolean(await getRefreshToken());
+          if (!hasRefreshToken) {
+            try {
+              const cfgRes = await fetch('/api/auth/google/config');
+              if (cfgRes.ok) {
+                const cfg = await cfgRes.json();
+                if (cfg.configured) {
+                  const offlineRes = await startGoogleOfflineAuthFlow();
+                  if (offlineRes?.accessToken) {
+                    token = offlineRes.accessToken;
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("Offline auth flow fallback:", e);
+            }
+
+            if (!token) {
+              try {
+                const res = await googleSignIn();
+                if (!res) {
+                  setIsSyncingCalendar(false);
+                  setSyncMessage(null);
+                  return;
+                }
+              } catch (e) {
+                console.warn("OAuth login failed or in progress:", e);
+              }
+            }
           }
-        } catch (e) {
-          console.warn("OAuth login failed or in progress:", e);
         }
       }
 
