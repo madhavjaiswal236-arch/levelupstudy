@@ -1,4 +1,17 @@
 import { getAccessToken, refreshGoogleToken, invalidateOAuthToken } from './firebase';
+
+/**
+ * Retrieves a valid Google Access Token, attempting background offline refresh
+ * if the in-memory token has expired.
+ */
+async function getValidToken(): Promise<string | null> {
+  let token = await getAccessToken();
+  if (!token) {
+    token = await refreshGoogleToken();
+  }
+  return token;
+}
+
 import { getActiveStudyBlock, calculateNextAvailableStudySlot } from './studyBlock';
 
 /**
@@ -13,7 +26,7 @@ async function fetchGoogleApi(
   maxRetries: number = 3,
   initialDelayMs: number = 500
 ): Promise<Response> {
-  let token = await getAccessToken();
+  let token = await getValidToken();
   if (!token) throw new Error('No Google Access Token found.');
 
   let hasRefreshedToken = false;
@@ -85,7 +98,7 @@ async function fetchGoogleApi(
 }
 
 export async function createCalendarEvent(title: string, durationMinutes: number = 105, type: string = 'Lecture', isRetry = false, todos: any[] = [], specificStartTime?: Date, specificEndTime?: Date) {
-  let token = await getAccessToken();
+  let token = await getValidToken();
   
   let startTime = specificStartTime;
   let endTime = specificEndTime;
@@ -202,7 +215,7 @@ export async function createCalendarEvent(title: string, durationMinutes: number
 }
 
 export async function checkCalendarConflicts(startTime: Date, endTime: Date): Promise<boolean> {
-  let token = await getAccessToken();
+  let token = await getValidToken();
   if (!token) return false;
 
   const validStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
@@ -226,7 +239,7 @@ export async function checkCalendarConflicts(startTime: Date, endTime: Date): Pr
 
 export async function markCalendarEventCompleted(eventId: string, isCompleted: boolean, title: string): Promise<boolean> {
  if (!eventId) return false;
- let token = await getAccessToken();
+ let token = await getValidToken();
  if (!token) return false;
 
  try {
@@ -242,7 +255,7 @@ export async function markCalendarEventCompleted(eventId: string, isCompleted: b
 
 export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
   if (!eventId || eventId.startsWith('local-')) return false;
-  let token = await getAccessToken();
+  let token = await getValidToken();
   if (!token) return false;
 
   try {
@@ -266,7 +279,7 @@ export async function batchDeleteCalendarEvents(eventIds: (string | undefined | 
   const validIds = Array.from(new Set(eventIds.filter((id): id is string => Boolean(id && !id.startsWith('local-')))));
   if (validIds.length === 0) return 0;
 
-  let token = await getAccessToken();
+  let token = await getValidToken();
   if (!token) return 0;
 
   let deletedCount = 0;
@@ -285,7 +298,7 @@ export async function batchDeleteCalendarEvents(eventIds: (string | undefined | 
 
 export async function rescheduleCalendarEvents(eventsToReschedule: { eventId: string, startTime: Date, endTime: Date }[]) {
 
- let token = await getAccessToken();
+ let token = await getValidToken();
  if (!token) return false;
 
  try {
@@ -318,7 +331,7 @@ export async function rescheduleCalendarEvents(eventsToReschedule: { eventId: st
 }
 
 export async function createGoogleTask(title: string, dueDate?: Date, _isRetry = false): Promise<any> {
- let token = await getAccessToken();
+ let token = await getValidToken();
  if (!token) return null;
  
  const taskBody: any = {
@@ -346,7 +359,7 @@ export async function createGoogleTask(title: string, dueDate?: Date, _isRetry =
 
 export async function updateGoogleTaskStatus(taskId: string, status: 'completed' | 'needsAction', _isRetry = false): Promise<boolean> {
  if (!taskId) return false;
- let token = await getAccessToken();
+ let token = await getValidToken();
  if (!token) return false;
 
  try {
@@ -365,7 +378,7 @@ export async function updateGoogleTaskStatus(taskId: string, status: 'completed'
 
 export async function deleteGoogleTask(taskId: string, _isRetry = false): Promise<boolean> {
  if (!taskId) return false;
- let token = await getAccessToken();
+ let token = await getValidToken();
  if (!token) return false;
 
  try {
@@ -381,7 +394,7 @@ export async function deleteGoogleTask(taskId: string, _isRetry = false): Promis
 
 export async function updateCalendarEventTime(eventId: string, startTime?: Date, endTime?: Date, summary?: string, colorId?: string): Promise<boolean> {
   if (!eventId || eventId.startsWith('local-')) return true;
-  let token = await getAccessToken();
+  let token = await getValidToken();
   if (!token) return false;
 
   const patchBody: any = {};
@@ -400,7 +413,7 @@ export async function updateCalendarEventTime(eventId: string, startTime?: Date,
 }
 
 export async function fetchGoogleCalendarEvents(timeMin: Date, timeMax: Date): Promise<any[]> {
- let token = await getAccessToken();
+ let token = await getValidToken();
  if (!token) return [];
  try {
    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin.toISOString())}&timeMax=${encodeURIComponent(timeMax.toISOString())}&singleEvents=true&maxResults=250`;

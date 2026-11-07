@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import express from 'express';
 import path from 'path';
+import googleAuthRouter from './src/server/googleAuth';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -33,6 +34,7 @@ app.use((req, res, next) => {
       // Whitelist exact trusted app domains instead of open wildcard suffix matching
       const allowedHosts = new Set([
         'levelup-study.vercel.app',
+        'levelupstudy.vercel.app',
         'ais-pre-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app',
         'ais-dev-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app',
       ]);
@@ -67,6 +69,9 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api/', apiLimiter);
+
+// Health check endpoint
+app.use('/api/auth/google', googleAuthRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
