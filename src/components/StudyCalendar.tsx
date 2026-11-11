@@ -561,7 +561,7 @@ export function StudyCalendar({
   const [isSyncing, setIsSyncing] = useState(false);
   const [unsyncedChanges, setUnsyncedChanges] = useState(false);
 
-  const ensureCalendarAuth = async (isManual: boolean = false) => {
+  const ensureCalendarAuth = async (): Promise<boolean> => {
     let token = getAccessTokenSync();
     if (!token && auth.currentUser) {
       try {
@@ -570,51 +570,42 @@ export function StudyCalendar({
         console.warn("Silent token refresh failed:", e);
       }
     }
-    if (!token) {
-      // 1. If device is offline, apply timeline locally with zero popups
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        console.log("Device is offline. Applying timeline locally without Google login popup.");
-        return false;
-      }
-
-      // 2. If user already has a stored refresh token, they have ALREADY authorized Google Calendar once!
-      // NEVER show a popup again; background refresh will silently sync once connection stabilizes.
-      const hasRefreshToken = Boolean(await getRefreshToken());
-      if (hasRefreshToken) {
-        console.log("Google refresh token already stored. Skipping redundant login popup.");
-        return false;
-      }
-
-      // 3. Only if user has NEVER authorized Google Calendar before, show the one-time connection:
-      if (isManual) {
-        showToast("Connecting to Google Calendar (one-time setup)...", "info");
-        try {
-          const cfgRes = await fetch('/api/auth/google/config');
-          if (cfgRes.ok) {
-            const cfg = await cfgRes.json();
-            if (cfg.configured) {
-              const offlineRes = await startGoogleOfflineAuthFlow();
-              if (offlineRes?.accessToken) return true;
-            }
-          }
-        } catch (e) {
-          console.warn("Offline auth flow fallback to standard login:", e);
-        }
-
-        const loginRes = await googleSignIn();
-        if (!loginRes) {
-          throw new Error(
-            "Google Calendar login in progress or redirecting...",
-          );
-        }
-        return true;
-      }
-      return false;
-    }
-    return true;
+    return Boolean(token);
   };
 
-  const handleCalendarSync = async (isManual: boolean = false) => {
+  const handleConnectGoogle = async () => {
+    try {
+      showToast("Connecting to Google Calendar (one-time setup)...", "info");
+      let token: string | null = null;
+      try {
+        const cfgRes = await fetch('/api/auth/google/config');
+        if (cfgRes.ok) {
+          const cfg = await cfgRes.json();
+          if (cfg.configured) {
+            const offlineRes = await startGoogleOfflineAuthFlow();
+            if (offlineRes?.accessToken) token = offlineRes.accessToken;
+          }
+        }
+      } catch (e) {
+        console.warn("Offline auth flow fallback to standard login:", e);
+      }
+
+      if (!token) {
+        const loginRes = await googleSignIn();
+        if (loginRes?.accessToken) token = loginRes.accessToken;
+      }
+
+      if (token) {
+        showToast("Google Calendar connected! Your schedule will now sync silently.", "success");
+        handleCalendarSync();
+      }
+    } catch (err: any) {
+      console.error("Failed to connect Google Calendar:", err);
+      showToast(err?.message || "Could not connect to Google Calendar", "error");
+    }
+  };
+
+  const handleCalendarSync = async () => {
     // Prevent duplicate concurrent sync operations
     if (isSyncingRef.current) {
       console.log("Calendar sync already active, skipping duplicate call");
@@ -630,10 +621,10 @@ export function StudyCalendar({
 
     let allSuccess = true;
     let errorMessage = "";
+    let hasAuth = false;
     try {
-      let hasAuth = false;
       try {
-        hasAuth = await ensureCalendarAuth(isManual);
+        hasAuth = await ensureCalendarAuth();
       } catch (authErr) {
         console.warn("Calendar auth check note:", authErr);
       }
@@ -1018,9 +1009,14 @@ export function StudyCalendar({
     }
 
     if (allSuccess) {
-      showToast("Timeline applied! All tasks scheduled on Calendar with 15-minute breaks in between.", "success");
+      showToast(
+        hasAuth
+          ? "Timeline applied! All tasks scheduled and synced with Google Calendar."
+          : "Timeline applied! All tasks scheduled on Calendar with 15-minute breaks in between.",
+        "success"
+      );
       setUnsyncedChanges(false);
-    } else if (isManual) {
+    } else {
       showToast(
         errorMessage || "Failed to apply all changes to Google Calendar.",
         "error"
@@ -3407,8 +3403,24 @@ export function StudyCalendar({
                 <BrainCircuit className="w-4 h-4 text-purple-500" />
                 <span className="hidden sm:inline">Spaced Review</span>
               </button>
+              {Boolean(getAccessTokenSync() || (typeof window !== 'undefined' && (localStorage.getItem('google_refresh_token') || localStorage.getItem('oauth_access_token')))) ? (
+                <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" title="Google Calendar connected and syncing silently">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Synced
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConnectGoogle}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 transition-colors border border-slate-200 dark:border-white/10"
+                  title="Connect Google Calendar once to sync your study timeline"
+                >
+                  <CalendarIcon className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Connect Google</span>
+                </button>
+              )}
               <button
-                onClick={() => handleCalendarSync(true)}
+                onClick={() => handleCalendarSync()}
                 disabled={isSyncing}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-md disabled:opacity-50 disabled:animate-none ${
                   unsyncedChanges

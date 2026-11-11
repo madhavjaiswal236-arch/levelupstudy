@@ -104,44 +104,7 @@ export default function BacklogHQ() {
       if (!token && auth.currentUser) {
         try { token = await refreshGoogleToken(); } catch (e) {}
       }
-      if (!token) {
-        // 1. If offline, do not trigger popups
-        if (typeof navigator !== 'undefined' && !navigator.onLine) {
-          console.log("Device is offline. Skipping Google Calendar remote sync popup.");
-        } else {
-          // 2. If user already has a stored refresh token, DO NOT show login popup!
-          const hasRefreshToken = Boolean(await getRefreshToken());
-          if (!hasRefreshToken) {
-            try {
-              const cfgRes = await fetch('/api/auth/google/config');
-              if (cfgRes.ok) {
-                const cfg = await cfgRes.json();
-                if (cfg.configured) {
-                  const offlineRes = await startGoogleOfflineAuthFlow();
-                  if (offlineRes?.accessToken) {
-                    token = offlineRes.accessToken;
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn("Offline auth flow fallback:", e);
-            }
-
-            if (!token) {
-              try {
-                const res = await googleSignIn();
-                if (!res) {
-                  setIsSyncingCalendar(false);
-                  setSyncMessage(null);
-                  return;
-                }
-              } catch (e) {
-                console.warn("OAuth login failed or in progress:", e);
-              }
-            }
-          }
-        }
-      }
+      // Silent background token check; if unavailable, apply timeline locally with zero popups
 
       // Step 1: Enforce exact 15-minute breaks on all scheduled tasks
       let currentTodos = [...todos];
@@ -196,46 +159,52 @@ export default function BacklogHQ() {
         setTodos(currentTodos);
       }
 
-      // Step 2: Push unsynced tasks to Google Calendar
-      const unsynced = currentTodos.filter(t => !t.isDeleted && t.startTime && t.endTime && (!t.calendarEventId || t.calendarEventId.startsWith("local-")));
+      // Step 2: Push unsynced tasks to Google Calendar if authorized
       let syncedCount = 0;
+      if (token) {
+        const unsynced = currentTodos.filter(t => !t.isDeleted && t.startTime && t.endTime && (!t.calendarEventId || t.calendarEventId.startsWith("local-")));
 
-      for (const t of unsynced) {
-        try {
-          const tStart = new Date(t.startTime!);
-          const tEnd = new Date(t.endTime!);
-          const durationMins = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
-          const res = await createCalendarEvent(
-            t.text,
-            durationMins,
-            t.type || "Lecture",
-            false,
-            currentTodos,
-            tStart,
-            tEnd
-          );
-          if (res && res.id) {
-            syncedCount++;
-            const idx = currentTodos.findIndex((ct) => ct.id === t.id);
-            if (idx !== -1) {
-              currentTodos[idx] = {
-                ...currentTodos[idx],
-                calendarEventId: res.id,
-                calendarSynced: true,
-              };
+        for (const t of unsynced) {
+          try {
+            const tStart = new Date(t.startTime!);
+            const tEnd = new Date(t.endTime!);
+            const durationMins = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
+            const res = await createCalendarEvent(
+              t.text,
+              durationMins,
+              t.type || "Lecture",
+              false,
+              currentTodos,
+              tStart,
+              tEnd
+            );
+            if (res && res.id) {
+              syncedCount++;
+              const idx = currentTodos.findIndex((ct) => ct.id === t.id);
+              if (idx !== -1) {
+                currentTodos[idx] = {
+                  ...currentTodos[idx],
+                  calendarEventId: res.id,
+                  calendarSynced: true,
+                };
+              }
             }
+          } catch (e) {
+            console.warn("Failed to create event for task", t.id, e);
           }
-        } catch (e) {
-          console.warn("Failed to create event for task", t.id, e);
+        }
+
+        if (syncedCount > 0) {
+          setTodos(currentTodos);
+          saveStateToCloudNow({ todos: currentTodos });
         }
       }
 
-      if (syncedCount > 0) {
-        setTodos(currentTodos);
-        saveStateToCloudNow({ todos: currentTodos });
-      }
-
-      setSyncMessage("All tasks scheduled on Calendar with 15-minute breaks!");
+      setSyncMessage(
+        syncedCount > 0
+          ? `All tasks scheduled with 15-minute breaks & ${syncedCount} synced to Google Calendar!`
+          : "All tasks scheduled on Calendar with 15-minute breaks!"
+      );
       setTimeout(() => setSyncMessage(null), 4000);
     } catch (err: any) {
       console.error("Single click apply all error:", err);
