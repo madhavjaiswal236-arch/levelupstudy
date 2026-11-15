@@ -59,6 +59,18 @@ export function parseDateKeySafely(rawKey?: string | null): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 }
 
+const repairDecimalMinuteISO = (val: string): string => {
+  const m = val.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{1,2})\.\d+:(\d{2})(.*)$/);
+  if (!m) return val;
+  const [, datePart, hStr, minStr, secStr, suffix] = m;
+  const totalMins = Math.round(parseInt(hStr, 10) * 60 + parseFloat(val.slice(14, val.indexOf(':', 14))));
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMins));
+  const hh = String(Math.floor(clamped / 60)).padStart(2, "0");
+  const mm = String(clamped % 60).padStart(2, "0");
+  void minStr;
+  return `${datePart}T${hh}:${mm}:${secStr}${suffix || ""}`;
+};
+
 const coerceValidTimeString = (val: any): string | undefined => {
   if (!val) return undefined;
   if (typeof val === "object") {
@@ -80,14 +92,14 @@ const coerceValidTimeString = (val: any): string | undefined => {
     const d = new Date(val);
     return !isNaN(d.getTime()) ? formatLocalISO(d) : undefined;
   }
-  const s = String(val).trim();
+  const s = repairDecimalMinuteISO(String(val).trim());
   if (!s || s.includes("NaN") || s.toLowerCase().includes("invalid")) return undefined;
   const d = new Date(s);
   return !isNaN(d.getTime()) ? s : undefined;
 };
 
 /**
- * Automatically inspects and heals any corrupted tasks with NaN or invalid dates.
+ * Automatically inspects and heals any corrupted tasks with NaN, decimal minutes, or invalid dates.
  */
 export function sanitizeAndHealTodos<T extends Record<string, any>>(rawList: T[]): T[] {
   if (!Array.isArray(rawList)) return [];
@@ -100,6 +112,7 @@ export function sanitizeAndHealTodos<T extends Record<string, any>>(rawList: T[]
     const rawStartStr = t.startTime ? String(t.startTime) : undefined;
     const rawEndStr = t.endTime ? String(t.endTime) : undefined;
     const dSched = t.dateScheduled ? String(t.dateScheduled) : undefined;
+    const hasFractionalDuration = typeof t.durationMinutes === "number" && !Number.isInteger(t.durationMinutes);
 
     const isStartTimeCorrupt = Boolean(t.startTime && !cleanStart);
     const isEndTimeCorrupt = Boolean(t.endTime && !cleanEnd);
@@ -110,6 +123,7 @@ export function sanitizeAndHealTodos<T extends Record<string, any>>(rawList: T[]
       isStartTimeCorrupt ||
       isEndTimeCorrupt ||
       isDateSchedCorrupt ||
+      hasFractionalDuration ||
       (cleanStart && cleanStart !== rawStartStr) ||
       (cleanEnd && cleanEnd !== rawEndStr) ||
       (Boolean(cleanStart) && !cleanEnd) ||
@@ -130,6 +144,7 @@ export function sanitizeAndHealTodos<T extends Record<string, any>>(rawList: T[]
         dateScheduled: cleanDate,
         startTime: bothValid ? cleanStart : undefined,
         endTime: bothValid ? cleanEnd : undefined,
+        ...(hasFractionalDuration ? { durationMinutes: Math.max(15, Math.round(t.durationMinutes)) } : {}),
       };
     }
     return t;
@@ -258,7 +273,7 @@ export function calculateNextAvailableStudySlot(
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const isTargetToday = targetDateStr === todayStr;
   const nowOffsetMins = (now.getTime() - baseDate.getTime()) / 60000;
-  const taskDuration = Math.max(30, durationMinutes);
+  const taskDuration = Math.max(30, Math.round(durationMinutes));
 
   // Check if now is within target date and currently inside the morning tail of an overnight block (e.g. 00:00 to 08:00 AM)
   const isCurrentlyInMorningTail =
@@ -393,19 +408,25 @@ export function realignTasksToStudyBlock(
     const stepMins = count > 1 ? Math.min(180, Math.floor(totalBlockDurationMins / count)) : 120;
 
     dayTasks.forEach((task, idx) => {
-      const durMins = Math.max(15, task.durationMinutes || 90);
+      const durMins = Math.max(15, Math.round(task.durationMinutes || 90));
       const slotStartMins = Math.min(endTotalMins - durMins, startTotalMins + idx * stepMins);
       const slotEndMins = slotStartMins + durMins;
 
       const startDateObj = new Date(baseDate.getTime() + slotStartMins * 60 * 1000);
       const endDateObj = new Date(baseDate.getTime() + slotEndMins * 60 * 1000);
+      const isGenuineSynced = Boolean(
+        task.calendarSynced &&
+          task.calendarEventId &&
+          !String(task.calendarEventId).startsWith("local-")
+      );
 
       updatedMap.set(String(task.id), {
         ...task,
+        durationMinutes: durMins,
         startTime: formatLocalISO(startDateObj),
         endTime: formatLocalISO(endDateObj),
         dateScheduled: dKey,
-        calendarSynced: true,
+        calendarSynced: isGenuineSynced,
         calendarEventId: task.calendarEventId || `local-${task.id}`,
         updatedAt: Date.now(),
       });

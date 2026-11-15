@@ -134,5 +134,37 @@ describe("Study Block Realignment & Cross-Midnight 30-Day Robustness Suite", () 
     expect(slot2.startTime).toBe("2099-12-20T11:05:00");
     expect(slot2.endTime).toBe("2099-12-20T12:35:00");
   });
+
+  it("repairs legacy decimal-minute ISO timestamps (e.g. T17:42.5:00) and fractional durationMinutes without wiping slots", () => {
+    const legacyBrokenTodos = [
+      {
+        id: "day16_3",
+        text: "friction Mastery Practice (45 Questions)",
+        durationMinutes: 112.5,
+        startTime: "2026-11-16T15:50:00",
+        endTime: "2026-11-16T17:42.5:00",
+        dateScheduled: "2026-11-16",
+      },
+      {
+        id: "day16_4",
+        text: "Full Chapter Revision — Classification",
+        durationMinutes: 45,
+        startTime: "2026-11-16T17:57.5:00",
+        endTime: "2026-11-16T18:42.5:00",
+        dateScheduled: "2026-11-16",
+      },
+    ];
+
+    const healed = sanitizeAndHealTodos(legacyBrokenTodos);
+    expect(healed[0].durationMinutes).toBe(113);
+    expect(healed[0].startTime).toBe("2026-11-16T15:50:00");
+    expect(healed[0].endTime).toBe("2026-11-16T17:43:00");
+    expect(isNaN(new Date(healed[0].endTime!).getTime())).toBe(false);
+
+    expect(healed[1].startTime).toBe("2026-11-16T17:58:00");
+    expect(healed[1].endTime).toBe("2026-11-16T18:43:00");
+    expect(isNaN(new Date(healed[1].startTime!).getTime())).toBe(false);
+    expect(isNaN(new Date(healed[1].endTime!).getTime())).toBe(false);
+  });
 });
 

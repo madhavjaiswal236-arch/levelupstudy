@@ -4,6 +4,7 @@ import {
   syncScheduleWithRoadmap,
   normalizeCalendarTitle,
 } from './syncRoadmap';
+import { generateRoadmap } from './engine';
 import type { BacklogPlan, RoadmapDay } from './types';
 import type { Todo } from '@/context/AppContext';
 import { filterTodayTasks } from '@/lib/utils';
@@ -542,6 +543,234 @@ describe('syncRoadmap', () => {
     const failedTask = res.finalTodos.find((t) => t.text.includes('Lecture 4'));
     expect(failedTask?.calendarSynced).toBe(false);
     expect(failedTask?.calendarEventId).toBeUndefined();
+  });
+
+  it('rounds fractional durations (e.g. 112.5m from 45 questions) so ALL 6 tasks on a day get valid integer ISO timestamps', async () => {
+    const day16Roadmap: RoadmapDay[] = [
+      {
+        dayIndex: 16,
+        date: '2026-11-16',
+        dayType: 'LEARNING',
+        totalMinutes: 713,
+        tasks: [
+          {
+            id: 'd16_1',
+            type: 'practice',
+            subject: 'Chemistry',
+            chapter: 'Classification of Elements and Periodicity',
+            chapterId: 'ch_class',
+            title: 'Classification of Elements and Periodicity Mastery Practice (80 Questions)',
+            durationMinutes: 200,
+            plannedDate: '2026-11-16',
+            dayIndex: 16,
+          },
+          {
+            id: 'd16_2',
+            type: 'lecture',
+            subject: 'Mathematics',
+            chapter: 'Trigonometric Functions',
+            chapterId: 'ch_trig',
+            lectureNumber: 2,
+            title: 'Trigonometric Functions — Lecture 2',
+            durationMinutes: 180,
+            plannedDate: '2026-11-16',
+            dayIndex: 16,
+          },
+          {
+            id: 'd16_3',
+            type: 'practice',
+            subject: 'Physics',
+            chapter: 'friction',
+            chapterId: 'ch_fric',
+            title: 'friction Mastery Practice (45 Questions)',
+            durationMinutes: 112.5, // 45 * 2.5m fractional duration
+            plannedDate: '2026-11-16',
+            dayIndex: 16,
+          },
+          {
+            id: 'd16_4',
+            type: 'revision',
+            subject: 'Chemistry',
+            chapter: 'Classification of Elements and Periodicity',
+            chapterId: 'ch_class',
+            title: 'Full Chapter Revision — Classification of Elements and Periodicity',
+            durationMinutes: 45,
+            plannedDate: '2026-11-16',
+            dayIndex: 16,
+          },
+          {
+            id: 'd16_5',
+            type: 'lecture',
+            subject: 'Mathematics',
+            chapter: 'Trigonometric Functions',
+            chapterId: 'ch_trig',
+            lectureNumber: 3,
+            title: 'Trigonometric Functions — Lecture 3',
+            durationMinutes: 180,
+            plannedDate: '2026-11-16',
+            dayIndex: 16,
+          },
+          {
+            id: 'd16_6',
+            type: 'revision',
+            subject: 'Physics',
+            chapter: 'friction',
+            chapterId: 'ch_fric',
+            title: 'Full Chapter Revision — friction',
+            durationMinutes: 45,
+            plannedDate: '2026-11-16',
+            dayIndex: 16,
+          },
+        ],
+      },
+    ];
+
+    const plan = makePlan(day16Roadmap);
+    const createdTitles: string[] = [];
+    const res = await syncScheduleWithRoadmap({
+      backlogPlan: plan,
+      todos: [],
+      hasGoogleAuth: true,
+      todayStr: '2026-11-15',
+      calendarOps: {
+        fetchEvents: async () => [],
+        batchDeleteEvents: async () => 0,
+        createEventDirect: async (title, start, end) => {
+          expect(isNaN(start.getTime())).toBe(false);
+          expect(isNaN(end.getTime())).toBe(false);
+          createdTitles.push(title);
+          return {
+            id: `gcal_${createdTitles.length}`,
+            startTime: start.toISOString(),
+            endTime: end.toISOString(),
+          };
+        },
+      },
+      syncOptions: { batchSize: 1, batchDelayMs: 0, retryDelayMs: 0 },
+    });
+
+    expect(res.createdGoogleCount).toBe(6);
+    expect(res.failedGoogleCount).toBe(0);
+
+    const active = res.finalTodos.filter((t) => !t.isDeleted);
+    expect(active).toHaveLength(6);
+    active.forEach((t) => {
+      expect(Number.isInteger(t.durationMinutes)).toBe(true);
+      expect(t.startTime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/);
+      expect(t.endTime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/);
+      expect(isNaN(new Date(t.startTime!).getTime())).toBe(false);
+      expect(isNaN(new Date(t.endTime!).getTime())).toBe(false);
+    });
+    expect(active[2].durationMinutes).toBe(113);
+    expect(active[2].endTime).toBe('2026-11-16T17:43:00');
+    expect(active[3].startTime).toBe('2026-11-16T17:58:00');
+  });
+
+  it('generates integer-only task durations in generateRoadmap and wave-paces >45 task syncs completely', async () => {
+    const planWith45Qs: BacklogPlan = {
+      id: 'plan_frac',
+      createdAt: '2026-11-15T00:00:00.000Z',
+      updatedAt: '2026-11-15T00:00:00.000Z',
+      settings: {
+        startDate: '2026-11-15',
+        deadlineDate: '2026-12-30',
+        capacityMode: 'hours',
+        targetDailyMinutes: 360,
+        targetDailyLectures: 3,
+        weekdayDailyMinutes: 360,
+        weekendDailyMinutes: 360,
+        revisionEnabled: true,
+        revisionAfterEveryNLectures: 4,
+        revisionDurationMinutes: 45,
+        testEnabled: false,
+        testAfterChapterCompletion: false,
+        testDurationMinutes: 60,
+        bufferDays: 2,
+        studyBlockStart: '09:00',
+        studyBlockEnd: '21:00',
+      },
+      subjects: [
+        {
+          id: 'sub_p',
+          name: 'Physics',
+          color: '#38bdf8',
+          chapters: Array.from({ length: 10 }, (_, i) => ({
+            id: `ch_${i}`,
+            name: `Chapter ${i + 1}`,
+            subject: 'Physics',
+            order: i + 1,
+            lecturesRemaining: 4,
+            lectureDurationMinutes: 90,
+            practice: {
+              enabled: true,
+              questionCount: 45, // 45 * 2.5 = 112.5m if unrounded!
+              estimatedMinutesPerQuestion: 2.5,
+            },
+          })),
+        },
+      ],
+      metrics: {
+        totalLectures: 40,
+        totalLectureMinutes: 3600,
+        totalPracticeQuestions: 450,
+        totalPracticeMinutes: 1125,
+        totalRevisionMinutes: 450,
+        totalTestMinutes: 0,
+        totalWorkloadMinutes: 5175,
+        totalWorkloadHours: 86,
+        calendarDays: 46,
+        availableStudyDays: 44,
+        requiredDailyMinutes: 118,
+        requiredDailyLectures: 1,
+        feasibilityStatus: 'ON_TRACK',
+        feasibilityRatio: 0.5,
+        projectedCompletionDate: '2026-12-20',
+        bufferDaysRemaining: 10,
+        healthScore: 95,
+      },
+      roadmap: [],
+    };
+
+    const generated = generateRoadmap(planWith45Qs);
+    const totalTasks = generated.reduce((sum, d) => sum + d.tasks.length, 0);
+    expect(totalTasks).toBeGreaterThan(45);
+    generated.forEach((d) =>
+      d.tasks.forEach((task) => {
+        expect(Number.isInteger(task.durationMinutes)).toBe(true);
+      })
+    );
+
+    const wavePlan = makePlan(generated);
+    let createdCount = 0;
+    const res = await syncScheduleWithRoadmap({
+      backlogPlan: wavePlan,
+      todos: [],
+      hasGoogleAuth: true,
+      todayStr: '2026-11-15',
+      calendarOps: {
+        fetchEvents: async () => [],
+        batchDeleteEvents: async () => 0,
+        createEventDirect: async (_t, start, end) => {
+          createdCount++;
+          return {
+            id: `gcal_wave_${createdCount}`,
+            startTime: start.toISOString(),
+            endTime: end.toISOString(),
+          };
+        },
+      },
+      syncOptions: {
+        batchSize: 1,
+        batchDelayMs: 0,
+        retryDelayMs: 0,
+        waveSize: 20,
+        waveCooldownMs: 0,
+      },
+    });
+
+    expect(res.roadmapTaskCount).toBe(totalTasks);
+    expect(res.createdGoogleCount).toBe(totalTasks);
+    expect(res.failedGoogleCount).toBe(0);
   });
 });
 

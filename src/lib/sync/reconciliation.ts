@@ -25,7 +25,14 @@ const sanitizeTimeValue = (val: any): string | undefined => {
     return !isNaN(d.getTime()) ? d.toISOString() : undefined;
   }
   if (typeof val === "string") {
-    const trimmed = val.trim();
+    let trimmed = val.trim();
+    const decMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{1,2})\.\d+:(\d{2})(.*)$/);
+    if (decMatch) {
+      const [, datePart, hStr, , secStr, suffix] = decMatch;
+      const totalMins = Math.round(parseInt(hStr, 10) * 60 + parseFloat(trimmed.slice(14, trimmed.indexOf(':', 14))));
+      const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMins));
+      trimmed = `${datePart}T${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}:${secStr}${suffix || ""}`;
+    }
     if (!trimmed || trimmed.includes("NaN") || trimmed.toLowerCase().includes("invalid")) return undefined;
     const d = new Date(trimmed);
     return !isNaN(d.getTime()) ? trimmed : undefined;

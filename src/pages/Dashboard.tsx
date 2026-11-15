@@ -55,6 +55,7 @@ import AnimatedNumber from "@/components/AnimatedNumber";
 import { getRankInfo } from "@/lib/utils";
 import {
   createCalendarEvent,
+  createCalendarEventDirect,
   deleteCalendarEvent,
   deleteGoogleTask,
   createGoogleTask,
@@ -1014,6 +1015,8 @@ const Dashboard = React.memo(function Dashboard() {
       }
     }
 
+    durationMinutes = Math.max(15, Math.round(durationMinutes));
+
     // Calculate XP dynamically on an hourly basis
     let calculatedXp = xpReward;
     const currentSub = selectedSubject || undefined;
@@ -1068,26 +1071,36 @@ const Dashboard = React.memo(function Dashboard() {
       dateScheduled: studySlot.dateScheduled,
       startTime: studySlot.startTime,
       endTime: studySlot.endTime,
-      calendarSynced: true,
+      calendarSynced: false,
       calendarEventId: `local-${taskId}`,
     };
 
+    let duplicateBlocked = false;
     setTodos((prev) => {
       const isDuplicate = prev.some(
         (t) =>
-          t.id === newTask.id ||
-          (t.text === newTask.text &&
-            t.type === newTask.type &&
-            t.subject === newTask.subject &&
-            t.chapter === newTask.chapter &&
-            !t.completed),
+          !t.isDeleted &&
+          (t.id === newTask.id ||
+            (t.text === newTask.text &&
+              t.type === newTask.type &&
+              t.subject === newTask.subject &&
+              t.chapter === newTask.chapter &&
+              !t.completed)),
       );
-      if (isDuplicate) return prev;
+      if (isDuplicate) {
+        duplicateBlocked = true;
+        return prev;
+      }
       const updated = [...prev, newTask];
       saveStateToCloudNow({ todos: updated });
       return updated;
     });
     resetTaskAdder();
+
+    if (duplicateBlocked) {
+      showToast("This active task is already in your Study Plan.", "error");
+      return;
+    }
 
     if (!addToCalendar) {
       showToast(
@@ -1097,22 +1110,28 @@ const Dashboard = React.memo(function Dashboard() {
       return;
     }
 
-    // Schedule it with calendar engine (Google Calendar if connected, or internal calendar engine)
+    // Schedule it directly with Google Calendar if connected (1 write call instead of multi-step lookup)
     try {
-      const result = await createCalendarEvent(
+      const token = getAccessTokenSync() || (await getAccessToken());
+      if (!token) {
+        showToast(
+          `Saved in Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)}). Connect Google Calendar to sync.`,
+          "success"
+        );
+        return;
+      }
+
+      const result = await createCalendarEventDirect(
         text,
-        durationMinutes,
-        type || "Lecture",
-        false,
-        todos,
         new Date(studySlot.startTime),
-        new Date(studySlot.endTime)
+        new Date(studySlot.endTime),
+        type || "Lecture",
+        false
       );
 
-      if (result && result.id) {
+      if (result && result.id && !String(result.id).startsWith("local-")) {
         let taskResult = null;
-        const token = getAccessTokenSync();
-        if (token && result.endTime) {
+        if (result.endTime) {
           try {
             taskResult = await createGoogleTask(text, new Date(result.endTime));
           } catch (taskErr: any) {
@@ -1137,23 +1156,21 @@ const Dashboard = React.memo(function Dashboard() {
           return updated;
         });
 
-        if (result.hasConflict) {
-          showToast(
-            `Scheduled in Study Block (Notice: overlaps with an existing calendar event)`,
-          );
-        } else if (taskResult) {
-          showToast("Scheduled on Calendar & Tasks!", "success");
+        if (taskResult) {
+          showToast("Scheduled on Google Calendar & Tasks!", "success");
         } else {
-          showToast(
-            `Scheduled in Daily Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)})!`,
-            "success"
-          );
+          showToast("Scheduled on Google Calendar!", "success");
         }
+      } else {
+        showToast(
+          `Saved in Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)}).`,
+          "success"
+        );
       }
     } catch (e: any) {
       console.warn("Calendar schedule notice:", e);
       showToast(
-        `Scheduled in Daily Study Block (${formatTime12h(activeBlock.start)} – ${formatTime12h(activeBlock.end)})!`,
+        "Task saved in Study Plan locally (Google Calendar rate limit — click Sync later to push to Google Calendar).",
         "success"
       );
     }
@@ -1165,7 +1182,7 @@ const Dashboard = React.memo(function Dashboard() {
 
     // 2. Schedule it with calendar (respecting existing dateScheduled/slot!)
     try {
-      let durationMinutes = task.durationMinutes || 105;
+      let durationMinutes = Math.max(15, Math.round(task.durationMinutes || 105));
       if (!task.durationMinutes) {
         if (
           task.type === "Practice" ||
@@ -1210,9 +1227,10 @@ const Dashboard = React.memo(function Dashboard() {
       );
 
       if (result && result.id) {
+        const isGoogleSynced = !String(result.id).startsWith("local-");
         let taskResult = null;
         const token = getAccessTokenSync();
-        if (token && result.endTime) {
+        if (token && isGoogleSynced && result.endTime) {
           try {
             taskResult = await createGoogleTask(task.text, new Date(result.endTime));
           } catch (taskErr: any) {
@@ -1226,7 +1244,7 @@ const Dashboard = React.memo(function Dashboard() {
             String(t.id) === String(task.id)
               ? {
                   ...t,
-                  calendarSynced: true,
+                  calendarSynced: isGoogleSynced,
                   calendarEventId: result.id,
                   calendarTaskId: taskResult ? taskResult.id : t.calendarTaskId,
                   startTime: studySlot.startTime,

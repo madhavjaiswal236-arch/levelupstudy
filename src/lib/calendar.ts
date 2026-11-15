@@ -52,11 +52,21 @@ function getRetryDelayMs(res: Response | null, attempt: number, initialDelayMs: 
     if (retryAfter) {
       const parsedSec = Number(retryAfter);
       if (!isNaN(parsedSec) && parsedSec > 0) {
-        return Math.min(20000, parsedSec * 1000) + Math.floor(Math.random() * 300);
+        return Math.min(35000, parsedSec * 1000) + Math.floor(Math.random() * 300);
       }
     }
   }
-  const exponential = Math.min(16000, initialDelayMs * Math.pow(2, attempt));
+  // Keep attempt 0..1 snappy (800ms, 1600ms) for transient hiccups/tests,
+  // then scale attempts 2..4 (4s -> 12s -> 24s) to outlast 60s rolling quota buckets.
+  const baseMs =
+    attempt <= 1
+      ? initialDelayMs * Math.pow(2, attempt)
+      : attempt === 2
+        ? 4000
+        : attempt === 3
+          ? 12000
+          : 24000;
+  const exponential = Math.min(28000, baseMs);
   const jitter = Math.floor(Math.random() * 350);
   return exponential + jitter;
 }

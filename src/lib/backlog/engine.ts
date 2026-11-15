@@ -78,7 +78,7 @@ export function calculateMetrics(
       if (chap.practice?.enabled) {
         const qCount = Math.max(0, chap.practice.questionCount || 0);
         totalPracticeQuestions += qCount;
-        const pMins = chap.practice.customDurationMinutes || (qCount * (chap.practice.estimatedMinutesPerQuestion || 2));
+        const pMins = Math.round(chap.practice.customDurationMinutes || (qCount * (chap.practice.estimatedMinutesPerQuestion || 2)));
         totalPracticeMinutes += pMins;
       }
 
@@ -218,10 +218,10 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
         : Array.from({ length: Math.max(0, chap.lecturesRemaining || 0) }, (_, i) => i + 1);
 
       const lecs = lectureList.length;
-      const lecDur = Math.max(15, chap.lectureDurationMinutes || 120);
+      const lecDur = Math.max(15, Math.round(chap.lectureDurationMinutes || 120));
       const practiceEnabled = Boolean(chap.practice?.enabled && chap.practice.questionCount > 0);
       const totalPracticeMins = practiceEnabled
-        ? (chap.practice.customDurationMinutes || (chap.practice.questionCount * (chap.practice.estimatedMinutesPerQuestion || 2)))
+        ? Math.max(15, Math.round(chap.practice.customDurationMinutes || (chap.practice.questionCount * (chap.practice.estimatedMinutesPerQuestion || 2))))
         : 0;
 
       // Group lectures and practice smartly
@@ -269,7 +269,7 @@ export function generateRoadmap(plan: BacklogPlan): RoadmapDay[] {
 
       // End of chapter practice
       if (practiceEnabled) {
-        const endPracticeMins = lecs >= 6 ? Math.round(totalPracticeMins * 0.55) : totalPracticeMins;
+        const endPracticeMins = Math.max(15, Math.round(lecs >= 6 ? totalPracticeMins * 0.55 : totalPracticeMins));
         const endQuestions = lecs >= 6 ? Math.round((chap.practice.questionCount || 50) * 0.55) : (chap.practice.questionCount || 50);
         subTasks.push({
           id: `task_${chap.id}_practice_final`,
@@ -483,21 +483,22 @@ export function generateTodosFromRoadmap(
     let currentStartMins = 9 * 60; // Day starts at 09:00 AM (540 minutes from midnight)
 
     day.tasks.forEach((task) => {
-      const duration = Math.max(15, task.durationMinutes || 120);
+      const duration = Math.max(15, Math.round(task.durationMinutes || 120));
+      const safeStartTotalMins = Math.round(currentStartMins);
 
-      const startDayOffset = Math.floor(currentStartMins / (24 * 60));
-      const startMinsInDay = currentStartMins % (24 * 60);
+      const startDayOffset = Math.floor(safeStartTotalMins / (24 * 60));
+      const startMinsInDay = safeStartTotalMins % (24 * 60);
       const startH = Math.floor(startMinsInDay / 60);
-      const startM = startMinsInDay % 60;
+      const startM = Math.floor(startMinsInDay % 60);
       const startHHStr = String(startH).padStart(2, '0');
       const startMMStr = String(startM).padStart(2, '0');
       const startDateStr = startDayOffset > 0 ? addDaysToDate(day.date, startDayOffset) : day.date;
 
-      const endMinsTotal = currentStartMins + duration;
+      const endMinsTotal = safeStartTotalMins + duration;
       const endDayOffset = Math.floor(endMinsTotal / (24 * 60));
       const endMinsInDay = endMinsTotal % (24 * 60);
       const endH = Math.floor(endMinsInDay / 60);
-      const endM = endMinsInDay % 60;
+      const endM = Math.floor(endMinsInDay % 60);
       const endHHStr = String(endH).padStart(2, '0');
       const endMMStr = String(endM).padStart(2, '0');
       const endDateStr = endDayOffset > 0 ? addDaysToDate(day.date, endDayOffset) : day.date;

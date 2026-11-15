@@ -150,18 +150,18 @@ export default function BacklogHQ() {
       tasksByDate.forEach((dayTasks, dateKey) => {
         let currentStartMins = 9 * 60; // 09:00 AM
         dayTasks.forEach((t) => {
-          const durationMins = Math.max(15, t.durationMinutes || (t.lectureHours ? t.lectureHours * 60 : 105));
+          const durationMins = Math.max(15, Math.round(t.durationMinutes || (t.lectureHours ? t.lectureHours * 60 : 105)));
           const startDayOff = Math.floor(currentStartMins / (24 * 60));
-          const startMinsInDay = currentStartMins % (24 * 60);
+          const startMinsInDay = Math.floor(currentStartMins % (24 * 60));
           const startH = Math.floor(startMinsInDay / 60);
-          const startM = startMinsInDay % 60;
+          const startM = Math.floor(startMinsInDay % 60);
           const startDateStr = startDayOff > 0 ? addDaysToDate(dateKey, startDayOff) : dateKey;
 
-          const endMinsTotal = currentStartMins + durationMins;
+          const endMinsTotal = Math.round(currentStartMins + durationMins);
           const endDayOff = Math.floor(endMinsTotal / (24 * 60));
-          const endMinsInDay = endMinsTotal % (24 * 60);
+          const endMinsInDay = Math.floor(endMinsTotal % (24 * 60));
           const endH = Math.floor(endMinsInDay / 60);
-          const endM = endMinsInDay % 60;
+          const endM = Math.floor(endMinsInDay % 60);
           const endDateStr = endDayOff > 0 ? addDaysToDate(dateKey, endDayOff) : dateKey;
 
           const calcStartISO = `${startDateStr}T${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}:00`;

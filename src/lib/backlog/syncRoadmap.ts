@@ -138,19 +138,20 @@ export function buildTodosFromRoadmapPreservingProgress(
     const dayDateClean = (day.date || planStartDate).slice(0, 10);
 
     day.tasks.forEach((task) => {
-      const duration = Math.max(15, task.durationMinutes || 120);
+      const duration = Math.max(15, Math.round(task.durationMinutes || 120));
+      const safeStartTotalMins = Math.round(currentStartMins);
 
-      const startDayOffset = Math.floor(currentStartMins / (24 * 60));
-      const startMinsInDay = currentStartMins % (24 * 60);
+      const startDayOffset = Math.floor(safeStartTotalMins / (24 * 60));
+      const startMinsInDay = safeStartTotalMins % (24 * 60);
       const startH = Math.floor(startMinsInDay / 60);
-      const startM = startMinsInDay % 60;
+      const startM = Math.floor(startMinsInDay % 60);
       const startDateStr = startDayOffset > 0 ? addDaysToDate(dayDateClean, startDayOffset) : dayDateClean;
 
-      const endMinsTotal = currentStartMins + duration;
+      const endMinsTotal = safeStartTotalMins + duration;
       const endDayOffset = Math.floor(endMinsTotal / (24 * 60));
       const endMinsInDay = endMinsTotal % (24 * 60);
       const endH = Math.floor(endMinsInDay / 60);
-      const endM = endMinsInDay % 60;
+      const endM = Math.floor(endMinsInDay % 60);
       const endDateStr = endDayOffset > 0 ? addDaysToDate(dayDateClean, endDayOffset) : dayDateClean;
 
       const startISO = `${startDateStr}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`;
@@ -293,6 +294,8 @@ export interface SyncScheduleOptions {
   batchSize?: number;
   batchDelayMs?: number;
   retryDelayMs?: number;
+  waveSize?: number;
+  waveCooldownMs?: number;
 }
 
 /**
@@ -464,9 +467,13 @@ export async function syncScheduleWithRoadmap(params: {
     }
   });
 
-  const batchSize = Math.max(1, syncOptions?.batchSize ?? 2);
-  const batchDelayMs = syncOptions?.batchDelayMs ?? 260;
-  const retryDelayMs = syncOptions?.retryDelayMs ?? 1200;
+  const totalMutations = deletedGoogleCount + toCreateIndices.length;
+  const isLargeSync = totalMutations > 40;
+  const batchSize = Math.max(1, syncOptions?.batchSize ?? (isLargeSync ? 1 : 2));
+  const batchDelayMs = syncOptions?.batchDelayMs ?? (isLargeSync ? 380 : 260);
+  const retryDelayMs = syncOptions?.retryDelayMs ?? (isLargeSync ? 32000 : 1800);
+  const waveSize = Math.max(10, syncOptions?.waveSize ?? 45);
+  const waveCooldownMs = syncOptions?.waveCooldownMs ?? (isLargeSync ? 16000 : 0);
 
   let createdGoogleCount = 0;
 
@@ -496,12 +503,18 @@ export async function syncScheduleWithRoadmap(params: {
     return false;
   };
 
-  // Pass 1: Paced batches
+  // Pass 1: Quota-safe paced batches with rolling-window wave breathers on large (40+) syncs
   let failedIndices: number[] = [];
+  let writesSinceWavePause = deletedGoogleCount;
   for (let i = 0; i < toCreateIndices.length; i += batchSize) {
+    if (waveCooldownMs > 0 && writesSinceWavePause >= waveSize && i > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waveCooldownMs));
+      writesSinceWavePause = 0;
+    }
     const chunk = toCreateIndices.slice(i, i + batchSize);
     const results = await Promise.allSettled(chunk.map((idx) => tryCreateSingle(idx)));
     results.forEach((res, offset) => {
+      writesSinceWavePause++;
       if (res.status !== 'fulfilled' || !res.value) {
         failedIndices.push(chunk[offset]);
       }
@@ -511,9 +524,9 @@ export async function syncScheduleWithRoadmap(params: {
     }
   }
 
-  // Pass 2 & Pass 3: Strictly sequential recovery passes after cooldown for any rate-limited stragglers
+  // Pass 2 & Pass 3: Sequential recovery after rolling-quota cooldown for any stragglers
   for (let retryRound = 0; retryRound < 2 && failedIndices.length > 0; retryRound++) {
-    const cooldown = retryRound === 0 ? retryDelayMs : Math.round(retryDelayMs * 1.5);
+    const cooldown = retryRound === 0 ? retryDelayMs : Math.round(retryDelayMs * 1.4);
     if (cooldown > 0) {
       await new Promise((resolve) => setTimeout(resolve, cooldown));
     }

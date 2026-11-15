@@ -976,7 +976,9 @@ const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
                  >
                    <ChevronDown className="w-3.5 h-3.5" />
                  </button>
-                 {task.calendarSynced && (
+                 {task.calendarSynced &&
+                   task.calendarEventId &&
+                   !String(task.calendarEventId).startsWith("local-") && (
                    <span className="px-2 py-0.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 rounded text-[10px] font-mono font-bold">
                      Synced
                    </span>

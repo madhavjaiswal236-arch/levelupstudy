@@ -165,14 +165,15 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
                     }
                   }
                 } else if (todo.durationMinutes) {
-                  const hrs = Math.floor(todo.durationMinutes / 60);
-                  const mins = todo.durationMinutes % 60;
+                  const roundedMins = Math.round(todo.durationMinutes);
+                  const hrs = Math.floor(roundedMins / 60);
+                  const mins = roundedMins % 60;
                   if (hrs > 0 && mins > 0) {
                     durationStr = `${hrs}h ${mins}m`;
                   } else if (hrs > 0) {
                     durationStr = `${hrs}h`;
                   } else {
-                    durationStr = `${todo.durationMinutes}m`;
+                    durationStr = `${mins}m`;
                   }
                 }
                 if (!durationStr) return null;
@@ -195,7 +196,15 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
                   +{todo.xpReward} XP
                 </span>
               )}
-              {todo.calendarSynced && (
+              {todo.calendarSynced &&
+                todo.calendarEventId &&
+                !String(todo.calendarEventId).startsWith("local-") &&
+                Boolean(
+                  todo.startTime &&
+                    todo.endTime &&
+                    !isNaN(new Date(todo.startTime).getTime()) &&
+                    !isNaN(new Date(todo.endTime).getTime())
+                ) && (
                 <span
                   title="Scheduled in Google Calendar"
                   className="flex items-center text-[11px] sm:text-xs dark:text-blue-400 text-blue-700 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded shadow-xs shrink-0 leading-none"
