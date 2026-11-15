@@ -52,6 +52,10 @@ import {
   generateTodosFromRoadmap,
   addDaysToDate
 } from '@/lib/backlog/engine';
+import {
+  syncScheduleWithRoadmap,
+  buildTodosFromRoadmapPreservingProgress,
+} from '@/lib/backlog/syncRoadmap';
 import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
 import { getLocalDateString } from '@/lib/utils';
 import {
@@ -98,15 +102,35 @@ export default function BacklogHQ() {
 
   const handleApplyAllToCalendar = async () => {
     setIsSyncingCalendar(true);
-    setSyncMessage("Syncing all tasks with breaks...");
+    setSyncMessage("Syncing schedule strictly to roadmap...");
     try {
       let token = getAccessTokenSync();
       if (!token && auth.currentUser) {
         try { token = await refreshGoogleToken(); } catch (e) {}
       }
-      // Silent background token check; if unavailable, apply timeline locally with zero popups
 
-      // Step 1: Enforce exact 15-minute breaks on all scheduled tasks
+      // Authoritative roadmap sync when a BacklogPlan roadmap exists
+      if (backlogPlan && backlogPlan.roadmap && backlogPlan.roadmap.length > 0) {
+        const result = await syncScheduleWithRoadmap({
+          backlogPlan,
+          todos,
+          hasGoogleAuth: Boolean(token),
+          todayStr,
+        });
+
+        setTodos(result.finalTodos);
+        await saveStateToCloudNow({ todos: result.finalTodos });
+
+        setSyncMessage(
+          token
+            ? `Synced ${result.roadmapTaskCount} roadmap tasks (${result.createdGoogleCount} created, ${result.keptGoogleCount} matched, ${result.deletedGoogleCount} stray calendar events & ${result.deletedLocalCount} extra tasks cleared)!`
+            : `Synced ${result.roadmapTaskCount} tasks strictly to your roadmap (${result.deletedLocalCount} extra tasks cleared)!`
+        );
+        setTimeout(() => setSyncMessage(null), 5000);
+        return;
+      }
+
+      // Fallback when no active roadmap exists: enforce 15-minute breaks on scheduled tasks
       let currentTodos = [...todos];
       let updated = false;
 
@@ -124,19 +148,21 @@ export default function BacklogHQ() {
         let currentStartMins = 9 * 60; // 09:00 AM
         dayTasks.forEach((t) => {
           const durationMins = Math.max(15, t.durationMinutes || (t.lectureHours ? t.lectureHours * 60 : 105));
-          const startH = Math.floor(currentStartMins / 60) % 24;
-          const startM = currentStartMins % 60;
-          const startHHStr = String(startH).padStart(2, "0");
-          const startMMStr = String(startM).padStart(2, "0");
+          const startDayOff = Math.floor(currentStartMins / (24 * 60));
+          const startMinsInDay = currentStartMins % (24 * 60);
+          const startH = Math.floor(startMinsInDay / 60);
+          const startM = startMinsInDay % 60;
+          const startDateStr = startDayOff > 0 ? addDaysToDate(dateKey, startDayOff) : dateKey;
 
           const endMinsTotal = currentStartMins + durationMins;
-          const endH = Math.floor(endMinsTotal / 60) % 24;
-          const endM = endMinsTotal % 60;
-          const endHHStr = String(endH).padStart(2, "0");
-          const endMMStr = String(endM).padStart(2, "0");
+          const endDayOff = Math.floor(endMinsTotal / (24 * 60));
+          const endMinsInDay = endMinsTotal % (24 * 60);
+          const endH = Math.floor(endMinsInDay / 60);
+          const endM = endMinsInDay % 60;
+          const endDateStr = endDayOff > 0 ? addDaysToDate(dateKey, endDayOff) : dateKey;
 
-          const calcStartISO = `${dateKey}T${startHHStr}:${startMMStr}:00`;
-          const calcEndISO = `${dateKey}T${endHHStr}:${endMMStr}:00`;
+          const calcStartISO = `${startDateStr}T${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}:00`;
+          const calcEndISO = `${endDateStr}T${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}:00`;
 
           if (t.startTime !== calcStartISO || t.endTime !== calcEndISO || t.durationMinutes !== durationMins) {
             updated = true;
@@ -155,11 +181,6 @@ export default function BacklogHQ() {
         });
       });
 
-      if (updated) {
-        setTodos(currentTodos);
-      }
-
-      // Step 2: Push unsynced tasks to Google Calendar if authorized
       let syncedCount = 0;
       if (token) {
         const unsynced = currentTodos.filter(t => !t.isDeleted && t.startTime && t.endTime && (!t.calendarEventId || t.calendarEventId.startsWith("local-")));
@@ -193,11 +214,11 @@ export default function BacklogHQ() {
             console.warn("Failed to create event for task", t.id, e);
           }
         }
+      }
 
-        if (syncedCount > 0) {
-          setTodos(currentTodos);
-          saveStateToCloudNow({ todos: currentTodos });
-        }
+      if (updated || syncedCount > 0) {
+        setTodos(currentTodos);
+        await saveStateToCloudNow({ todos: currentTodos });
       }
 
       setSyncMessage(
@@ -208,7 +229,7 @@ export default function BacklogHQ() {
       setTimeout(() => setSyncMessage(null), 4000);
     } catch (err: any) {
       console.error("Single click apply all error:", err);
-      setSyncMessage("Tasks scheduled locally with 15-min breaks!");
+      setSyncMessage("Sync encountered an error. Please try again.");
       setTimeout(() => setSyncMessage(null), 4000);
     } finally {
       setIsSyncingCalendar(false);
@@ -339,20 +360,18 @@ export default function BacklogHQ() {
       );
     }
 
-    let updatedTodos: typeof todos = [];
-    setTodos((prev) => {
-      // Remove all tasks in the new plan's date window so old tasks never collide with the new roadmap
-      const preserved = prev.filter((t) => {
-        if (t.isBacklogTask) return false;
-        const taskDate = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : null);
-        if (taskDate && taskDate >= planStartDate && taskDate <= planEndDate) {
-          return false;
-        }
-        return true;
-      });
-      updatedTodos = [...preserved, ...newTodos];
-      return updatedTodos;
-    });
+    const nowMs = Date.now();
+    const tombstonedIds = new Set(tasksToClear.map((t) => String(t.id)));
+    const preserved = todos.filter((t) => !t.isDeleted && !tombstonedIds.has(String(t.id)));
+    const existingTombstones = todos.filter((t) => t.isDeleted);
+    const newTombstones = tasksToClear.map((t) => ({
+      ...t,
+      isDeleted: true,
+      deletedAt: nowMs,
+      updatedAt: nowMs,
+    }));
+    const updatedTodos = [...preserved, ...newTodos, ...existingTombstones, ...newTombstones];
+    setTodos(updatedTodos);
 
     try {
       localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(newPlan));
@@ -363,21 +382,33 @@ export default function BacklogHQ() {
 
   // Today's Backlog Tasks from context
   const todaysBacklogTasks = useMemo(() => {
-    return todos.filter(t => t.isBacklogTask && t.dateScheduled === todayStr);
-  }, [todos, todayStr]);
+    return todos.filter(
+      t =>
+        !t.isDeleted &&
+        t.isBacklogTask &&
+        (!backlogPlan || !t.backlogPlanId || t.backlogPlanId === backlogPlan.id) &&
+        t.dateScheduled === todayStr
+    );
+  }, [todos, todayStr, backlogPlan]);
 
   // Check for missed tasks from past dates
   const missedTasks = useMemo(() => {
     return todos.filter(
-      t => t.isBacklogTask && !t.completed && t.dateScheduled && t.dateScheduled < todayStr
+      t =>
+        !t.isDeleted &&
+        t.isBacklogTask &&
+        (!backlogPlan || !t.backlogPlanId || t.backlogPlanId === backlogPlan.id) &&
+        !t.completed &&
+        t.dateScheduled &&
+        t.dateScheduled < todayStr
     );
-  }, [todos, todayStr]);
+  }, [todos, todayStr, backlogPlan]);
 
   // Overall Plan Statistics
   const planStats = useMemo(() => {
     if (!backlogPlan) return null;
     const allBacklogTasks = todos.filter(
-      t => t.isBacklogTask && (!t.backlogPlanId || t.backlogPlanId === backlogPlan.id)
+      t => !t.isDeleted && t.isBacklogTask && (!t.backlogPlanId || t.backlogPlanId === backlogPlan.id)
     );
     const completedTasks = allBacklogTasks.filter(t => t.completed);
     const completedLecs = completedTasks.filter(
@@ -440,14 +471,11 @@ export default function BacklogHQ() {
       }
 
       setBacklogPlan(null);
-      let updatedTodos: typeof todos = [];
       const now = Date.now();
-      setTodos(prev => {
-        updatedTodos = prev.map(t => 
-          t.isBacklogTask ? { ...t, isDeleted: true, deletedAt: now } : t
-        );
-        return updatedTodos;
-      });
+      const updatedTodos = todos.map(t =>
+        t.isBacklogTask ? { ...t, isDeleted: true, deletedAt: now, updatedAt: now } : t
+      );
+      setTodos(updatedTodos);
       try {
         localStorage.removeItem("jee_tracker_backlog_plan");
       } catch (e) {}
@@ -503,8 +531,6 @@ export default function BacklogHQ() {
     const newRoadmap = generateRoadmap(updatedPlan);
     updatedPlan.roadmap = newRoadmap;
 
-    const newTodos = generateTodosFromRoadmap(newRoadmap, updatedPlan.id);
-
     setBacklogPlan(updatedPlan);
 
     if (typeof window !== "undefined") {
@@ -513,25 +539,26 @@ export default function BacklogHQ() {
       } catch (e) {}
     }
 
-    // Keep completed backlog tasks, replace unfinished ones without duplicating
-    let nextTodos: any[] = [];
-    setTodos(prev => {
-      const nonBacklog = prev.filter(t => !t.isBacklogTask);
-      const completedBacklog = prev.filter(t => t.isBacklogTask && t.completed);
-      const completedSignatures = new Set<string>();
-      completedBacklog.forEach(t => {
-        getTaskSignaturesWithLegacy(t).forEach(sig => completedSignatures.add(sig));
-      });
+    // Build exact roadmap todos while preserving progress & emitting tombstones synchronously
+    const nowMs = Date.now();
+    const { syncedTodos, deletedTodos } = buildTodosFromRoadmapPreservingProgress(
+      newRoadmap,
+      updatedPlan.id,
+      todos,
+      { todayStr, nowMs }
+    );
 
-      const freshTasks = newTodos.filter(t => {
-        const sigs = getTaskSignaturesWithLegacy(t);
-        return !sigs.some(s => completedSignatures.has(s));
-      });
-      nextTodos = [...nonBacklog, ...completedBacklog, ...freshTasks];
-      return nextTodos;
-    });
+    const gcalToDelete = deletedTodos
+      .filter((t) => t.deletedAt === nowMs && t.calendarEventId && !t.calendarEventId.startsWith("local-"))
+      .map((t) => t.calendarEventId!);
+    if (gcalToDelete.length > 0) {
+      batchDeleteCalendarEvents(gcalToDelete).catch((err) =>
+        console.warn("Background calendar cleanup failed:", err)
+      );
+    }
 
-    saveStateToCloudNow({ backlogPlan: updatedPlan, todos: nextTodos });
+    setTodos(syncedTodos);
+    saveStateToCloudNow({ backlogPlan: updatedPlan, todos: syncedTodos });
   };
 
   const getHealthBadge = (status: FeasibilityStatus) => {
@@ -1430,7 +1457,9 @@ export default function BacklogHQ() {
 
                               const matchingTodo = todos.find(
                                 todo =>
+                                  !todo.isDeleted &&
                                   todo.isBacklogTask &&
+                                  (!backlogPlan || !todo.backlogPlanId || todo.backlogPlanId === backlogPlan.id) &&
                                   (todo.id === t.id ||
                                     (todo.backlogChapterId === t.chapterId &&
                                       todo.backlogTaskType === t.type &&

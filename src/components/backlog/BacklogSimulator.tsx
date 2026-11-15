@@ -189,9 +189,14 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
       updatedPlan.settings?.studyBlockEnd
     );
 
-    // Keep completed tasks, replace incomplete backlog tasks without duplicating
-    const nonBacklog = todos.filter(t => !t.isBacklogTask && !t.backlogChapterId);
-    const completedBacklog = todos.filter(t => (t.isBacklogTask || t.backlogChapterId) && t.completed);
+    // Keep completed tasks, tombstone replaced incomplete backlog tasks so cloud sync never resurrects them
+    const nowMs = Date.now();
+    const nonBacklog = todos.filter(t => !t.isDeleted && !t.isBacklogTask && !t.backlogChapterId);
+    const completedBacklog = todos.filter(t => !t.isDeleted && (t.isBacklogTask || t.backlogChapterId) && t.completed);
+    const replacedTombstones = todos
+      .filter(t => t.isDeleted || ((t.isBacklogTask || t.backlogChapterId) && !t.completed))
+      .map(t => (t.isDeleted ? t : { ...t, isDeleted: true, deletedAt: nowMs, updatedAt: nowMs }));
+
     const completedSignatures = new Set<string>();
     completedBacklog.forEach(t => {
       getTaskSignaturesWithLegacy(t).forEach(sig => completedSignatures.add(sig));
@@ -207,7 +212,7 @@ export const BacklogSimulator: React.FC<BacklogSimulatorProps> = ({ onClose }) =
       return true;
     });
 
-    const mergedTodos = [...nonBacklog, ...completedBacklog, ...deduplicatedFresh];
+    const mergedTodos = [...nonBacklog, ...completedBacklog, ...deduplicatedFresh, ...replacedTombstones];
 
     setBacklogPlan(updatedPlan);
     if (typeof window !== "undefined") {

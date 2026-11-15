@@ -42,7 +42,7 @@ export const BacklogProgressJourney: React.FC<BacklogProgressJourneyProps> = ({
   // Filter tasks belonging to this backlog plan
   const planTasks = useMemo(() => {
     return todos.filter(
-      t => t.isBacklogTask && (!t.backlogPlanId || t.backlogPlanId === plan.id)
+      t => !t.isDeleted && t.isBacklogTask && (!t.backlogPlanId || t.backlogPlanId === plan.id)
     );
   }, [todos, plan.id]);
 

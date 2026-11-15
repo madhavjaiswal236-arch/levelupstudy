@@ -54,6 +54,13 @@ import {
   addMonths,
 } from "date-fns";
 import { predictNextLecture, getLocalDateString } from "../lib/utils";
+import { formatLocalISO } from "../lib/studyBlock";
+import {
+  syncScheduleWithRoadmap,
+  normalizeCalendarTitle,
+  getGoogleEventDateBounds,
+} from "../lib/backlog/syncRoadmap";
+import { addDaysToDate } from "../lib/backlog/engine";
 
 const COLORS: Record<string, string> = {
   Physics:
@@ -133,6 +140,8 @@ export function StudyCalendar({
     hasToken,
     setHasToken,
     setFirebaseUser,
+    backlogPlan,
+    saveStateToCloudNow,
   } = useAppContext();
 
   useEffect(() => {
@@ -201,25 +210,42 @@ export function StudyCalendar({
     let isMounted = true;
     const sync = async () => {
       try {
+        const defaultStart = addDays(new Date(), -14);
+        let fetchEnd = addDays(new Date(), 30);
+        if (backlogPlan?.roadmap && backlogPlan.roadmap.length > 0) {
+          const lastDateStr = backlogPlan.roadmap[backlogPlan.roadmap.length - 1]?.date;
+          if (lastDateStr) {
+            const roadmapEnd = safeParseDate(`${lastDateStr}T23:59:59`);
+            if (roadmapEnd && roadmapEnd.getTime() > fetchEnd.getTime()) {
+              fetchEnd = addDays(roadmapEnd, 1);
+            }
+          }
+        }
+
         const events = await fetchGoogleCalendarEvents(
-          addDays(new Date(), -14),
-          addDays(new Date(), 30),
+          defaultStart,
+          fetchEnd,
         );
         if (!isMounted) return;
         if (events && events.length > 0) {
           setGoogleEvents(events);
         }
 
+        const hasActiveRoadmap = Boolean(backlogPlan?.roadmap && backlogPlan.roadmap.length > 0);
+
         setTodos((prev) => {
           let updated = false;
-          // Step 1: Deduplicate prev todos by id, google calendarEventId, and content signature
+          // Step 1: Deduplicate active todos while ALWAYS preserving soft-delete tombstones
           const seenIds = new Set<string | number>();
           const seenGoogleIds = new Set<string>();
           const seenContentSignatures = new Set<string>();
           const deduplicatedList: typeof prev = [];
 
           prev.forEach((t) => {
-            if (t.isDeleted) return;
+            if (t.isDeleted) {
+              deduplicatedList.push(t);
+              return;
+            }
 
             // Unique ID check
             if (seenIds.has(t.id)) {
@@ -251,16 +277,19 @@ export function StudyCalendar({
             deduplicatedList.push(t);
           });
 
-          // Step 2: Keep times synced with Google Calendar for active todos
+          // Step 2: Keep non-backlog times aligned using local ISO (never overwrite backlog roadmap slots from GCal)
           const next = deduplicatedList.map((t) => {
+            if (t.isDeleted) return t;
+            if (hasActiveRoadmap && t.isBacklogTask) return t;
+
             if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
               const match = events.find((e: any) => e.id === t.calendarEventId && e.status !== "cancelled");
               if (match && match.start?.dateTime && match.end?.dateTime) {
                 const mStartDate = safeParseDate(match.start.dateTime);
                 const mEndDate = safeParseDate(match.end.dateTime);
                 if (mStartDate && mEndDate) {
-                  const mStart = mStartDate.toISOString();
-                  const mEnd = mEndDate.toISOString();
+                  const mStart = formatLocalISO(mStartDate);
+                  const mEnd = formatLocalISO(mEndDate);
                   if (t.startTime !== mStart || t.endTime !== mEnd) {
                     updated = true;
                     return { ...t, startTime: mStart, endTime: mEnd };
@@ -269,13 +298,11 @@ export function StudyCalendar({
               }
             } else if ((!t.calendarEventId || t.calendarEventId.startsWith("local-")) && t.startTime) {
               const tStartMs = new Date(t.startTime).getTime();
+              const tNorm = normalizeCalendarTitle(t.text);
               const match = events.find((e: any) => {
                 if (!e.start?.dateTime || e.status === "cancelled") return false;
                 const eStartMs = new Date(e.start.dateTime).getTime();
-                const sameSummary =
-                  e.summary?.trim().toLowerCase() === t.text?.trim().toLowerCase() ||
-                  e.summary?.trim().toLowerCase().includes(t.text?.trim().toLowerCase() || "");
-                return sameSummary && Math.abs(eStartMs - tStartMs) <= 3 * 60 * 1000;
+                return normalizeCalendarTitle(e.summary) === tNorm && Math.abs(eStartMs - tStartMs) <= 2 * 60 * 1000;
               });
               if (match && match.id) {
                 updated = true;
@@ -302,7 +329,7 @@ export function StudyCalendar({
       clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [setTodos]);
+  }, [setTodos, backlogPlan]);
 
   const visibleDays = useMemo(() => {
     if (view === "Day") return [startOfDay(currentDate)];
@@ -661,6 +688,7 @@ export function StudyCalendar({
     let allSuccess = true;
     let errorMessage = "";
     let hasAuth = false;
+    let customSuccessMsg: string | null = null;
     try {
       try {
         hasAuth = await ensureCalendarAuth();
@@ -668,374 +696,386 @@ export function StudyCalendar({
         console.warn("Calendar auth check note:", authErr);
       }
 
-      // Pre-step: Ensure ALL tasks in todos have exact start and end times with 15-minute breaks between consecutive tasks
-      let currentTodosState = [...todos];
-      let needsReschedule = false;
-
-      const tasksByDate = new Map<string, typeof todos>();
-      currentTodosState.forEach((t) => {
-        if (t.isDeleted || t.completed) return;
-        const dateKey = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : getLocalDateString());
-        if (!tasksByDate.has(dateKey)) {
-          tasksByDate.set(dateKey, []);
-        }
-        tasksByDate.get(dateKey)!.push(t);
-      });
-
-      tasksByDate.forEach((dayTasks, dateKey) => {
-        let currentStartMins = 9 * 60; // Start at 09:00 AM
-        dayTasks.forEach((t) => {
-          const durationMins = Math.max(15, t.durationMinutes || (t.lectureHours ? t.lectureHours * 60 : 105));
-          
-          const startH = Math.floor(currentStartMins / 60) % 24;
-          const startM = currentStartMins % 60;
-          const startHHStr = String(startH).padStart(2, "0");
-          const startMMStr = String(startM).padStart(2, "0");
-
-          const endMinsTotal = currentStartMins + durationMins;
-          const endH = Math.floor(endMinsTotal / 60) % 24;
-          const endM = endMinsTotal % 60;
-          const endHHStr = String(endH).padStart(2, "0");
-          const endMMStr = String(endM).padStart(2, "0");
-
-          const calcStartISO = `${dateKey}T${startHHStr}:${startMMStr}:00`;
-          const calcEndISO = `${dateKey}T${endHHStr}:${endMMStr}:00`;
-
-          if (t.startTime !== calcStartISO || t.endTime !== calcEndISO || t.durationMinutes !== durationMins) {
-            needsReschedule = true;
-            const idx = currentTodosState.findIndex((item) => item.id === t.id);
-            if (idx !== -1) {
-              currentTodosState[idx] = {
-                ...currentTodosState[idx],
-                startTime: calcStartISO,
-                endTime: calcEndISO,
-                durationMinutes: durationMins,
-                dateScheduled: dateKey,
-              };
-            }
-          }
-          // 15-minute break between consecutive tasks
-          currentStartMins = endMinsTotal + 15;
-        });
-      });
-
-      if (needsReschedule) {
-        setCalendarTodos(currentTodosState);
-      }
-
-      // Step 1: Fetch Google Calendar events in range if authenticated (-14 days to +30 days)
-      let gcalEvents: any[] = [];
-      if (hasAuth) {
-        try {
-          gcalEvents = await fetchGoogleCalendarEvents(
-            addDays(new Date(), -14),
-            addDays(new Date(), 30)
-          );
-        } catch (fetchErr) {
-          console.warn("Error fetching Google Calendar events:", fetchErr);
-        }
-      }
-
-      // Step 2: LECTURE OVERLAP CLEARING:
-      // While applying timeline, delete all other things in the calendar during the time when a lecture is scheduled.
-      const isLecture = (item: { text?: string; type?: string; backlogTaskType?: string; lectureNumber?: number; summary?: string }) => {
-        const text = (item.text || item.summary || "").toLowerCase();
-        const type = (item.type || "").toLowerCase();
-        const backlogType = (item.backlogTaskType || "").toLowerCase();
-        return (
-          type === "lecture" ||
-          backlogType === "lecture" ||
-          item.lectureNumber !== undefined ||
-          /lecture|lec\s*\d+|class|session/i.test(text)
-        );
-      };
-
-      const scheduledLectures = todos.filter(
-        (t) =>
-          !t.isDeleted &&
-          t.startTime &&
-          t.endTime &&
-          isLecture(t)
-      );
-
-      const lectureIntervals: Array<{ start: number; end: number; sourceId?: string | number; gcalId?: string; title: string }> = [];
-
-      scheduledLectures.forEach((l) => {
-        lectureIntervals.push({
-          start: new Date(l.startTime!).getTime(),
-          end: new Date(l.endTime!).getTime(),
-          sourceId: l.id,
-          gcalId: l.calendarEventId,
-          title: l.text || "",
-        });
-      });
-
-      if (gcalEvents && gcalEvents.length > 0) {
-        gcalEvents.forEach((ge) => {
-          if (!ge.start?.dateTime || !ge.end?.dateTime) return;
-          if (isLecture(ge)) {
-            const geStart = new Date(ge.start.dateTime).getTime();
-            const geEnd = new Date(ge.end.dateTime).getTime();
-            const alreadyMapped = lectureIntervals.some(
-              (li) => Math.abs(li.start - geStart) <= 5 * 60 * 1000 && (li.gcalId === ge.id || li.title.toLowerCase() === (ge.summary || "").toLowerCase())
-            );
-            if (!alreadyMapped) {
-              lectureIntervals.push({
-                start: geStart,
-                end: geEnd,
-                gcalId: ge.id,
-                title: ge.summary || "",
-              });
-            }
-          }
-        });
-      }
-
-      const conflictingLocalTaskIdsToDelete = new Set<string | number>();
-      const conflictingGoogleEventIdsToDelete = new Set<string>();
-
-      for (const lec of lectureIntervals) {
-        const lStart = lec.start;
-        const lEnd = lec.end;
-        const lecTitleNorm = (lec.title || "").trim().toLowerCase();
-
-        // 2A: Detect conflicting other local tasks during this lecture's scheduled duration
-        todos.forEach((t) => {
-          if (t.isDeleted || !t.startTime || !t.endTime) return;
-          if (lec.sourceId !== undefined && t.id === lec.sourceId) return; // Keep the lecture itself
-          if (lec.gcalId && t.calendarEventId === lec.gcalId) return; // Keep the lecture's local mirror
-          
-          const tTitleNorm = (t.text || "").trim().toLowerCase();
-          if (tTitleNorm === lecTitleNorm && isLecture(t)) return; // Don't delete same lecture here (dedupe handles)
-
-          const tStart = new Date(t.startTime).getTime();
-          const tEnd = new Date(t.endTime).getTime();
-          // Check if time intervals overlap: delete all other things during the lecture!
-          if (tStart < lEnd && tEnd > lStart) {
-            conflictingLocalTaskIdsToDelete.add(t.id);
-            if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
-              conflictingGoogleEventIdsToDelete.add(t.calendarEventId);
-            }
-          }
+      // Authoritative roadmap sync when a BacklogPlan roadmap exists
+      if (backlogPlan && backlogPlan.roadmap && backlogPlan.roadmap.length > 0) {
+        const result = await syncScheduleWithRoadmap({
+          backlogPlan,
+          todos,
+          hasGoogleAuth: hasAuth,
         });
 
-        // 2B: Detect conflicting Google Calendar events during this lecture's scheduled duration
-        if (gcalEvents && gcalEvents.length > 0) {
-          for (const ge of gcalEvents) {
-            if (!ge.start?.dateTime || !ge.end?.dateTime) continue;
-            if (lec.gcalId && ge.id === lec.gcalId) continue; // Keep the lecture's own event
-            const geSummary = (ge.summary || "").trim().toLowerCase();
-            if (geSummary === lecTitleNorm && isLecture(ge)) {
-              continue; // Do not delete this lecture's own event
+        setCalendarTodos(result.finalTodos);
+        await saveStateToCloudNow({ todos: result.finalTodos });
+
+        if (hasAuth) {
+          setGoogleEvents((prev) => {
+            const outside = prev.filter((ge) => {
+              const { startDate, endDate } = getGoogleEventDateBounds(ge);
+              if (!startDate || !endDate) return false;
+              return endDate < result.planStartDate || startDate > result.planEndDate;
+            });
+            return [...outside, ...result.remainingGoogleEvents];
+          });
+          customSuccessMsg = `Synced ${result.roadmapTaskCount} roadmap tasks (${result.createdGoogleCount} created, ${result.keptGoogleCount} matched, ${result.deletedGoogleCount} stray calendar events & ${result.deletedLocalCount} extra tasks cleared).`;
+        } else {
+          customSuccessMsg = `Synced ${result.roadmapTaskCount} tasks strictly to your roadmap (${result.deletedLocalCount} extra tasks cleared).`;
+        }
+      } else {
+        // Legacy fallback when user has no active BacklogPlan roadmap
+        let currentTodosState = [...todos];
+        let needsReschedule = false;
+
+        const tasksByDate = new Map<string, typeof todos>();
+        currentTodosState.forEach((t) => {
+          if (t.isDeleted || t.completed) return;
+          const dateKey = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : getLocalDateString());
+          if (!tasksByDate.has(dateKey)) {
+            tasksByDate.set(dateKey, []);
+          }
+          tasksByDate.get(dateKey)!.push(t);
+        });
+
+        tasksByDate.forEach((dayTasks, dateKey) => {
+          let currentStartMins = 9 * 60; // Start at 09:00 AM
+          dayTasks.forEach((t) => {
+            const durationMins = Math.max(15, t.durationMinutes || (t.lectureHours ? t.lectureHours * 60 : 105));
+
+            const startDayOff = Math.floor(currentStartMins / (24 * 60));
+            const startMinsInDay = currentStartMins % (24 * 60);
+            const startH = Math.floor(startMinsInDay / 60);
+            const startM = startMinsInDay % 60;
+            const startDateStr = startDayOff > 0 ? addDaysToDate(dateKey, startDayOff) : dateKey;
+
+            const endMinsTotal = currentStartMins + durationMins;
+            const endDayOff = Math.floor(endMinsTotal / (24 * 60));
+            const endMinsInDay = endMinsTotal % (24 * 60);
+            const endH = Math.floor(endMinsInDay / 60);
+            const endM = endMinsInDay % 60;
+            const endDateStr = endDayOff > 0 ? addDaysToDate(dateKey, endDayOff) : dateKey;
+
+            const calcStartISO = `${startDateStr}T${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}:00`;
+            const calcEndISO = `${endDateStr}T${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}:00`;
+
+            if (t.startTime !== calcStartISO || t.endTime !== calcEndISO || t.durationMinutes !== durationMins) {
+              needsReschedule = true;
+              const idx = currentTodosState.findIndex((item) => item.id === t.id);
+              if (idx !== -1) {
+                currentTodosState[idx] = {
+                  ...currentTodosState[idx],
+                  startTime: calcStartISO,
+                  endTime: calcEndISO,
+                  durationMinutes: durationMins,
+                  dateScheduled: dateKey,
+                };
+              }
             }
+            // 15-minute break between consecutive tasks
+            currentStartMins = endMinsTotal + 15;
+          });
+        });
 
-            const geStart = new Date(ge.start.dateTime).getTime();
-            const geEnd = new Date(ge.end.dateTime).getTime();
-            if (geStart < lEnd && geEnd > lStart) {
-              conflictingGoogleEventIdsToDelete.add(ge.id);
-            }
-          }
-        }
-      }
-
-      // Step 3: DEDUPLICATION:
-      // While syncing, if user applies changes twice or as many times, prevent creating duplicate tasks or events
-      const seenIds = new Set<string | number>();
-      const seenGoogleIds = new Set<string>();
-      const seenSlots = new Set<string>();
-      const duplicatesToDelete = new Set<string | number>();
-      const duplicateGoogleEventIdsToDelete: string[] = [];
-
-      todos.forEach((t) => {
-        if (t.isDeleted || conflictingLocalTaskIdsToDelete.has(t.id)) return;
-
-        // 1. Deduplicate by unique task ID
-        if (seenIds.has(t.id)) {
-          duplicatesToDelete.add(t.id);
-          return;
-        }
-        seenIds.add(t.id);
-
-        // 2. Deduplicate by Google Calendar Event ID
-        if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
-          if (seenGoogleIds.has(t.calendarEventId)) {
-            duplicatesToDelete.add(t.id);
-            duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
-            return;
-          }
-          seenGoogleIds.add(t.calendarEventId);
+        if (needsReschedule) {
+          setCalendarTodos(currentTodosState);
         }
 
-        // 3. Deduplicate by text + time slot (15-minute window) or chapter + lecture number
-        const normTitle = (t.text || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
-        if (t.startTime && normTitle) {
-          const sMs = new Date(t.startTime).getTime();
-          const slotBucket = Math.round(sMs / (15 * 60 * 1000));
-          const slotKey = `${(t.subject || "").trim().toLowerCase()}_${normTitle}_${slotBucket}`;
-          if (seenSlots.has(slotKey)) {
-            duplicatesToDelete.add(t.id);
-            if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
-              duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
-            }
-            return;
-          }
-          seenSlots.add(slotKey);
-        } else if (t.chapter && t.lectureNumber !== undefined) {
-          const chapKey = `${(t.subject || "").trim().toLowerCase()}_${t.chapter.toLowerCase()}_lec${t.lectureNumber}_${t.type}`;
-          if (seenSlots.has(chapKey)) {
-            duplicatesToDelete.add(t.id);
-            return;
-          }
-          seenSlots.add(chapKey);
-        }
-      });
-
-      // Also clean up remote Google Calendar duplicate events with identical title & start time
-      if (hasAuth && gcalEvents && gcalEvents.length > 0) {
-        const seenGcalSignatures = new Set<string>();
-        for (const ge of gcalEvents) {
-          if (!ge.start?.dateTime || !ge.summary) continue;
-          if (conflictingGoogleEventIdsToDelete.has(ge.id)) continue;
-          const sig = `${ge.summary.trim().toLowerCase().replace(/^\[done\]\s*/i, "")}_${Math.round(new Date(ge.start.dateTime).getTime() / (15 * 60 * 1000))}`;
-          if (seenGcalSignatures.has(sig)) {
-            duplicateGoogleEventIdsToDelete.push(ge.id);
-          } else {
-            seenGcalSignatures.add(sig);
-          }
-        }
-      }
-
-      // Execute Google Calendar remote deletions for lecture conflicts & duplicates
-      const allGoogleIdsToDelete = new Set([
-        ...Array.from(conflictingGoogleEventIdsToDelete),
-        ...duplicateGoogleEventIdsToDelete,
-      ]);
-      if (hasAuth && allGoogleIdsToDelete.size > 0) {
-        for (const gid of allGoogleIdsToDelete) {
+        // Step 1: Fetch Google Calendar events in range if authenticated (-14 days to +30 days)
+        let gcalEvents: any[] = [];
+        if (hasAuth) {
           try {
-            await deleteCalendarEvent(gid);
-          } catch (e) {
-            console.warn("Failed to delete event from Google Calendar:", gid, e);
+            gcalEvents = await fetchGoogleCalendarEvents(
+              addDays(new Date(), -14),
+              addDays(new Date(), 30)
+            );
+          } catch (fetchErr) {
+            console.warn("Error fetching Google Calendar events:", fetchErr);
           }
         }
-        // Immediately remove deleted events from React state so UI updates instantly
-        setGoogleEvents((prev) => prev.filter((ge) => !allGoogleIdsToDelete.has(ge.id)));
-      }
 
-      // Clean local tasks
-      const allLocalIdsToDelete = new Set([
-        ...Array.from(conflictingLocalTaskIdsToDelete),
-        ...Array.from(duplicatesToDelete),
-      ]);
+        // Step 2: LECTURE OVERLAP CLEARING
+        const isLecture = (item: { text?: string; type?: string; backlogTaskType?: string; lectureNumber?: number; summary?: string }) => {
+          const text = (item.text || item.summary || "").toLowerCase();
+          const type = (item.type || "").toLowerCase();
+          const backlogType = (item.backlogTaskType || "").toLowerCase();
+          return (
+            type === "lecture" ||
+            backlogType === "lecture" ||
+            item.lectureNumber !== undefined ||
+            /lecture|lec\s*\d+|class|session/i.test(text)
+          );
+        };
 
-      let cleanTodos = todos.filter((t) => !allLocalIdsToDelete.has(t.id));
-      if (allLocalIdsToDelete.size > 0) {
-        setCalendarTodos(cleanTodos);
-      }
-
-      if (hasAuth) {
-        // Step 4: Reschedule existing Google Calendar events
-        const eventsToUpdate = cleanTodos
-          .filter(
-            (t) =>
-              !t.isDeleted &&
-              t.calendarEventId &&
-              !t.calendarEventId.startsWith("local-") &&
-              t.startTime &&
-              t.endTime
-          )
-          .map((t) => ({
-            eventId: t.calendarEventId!,
-            startTime: new Date(t.startTime!),
-            endTime: new Date(t.endTime!),
-          }));
-        if (eventsToUpdate.length > 0) {
-          const updateSuccess = await rescheduleCalendarEvents(eventsToUpdate);
-          if (!updateSuccess) allSuccess = false;
-        }
-
-        // Step 5: Create new events on Google Calendar for unsynced tasks with in-flight lock & deduplication
-        const eventsToCreate = cleanTodos.filter(
+        const scheduledLectures = currentTodosState.filter(
           (t) =>
             !t.isDeleted &&
-            (!t.calendarEventId || t.calendarEventId.startsWith("local-")) &&
             t.startTime &&
             t.endTime &&
-            !inFlightTaskIdsRef.current.has(t.id)
+            isLecture(t)
         );
 
-        if (eventsToCreate.length > 0) {
-          const createdEventIds: { id: string | number; calendarEventId: string }[] = [];
-          for (const t of eventsToCreate) {
-            inFlightTaskIdsRef.current.add(t.id);
-            try {
-              const tStart = new Date(t.startTime!);
-              const tEnd = new Date(t.endTime!);
-              const durationMinutes = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
-              
-              // First, check if gcalEvents already contains an event with this title and time (reusing existing event to prevent duplicates)
-              const normTitle = (t.text || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
-              const existingMatch = gcalEvents.find((ge: any) => {
-                if (!ge.start?.dateTime || !ge.id) return false;
-                const geStart = new Date(ge.start.dateTime).getTime();
-                const geSummaryNorm = (ge.summary || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
-                return (
-                  (geSummaryNorm === normTitle || geSummaryNorm.includes(normTitle) || normTitle.includes(geSummaryNorm)) &&
-                  Math.abs(geStart - tStart.getTime()) <= 15 * 60 * 1000
-                );
-              });
+        const lectureIntervals: Array<{ start: number; end: number; sourceId?: string | number; gcalId?: string; title: string }> = [];
 
-              if (existingMatch && existingMatch.id) {
-                createdEventIds.push({ id: t.id, calendarEventId: existingMatch.id });
-                const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
-                if (idx !== -1) {
-                  cleanTodos[idx] = {
-                    ...cleanTodos[idx],
-                    calendarEventId: existingMatch.id,
-                    calendarSynced: true,
-                  };
-                }
+        scheduledLectures.forEach((l) => {
+          lectureIntervals.push({
+            start: new Date(l.startTime!).getTime(),
+            end: new Date(l.endTime!).getTime(),
+            sourceId: l.id,
+            gcalId: l.calendarEventId,
+            title: l.text || "",
+          });
+        });
+
+        if (gcalEvents && gcalEvents.length > 0) {
+          gcalEvents.forEach((ge) => {
+            if (!ge.start?.dateTime || !ge.end?.dateTime) return;
+            if (isLecture(ge)) {
+              const geStart = new Date(ge.start.dateTime).getTime();
+              const geEnd = new Date(ge.end.dateTime).getTime();
+              const alreadyMapped = lectureIntervals.some(
+                (li) => Math.abs(li.start - geStart) <= 5 * 60 * 1000 && (li.gcalId === ge.id || li.title.toLowerCase() === (ge.summary || "").toLowerCase())
+              );
+              if (!alreadyMapped) {
+                lectureIntervals.push({
+                  start: geStart,
+                  end: geEnd,
+                  gcalId: ge.id,
+                  title: ge.summary || "",
+                });
+              }
+            }
+          });
+        }
+
+        const conflictingLocalTaskIdsToDelete = new Set<string | number>();
+        const conflictingGoogleEventIdsToDelete = new Set<string>();
+
+        for (const lec of lectureIntervals) {
+          const lStart = lec.start;
+          const lEnd = lec.end;
+          const lecTitleNorm = (lec.title || "").trim().toLowerCase();
+
+          currentTodosState.forEach((t) => {
+            if (t.isDeleted || !t.startTime || !t.endTime) return;
+            if (lec.sourceId !== undefined && t.id === lec.sourceId) return;
+            if (lec.gcalId && t.calendarEventId === lec.gcalId) return;
+
+            const tTitleNorm = (t.text || "").trim().toLowerCase();
+            if (tTitleNorm === lecTitleNorm && isLecture(t)) return;
+
+            const tStart = new Date(t.startTime).getTime();
+            const tEnd = new Date(t.endTime).getTime();
+            if (tStart < lEnd && tEnd > lStart) {
+              conflictingLocalTaskIdsToDelete.add(t.id);
+              if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+                conflictingGoogleEventIdsToDelete.add(t.calendarEventId);
+              }
+            }
+          });
+
+          if (gcalEvents && gcalEvents.length > 0) {
+            for (const ge of gcalEvents) {
+              if (!ge.start?.dateTime || !ge.end?.dateTime) continue;
+              if (lec.gcalId && ge.id === lec.gcalId) continue;
+              const geSummary = (ge.summary || "").trim().toLowerCase();
+              if (geSummary === lecTitleNorm && isLecture(ge)) {
                 continue;
               }
 
-              const result = await createCalendarEvent(
-                t.text,
-                durationMinutes,
-                t.type || "Lecture",
-                false,
-                cleanTodos,
-                tStart,
-                tEnd
-              );
-              if (result && result.id && !result.id.startsWith("local-")) {
-                createdEventIds.push({ id: t.id, calendarEventId: result.id });
-                const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
-                if (idx !== -1) {
-                  cleanTodos[idx] = {
-                    ...cleanTodos[idx],
-                    calendarEventId: result.id,
-                    calendarSynced: true,
-                  };
-                }
+              const geStart = new Date(ge.start.dateTime).getTime();
+              const geEnd = new Date(ge.end.dateTime).getTime();
+              if (geStart < lEnd && geEnd > lStart) {
+                conflictingGoogleEventIdsToDelete.add(ge.id);
               }
-            } catch (e) {
-              console.error("Error creating Google Calendar event:", e);
-              allSuccess = false;
-            } finally {
-              inFlightTaskIdsRef.current.delete(t.id);
             }
           }
-          if (createdEventIds.length > 0) {
-            setCalendarTodos((prev) =>
-              prev.map((t) => {
-                const match = createdEventIds.find((c) => c.id === t.id);
-                return match
-                  ? { ...t, calendarEventId: match.calendarEventId, calendarSynced: true }
-                  : t;
-              })
-            );
+        }
+
+        // Step 3: DEDUPLICATION
+        const seenIds = new Set<string | number>();
+        const seenGoogleIds = new Set<string>();
+        const seenSlots = new Set<string>();
+        const duplicatesToDelete = new Set<string | number>();
+        const duplicateGoogleEventIdsToDelete: string[] = [];
+
+        currentTodosState.forEach((t) => {
+          if (t.isDeleted || conflictingLocalTaskIdsToDelete.has(t.id)) return;
+
+          if (seenIds.has(t.id)) {
+            duplicatesToDelete.add(t.id);
+            return;
+          }
+          seenIds.add(t.id);
+
+          if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+            if (seenGoogleIds.has(t.calendarEventId)) {
+              duplicatesToDelete.add(t.id);
+              duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
+              return;
+            }
+            seenGoogleIds.add(t.calendarEventId);
+          }
+
+          const normTitle = (t.text || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
+          if (t.startTime && normTitle) {
+            const sMs = new Date(t.startTime).getTime();
+            const slotBucket = Math.round(sMs / (15 * 60 * 1000));
+            const slotKey = `${(t.subject || "").trim().toLowerCase()}_${normTitle}_${slotBucket}`;
+            if (seenSlots.has(slotKey)) {
+              duplicatesToDelete.add(t.id);
+              if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+                duplicateGoogleEventIdsToDelete.push(t.calendarEventId);
+              }
+              return;
+            }
+            seenSlots.add(slotKey);
+          } else if (t.chapter && t.lectureNumber !== undefined) {
+            const chapKey = `${(t.subject || "").trim().toLowerCase()}_${t.chapter.toLowerCase()}_lec${t.lectureNumber}_${t.type}`;
+            if (seenSlots.has(chapKey)) {
+              duplicatesToDelete.add(t.id);
+              return;
+            }
+            seenSlots.add(chapKey);
+          }
+        });
+
+        if (hasAuth && gcalEvents && gcalEvents.length > 0) {
+          const seenGcalSignatures = new Set<string>();
+          for (const ge of gcalEvents) {
+            if (!ge.start?.dateTime || !ge.summary) continue;
+            if (conflictingGoogleEventIdsToDelete.has(ge.id)) continue;
+            const sig = `${ge.summary.trim().toLowerCase().replace(/^\[done\]\s*/i, "")}_${Math.round(new Date(ge.start.dateTime).getTime() / (15 * 60 * 1000))}`;
+            if (seenGcalSignatures.has(sig)) {
+              duplicateGoogleEventIdsToDelete.push(ge.id);
+            } else {
+              seenGcalSignatures.add(sig);
+            }
           }
         }
+
+        const allGoogleIdsToDelete = new Set([
+          ...Array.from(conflictingGoogleEventIdsToDelete),
+          ...duplicateGoogleEventIdsToDelete,
+        ]);
+        if (hasAuth && allGoogleIdsToDelete.size > 0) {
+          for (const gid of allGoogleIdsToDelete) {
+            try {
+              await deleteCalendarEvent(gid);
+            } catch (e) {
+              console.warn("Failed to delete event from Google Calendar:", gid, e);
+            }
+          }
+          setGoogleEvents((prev) => prev.filter((ge) => !allGoogleIdsToDelete.has(ge.id)));
+        }
+
+        // Tombstone local conflicts/duplicates so cloud sync never resurrects them
+        const allLocalIdsToDelete = new Set([
+          ...Array.from(conflictingLocalTaskIdsToDelete),
+          ...Array.from(duplicatesToDelete),
+        ]);
+
+        const nowMs = Date.now();
+        let cleanTodos = currentTodosState.map((t) =>
+          allLocalIdsToDelete.has(t.id)
+            ? { ...t, isDeleted: true, deletedAt: nowMs, updatedAt: nowMs }
+            : t
+        );
+        if (allLocalIdsToDelete.size > 0) {
+          setCalendarTodos(cleanTodos);
+        }
+
+        if (hasAuth) {
+          const eventsToUpdate = cleanTodos
+            .filter(
+              (t) =>
+                !t.isDeleted &&
+                t.calendarEventId &&
+                !t.calendarEventId.startsWith("local-") &&
+                t.startTime &&
+                t.endTime
+            )
+            .map((t) => ({
+              eventId: t.calendarEventId!,
+              startTime: new Date(t.startTime!),
+              endTime: new Date(t.endTime!),
+            }));
+          if (eventsToUpdate.length > 0) {
+            const updateSuccess = await rescheduleCalendarEvents(eventsToUpdate);
+            if (!updateSuccess) allSuccess = false;
+          }
+
+          const eventsToCreate = cleanTodos.filter(
+            (t) =>
+              !t.isDeleted &&
+              (!t.calendarEventId || t.calendarEventId.startsWith("local-")) &&
+              t.startTime &&
+              t.endTime &&
+              !inFlightTaskIdsRef.current.has(t.id)
+          );
+
+          if (eventsToCreate.length > 0) {
+            const createdEventIds: { id: string | number; calendarEventId: string }[] = [];
+            for (const t of eventsToCreate) {
+              inFlightTaskIdsRef.current.add(t.id);
+              try {
+                const tStart = new Date(t.startTime!);
+                const tEnd = new Date(t.endTime!);
+                const durationMinutes = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
+
+                const normTitle = normalizeCalendarTitle(t.text);
+                const existingMatch = gcalEvents.find((ge: any) => {
+                  if (!ge.start?.dateTime || !ge.id) return false;
+                  const geStart = new Date(ge.start.dateTime).getTime();
+                  return (
+                    normalizeCalendarTitle(ge.summary) === normTitle &&
+                    Math.abs(geStart - tStart.getTime()) <= 2 * 60 * 1000
+                  );
+                });
+
+                if (existingMatch && existingMatch.id) {
+                  createdEventIds.push({ id: t.id, calendarEventId: existingMatch.id });
+                  const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
+                  if (idx !== -1) {
+                    cleanTodos[idx] = {
+                      ...cleanTodos[idx],
+                      calendarEventId: existingMatch.id,
+                      calendarSynced: true,
+                    };
+                  }
+                  continue;
+                }
+
+                const result = await createCalendarEvent(
+                  t.text,
+                  durationMinutes,
+                  t.type || "Lecture",
+                  false,
+                  cleanTodos,
+                  tStart,
+                  tEnd
+                );
+                if (result && result.id && !result.id.startsWith("local-")) {
+                  createdEventIds.push({ id: t.id, calendarEventId: result.id });
+                  const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
+                  if (idx !== -1) {
+                    cleanTodos[idx] = {
+                      ...cleanTodos[idx],
+                      calendarEventId: result.id,
+                      calendarSynced: true,
+                    };
+                  }
+                }
+              } catch (e) {
+                console.error("Error creating Google Calendar event:", e);
+                allSuccess = false;
+              } finally {
+                inFlightTaskIdsRef.current.delete(t.id);
+              }
+            }
+            if (createdEventIds.length > 0) {
+              setCalendarTodos(cleanTodos);
+            }
+          }
+        }
+        await saveStateToCloudNow({ todos: cleanTodos });
       }
     } catch (e: any) {
       console.error(e);
@@ -1049,9 +1089,10 @@ export function StudyCalendar({
 
     if (allSuccess) {
       showToast(
-        hasAuth
-          ? "Timeline applied! All tasks scheduled and synced with Google Calendar."
-          : "Timeline applied! All tasks scheduled on Calendar with 15-minute breaks in between.",
+        customSuccessMsg ||
+          (hasAuth
+            ? "Timeline applied! All tasks scheduled and synced with Google Calendar."
+            : "Timeline applied! All tasks scheduled on Calendar with 15-minute breaks in between."),
         "success"
       );
       setUnsyncedChanges(false);
@@ -1062,19 +1103,6 @@ export function StudyCalendar({
       );
     }
   };
-
-  // Auto-sync changes to Google Calendar with debounce
-  useEffect(() => {
-    if (unsyncedChanges && !isSyncingRef.current) {
-      if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
-      autoSyncTimerRef.current = setTimeout(() => {
-        handleCalendarSync();
-      }, 1500);
-      return () => {
-        if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
-      };
-    }
-  }, [unsyncedChanges, todos]);
 
   const handleScheduleSingle = async (task: Todo) => {
     let latestEnd = new Date();
@@ -1102,8 +1130,9 @@ export function StudyCalendar({
       t.id === task.id
         ? {
             ...t,
-            startTime: currentStart.toISOString(),
-            endTime: end.toISOString(),
+            startTime: formatLocalISO(currentStart),
+            endTime: formatLocalISO(end),
+            dateScheduled: getLocalDateString(currentStart),
           }
         : t,
     );
@@ -1179,8 +1208,9 @@ export function StudyCalendar({
       if (tIndex >= 0) {
         updatedTodos[tIndex] = {
           ...updatedTodos[tIndex],
-          startTime: currentStart.toISOString(),
-          endTime: end.toISOString(),
+          startTime: formatLocalISO(currentStart),
+          endTime: formatLocalISO(end),
+          dateScheduled: getLocalDateString(currentStart),
         };
       }
 
@@ -1881,8 +1911,9 @@ export function StudyCalendar({
                               t.id === ev.id
                                 ? {
                                     ...t,
-                                    startTime: finalStart.toISOString(),
-                                    endTime: finalEnd.toISOString(),
+                                    startTime: formatLocalISO(finalStart),
+                                    endTime: formatLocalISO(finalEnd),
+                                    dateScheduled: getLocalDateString(finalStart),
                                   }
                                 : t,
                             ),
@@ -1975,7 +2006,14 @@ export function StudyCalendar({
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        setCalendarTodos((prev) => prev.filter((t) => t.id !== ev.id));
+                        const nowMs = Date.now();
+                        setCalendarTodos((prev) =>
+                          prev.map((t) =>
+                            t.id === ev.id
+                              ? { ...t, isDeleted: true, deletedAt: nowMs, updatedAt: nowMs }
+                              : t,
+                          ),
+                        );
                         setUnsyncedChanges(true);
                         showToast("Task deleted", "success");
                         if ((ev as any).calendarEventId) {
@@ -2362,7 +2400,7 @@ export function StudyCalendar({
                           setCalendarTodos((prev) =>
                             prev.map((t) =>
                               t.id === ev.id
-                                ? { ...t, endTime: finalEnd.toISOString() }
+                                ? { ...t, endTime: formatLocalISO(finalEnd) }
                                 : t,
                             ),
                           );
@@ -3170,20 +3208,22 @@ export function StudyCalendar({
                             taskSubject === "General" ? undefined : taskSubject,
                           chapter: taskChapter || undefined,
                           lectureNumber: lecNumParsed,
-                          startTime: start.toISOString(),
-                          endTime: end.toISOString(),
+                          startTime: formatLocalISO(start),
+                          endTime: formatLocalISO(end),
+                          dateScheduled: getLocalDateString(start),
                           priority: taskPriority,
                           durationMinutes: durationMins,
                         };
 
                         const isDuplicate = todos.some(
                           (t) =>
-                            t.id === newTask.id ||
-                            (t.text === newTask.text &&
-                              t.type === newTask.type &&
-                              t.subject === newTask.subject &&
-                              t.chapter === newTask.chapter &&
-                              !t.completed),
+                            !t.isDeleted &&
+                            (t.id === newTask.id ||
+                              (t.text === newTask.text &&
+                                t.type === newTask.type &&
+                                t.subject === newTask.subject &&
+                                t.chapter === newTask.chapter &&
+                                !t.completed)),
                         );
                         if (!isDuplicate) {
                           setCalendarTodos([...todos, newTask]);

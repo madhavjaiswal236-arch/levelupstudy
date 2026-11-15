@@ -485,16 +485,22 @@ export function generateTodosFromRoadmap(
     day.tasks.forEach((task) => {
       const duration = Math.max(15, task.durationMinutes || 120);
 
-      const startH = Math.floor(currentStartMins / 60) % 24;
-      const startM = currentStartMins % 60;
+      const startDayOffset = Math.floor(currentStartMins / (24 * 60));
+      const startMinsInDay = currentStartMins % (24 * 60);
+      const startH = Math.floor(startMinsInDay / 60);
+      const startM = startMinsInDay % 60;
       const startHHStr = String(startH).padStart(2, '0');
       const startMMStr = String(startM).padStart(2, '0');
+      const startDateStr = startDayOffset > 0 ? addDaysToDate(day.date, startDayOffset) : day.date;
 
       const endMinsTotal = currentStartMins + duration;
-      const endH = Math.floor(endMinsTotal / 60) % 24;
-      const endM = endMinsTotal % 60;
+      const endDayOffset = Math.floor(endMinsTotal / (24 * 60));
+      const endMinsInDay = endMinsTotal % (24 * 60);
+      const endH = Math.floor(endMinsInDay / 60);
+      const endM = endMinsInDay % 60;
       const endHHStr = String(endH).padStart(2, '0');
       const endMMStr = String(endM).padStart(2, '0');
+      const endDateStr = endDayOffset > 0 ? addDaysToDate(day.date, endDayOffset) : day.date;
 
       const capitalizedType =
         task.type === 'lecture' ? 'Lecture' :
@@ -513,8 +519,8 @@ export function generateTodosFromRoadmap(
         subject: task.subject,
         chapter: task.chapter,
         lectureNumber: task.lectureNumber,
-        startTime: `${day.date}T${startHHStr}:${startMMStr}:00`,
-        endTime: `${day.date}T${endHHStr}:${endMMStr}:00`,
+        startTime: `${startDateStr}T${startHHStr}:${startMMStr}:00`,
+        endTime: `${endDateStr}T${endHHStr}:${endMMStr}:00`,
         durationMinutes: duration,
         backlogPlanId: planId,
         backlogChapterId: task.chapterId,

@@ -173,15 +173,15 @@ export async function createCalendarEvent(title: string, durationMinutes: number
   try {
     // Check if an event with the matching title and time range already exists in primary calendar
     try {
-      const windowStart = new Date(startTime.getTime() - 25 * 60 * 1000);
-      const windowEnd = new Date(endTime.getTime() + 25 * 60 * 1000);
+      const windowStart = new Date(safeStart.getTime() - 25 * 60 * 1000);
+      const windowEnd = new Date(safeEnd.getTime() + 25 * 60 * 1000);
       const existingEvents = await fetchGoogleCalendarEvents(windowStart, windowEnd);
       const normTitle = title.trim().toLowerCase().replace(/^\[done\]\s*/i, "");
       const duplicate = existingEvents.find((e: any) => {
         if (!e.start?.dateTime) return false;
         const eSummaryNorm = (e.summary || "").trim().toLowerCase().replace(/^\[done\]\s*/i, "");
         const eStart = new Date(e.start.dateTime).getTime();
-        const diffMs = Math.abs(eStart - startTime.getTime());
+        const diffMs = Math.abs(eStart - safeStart.getTime());
         return (
           (eSummaryNorm === normTitle || eSummaryNorm.includes(normTitle) || normTitle.includes(eSummaryNorm)) &&
           diffMs <= 20 * 60 * 1000
@@ -189,9 +189,9 @@ export async function createCalendarEvent(title: string, durationMinutes: number
       });
       if (duplicate && duplicate.id) {
         console.log("Reusing existing Google Calendar event to prevent duplicates:", duplicate.id);
-        // Ensure its time is updated to current startTime/endTime
-        await updateCalendarEventTime(duplicate.id, startTime, endTime, title, colorId);
-        return { ...duplicate, hasConflict, startTime: startTime.toISOString(), endTime: endTime.toISOString() };
+        // Ensure its time is updated to current safeStart/safeEnd
+        await updateCalendarEventTime(duplicate.id, safeStart, safeEnd, title, colorId);
+        return { ...duplicate, hasConflict, startTime: safeStart.toISOString(), endTime: safeEnd.toISOString() };
       }
     } catch (checkErr) {
       console.warn("Could not pre-check calendar duplicates, proceeding with creation:", checkErr);
@@ -207,11 +207,83 @@ export async function createCalendarEvent(title: string, durationMinutes: number
       throw new Error(`Google Calendar API error: ${res.status} ${errorText}`);
     }
     const data = await res.json();
-    return { ...data, hasConflict, startTime: startTime.toISOString(), endTime: endTime.toISOString() };
+    return { ...data, hasConflict, startTime: safeStart.toISOString(), endTime: safeEnd.toISOString() };
   } catch (err) {
     console.error('Failed to create Calendar event:', err);
     throw err;
   }
+}
+
+export async function createCalendarEventDirect(
+  title: string,
+  startTime: Date,
+  endTime: Date,
+  type: string = 'Lecture',
+  isCompleted: boolean = false
+): Promise<{ id: string; startTime: string; endTime: string } | null> {
+  const token = await getValidToken();
+  if (!token) return null;
+
+  const safeStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
+  let safeEnd = endTime && !isNaN(endTime.getTime()) ? endTime : new Date(safeStart.getTime() + 60 * 60 * 1000);
+  if (safeEnd.getTime() <= safeStart.getTime()) {
+    safeEnd = new Date(safeStart.getTime() + 60 * 60 * 1000);
+  }
+
+  let colorId = '1';
+  if (isCompleted) {
+    colorId = '10'; // basil/green
+  } else if (title.toLowerCase().includes('backlog')) {
+    colorId = '11';
+  } else if (type === 'Practice' || type === 'Custom') {
+    colorId = '9';
+  } else if (type === 'Lecture') {
+    colorId = '11';
+  } else if (type === 'Chapter Test' || type === 'Test') {
+    colorId = '6';
+  }
+
+  const cleanTitle = title.replace(/^\[Done\]\s*/i, '');
+  const summary = isCompleted ? `[Done] ${cleanTitle}` : cleanTitle;
+
+  const event = {
+    summary,
+    colorId,
+    start: {
+      dateTime: safeStart.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    end: {
+      dateTime: safeEnd.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'popup', minutes: 60 },
+        { method: 'popup', minutes: 30 },
+        { method: 'popup', minutes: 15 },
+        { method: 'popup', minutes: 10 },
+        { method: 'popup', minutes: 5 },
+      ],
+    },
+  };
+
+  const res = await fetchGoogleApi('https://www.googleapis.com/calendar/v3/calendars/primary/events', 'POST', event);
+  if (!res.ok) {
+    const errorText = await res.text();
+    if (res.status === 401) {
+      await invalidateOAuthToken();
+      throw new Error('Google Calendar access token expired.');
+    }
+    throw new Error(`Google Calendar API error: ${res.status} ${errorText}`);
+  }
+  const data = await res.json();
+  return {
+    id: data.id,
+    startTime: safeStart.toISOString(),
+    endTime: safeEnd.toISOString(),
+  };
 }
 
 export async function checkCalendarConflicts(startTime: Date, endTime: Date): Promise<boolean> {
@@ -413,15 +485,29 @@ export async function updateCalendarEventTime(eventId: string, startTime?: Date,
 }
 
 export async function fetchGoogleCalendarEvents(timeMin: Date, timeMax: Date): Promise<any[]> {
- let token = await getValidToken();
- if (!token) return [];
- try {
-   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin.toISOString())}&timeMax=${encodeURIComponent(timeMax.toISOString())}&singleEvents=true&maxResults=250`;
-   const res = await fetchGoogleApi(url, 'GET');
-   if (!res.ok) return [];
-   const data = await res.json();
-   return data.items || [];
- } catch(err) {
-   return [];
- }
+  let token = await getValidToken();
+  if (!token) return [];
+  try {
+    const allItems: any[] = [];
+    let pageToken: string | undefined = undefined;
+    let pageCount = 0;
+    const MAX_PAGES = 10;
+
+    do {
+      const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+      const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin.toISOString())}&timeMax=${encodeURIComponent(timeMax.toISOString())}&singleEvents=true&maxResults=2500${pageParam}`;
+      const res = await fetchGoogleApi(url, 'GET');
+      if (!res.ok) break;
+      const data = await res.json();
+      if (Array.isArray(data.items)) {
+        allItems.push(...data.items);
+      }
+      pageToken = data.nextPageToken;
+      pageCount++;
+    } while (pageToken && pageCount < MAX_PAGES);
+
+    return allItems;
+  } catch (err) {
+    return [];
+  }
 }

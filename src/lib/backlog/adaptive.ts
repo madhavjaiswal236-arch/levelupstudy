@@ -74,7 +74,7 @@ export function recalculateRoadmap(
 
   // Collect all completed backlog tasks and build signature set (with legacy aliases)
   const completedBacklogTasks = currentTodos.filter(
-    t => t.completed && t.isBacklogTask && (!t.backlogPlanId || t.backlogPlanId === plan.id)
+    t => !t.isDeleted && t.completed && t.isBacklogTask && (!t.backlogPlanId || t.backlogPlanId === plan.id)
   );
 
   const completedSignatures = new Set<string>();
@@ -166,10 +166,14 @@ export function recalculateRoadmap(
     return fresh;
   });
 
-  // Combine: keep all COMPLETED todos and non-backlog todos, replace incomplete backlog todos with reconciled fresh ones
+  // Combine: keep all COMPLETED non-deleted todos and non-backlog todos, tombstone replaced incomplete backlog tasks
+  const nowMs = Date.now();
   const preservedTodos = currentTodos.filter(
-    t => (!t.isBacklogTask && !t.backlogChapterId) || t.completed
+    t => !t.isDeleted && ((!t.isBacklogTask && !t.backlogChapterId) || t.completed)
   );
+  const tombstonedOldBacklog = currentTodos
+    .filter(t => t.isDeleted || ((t.isBacklogTask || t.backlogChapterId) && !t.completed))
+    .map(t => (t.isDeleted ? t : { ...t, isDeleted: true, deletedAt: nowMs, updatedAt: nowMs }));
 
   const seenFreshSigs = new Set<string>();
   const deduplicatedFresh = reconciledFreshTasks.filter(fresh => {
@@ -179,7 +183,7 @@ export function recalculateRoadmap(
     return true;
   });
 
-  const mergedTodos = [...preservedTodos, ...deduplicatedFresh];
+  const mergedTodos = [...preservedTodos, ...deduplicatedFresh, ...tombstonedOldBacklog];
 
   // Daily diff calculations
   const oldDailyMins = plan.metrics.requiredDailyMinutes || plan.settings.targetDailyMinutes;

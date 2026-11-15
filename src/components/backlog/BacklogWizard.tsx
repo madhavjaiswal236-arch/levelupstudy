@@ -524,32 +524,49 @@ export const BacklogWizard: React.FC<BacklogWizardProps> = ({ onComplete, onCanc
     }
 
     // Replace previous tasks in the plan window with new ones while preserving completed work outside the window
-    let updatedTodos: any[] = [];
-    setTodos(prev => {
-      const preservedNonBacklog = prev.filter(t => {
-        if (t.isBacklogTask) return false;
-        const taskDate = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : null);
-        if (taskDate && taskDate >= planStartDate && taskDate <= planEndDate) {
-          return false;
-        }
-        return true;
-      });
-      const completedBacklog = prev.filter(t => t.isBacklogTask && t.completed);
+    // Compute synchronously (avoid React 19 deferred updater race) and emit tombstones so Firestore never resurrects cleared tasks
+    const nowMs = Date.now();
+    const baseTodos = todos || [];
+    const preservedNonBacklog: any[] = [];
+    const tombstonedTodos: any[] = [];
 
-      // Filter out new tasks that were already completed using canonical signature generator
-      const completedSignatures = new Set<string>();
-      completedBacklog.forEach(t => {
-        getTaskSignaturesWithLegacy(t).forEach(sig => completedSignatures.add(sig));
-      });
-
-      const deduplicatedNew = newTodos.filter(t => {
-        const sigs = getTaskSignaturesWithLegacy(t);
-        return !sigs.some(s => completedSignatures.has(s));
-      });
-
-      updatedTodos = [...preservedNonBacklog, ...completedBacklog, ...deduplicatedNew];
-      return updatedTodos;
+    baseTodos.forEach((t) => {
+      if (t.isDeleted) {
+        tombstonedTodos.push(t);
+        return;
+      }
+      if (t.isBacklogTask && t.completed) {
+        return;
+      }
+      const taskDate = t.dateScheduled || (t.startTime ? t.startTime.split("T")[0] : null);
+      const inWindow = Boolean(taskDate && taskDate >= planStartDate && taskDate <= planEndDate);
+      if (t.isBacklogTask || t.backlogChapterId || inWindow) {
+        tombstonedTodos.push({
+          ...t,
+          isDeleted: true,
+          deletedAt: nowMs,
+          updatedAt: nowMs,
+        });
+      } else {
+        preservedNonBacklog.push(t);
+      }
     });
+
+    const completedBacklog = baseTodos.filter((t) => !t.isDeleted && t.isBacklogTask && t.completed);
+
+    // Filter out new tasks that were already completed using canonical signature generator
+    const completedSignatures = new Set<string>();
+    completedBacklog.forEach((t) => {
+      getTaskSignaturesWithLegacy(t).forEach((sig) => completedSignatures.add(sig));
+    });
+
+    const deduplicatedNew = newTodos.filter((t) => {
+      const sigs = getTaskSignaturesWithLegacy(t);
+      return !sigs.some((s) => completedSignatures.has(s));
+    });
+
+    const updatedTodos = [...preservedNonBacklog, ...completedBacklog, ...deduplicatedNew, ...tombstonedTodos];
+    setTodos(updatedTodos);
 
     if (setScheduleProfile) {
       setScheduleProfile(prev => ({
