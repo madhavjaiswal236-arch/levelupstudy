@@ -898,8 +898,17 @@ export const connectGoogleCalendarOffline = async (
       }),
     });
     if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.details || errorData.error || 'Failed to exchange authorization code');
+      const rawText = await res.text().catch(() => '');
+      let errorData: any = {};
+      try {
+        errorData = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        errorData = {};
+      }
+      const fallbackMsg = rawText
+        ? `Exchange failed (HTTP ${res.status}): ${rawText.slice(0, 140)}`
+        : `Failed to exchange authorization code (HTTP ${res.status})`;
+      throw new Error(errorData.details || errorData.error || fallbackMsg);
     }
     const data = await res.json();
     if (data.access_token) {
