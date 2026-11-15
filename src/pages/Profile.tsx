@@ -8,7 +8,7 @@ import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, Gr
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getRankInfo } from '@/lib/utils';
-import { initAuth, googleSignIn, logout, getAccessToken } from '@/lib/firebase';
+import { initAuth, googleSignIn, logout, getAccessToken, refreshGoogleToken } from '@/lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
 import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask, deleteCalendarEvent } from '@/lib/calendar';
 import { Todo } from '@/context/AppContext';
@@ -220,16 +220,22 @@ const Profile = React.memo(function Profile() {
  const result = await googleSignIn();
  if (result) {
  setFirebaseUser(result.user);
- setHasToken(true);
+ const activeToken = result.accessToken || (await getAccessToken());
+ setHasToken(Boolean(activeToken));
+ showToast("Signed in with Google!", "success");
  }
  } catch (err: any) {
  console.error(err);
- if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
- alert(`Domain not authorized in Firebase! Note: It can take a few minutes for Firebase to apply this setting. Please ensure you have added exactly this domain to Firebase Console -> Authentication -> Settings -> Authorized domains:\n\n${window.location.hostname}`);
- } else if (err?.message?.includes('popup') || err?.message?.includes('internal-error')) {
- alert("Authentication is restricted by the browser in this preview iframe. Please use the 'Open in New Tab' button (top right of preview) to log in.");
+ const code = err?.code || "";
+ const msg = String(err?.message || "");
+ if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || msg.includes('closed')) {
+ showToast("Sign-in window was closed. Click again when ready.", "error");
+ } else if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+ showToast(`Domain not authorized in Firebase Auth: ${window.location.hostname}`, "error");
+ } else if (code === 'auth/popup-blocked' || msg.includes('popup') || msg.includes('internal-error')) {
+ showToast("Pop-up blocked or restricted in preview. Allow pop-ups or open in a new tab.", "error");
  } else {
- alert("Login failed: " + (err.message || 'Unknown error. Check console for details.'));
+ showToast("Login failed: " + (msg || 'Please try again.'), "error");
  }
  } finally {
  setIsLoggingIn(false);
@@ -318,15 +324,9 @@ const Profile = React.memo(function Profile() {
  let token = await getAccessToken();
  if (!token) {
    try {
-     await googleSignIn();
-     token = await getAccessToken();
-     if (!token) {
-       setIsRescheduling(false);
-       return;
-     }
+     token = await refreshGoogleToken();
    } catch (err) {
-     setIsRescheduling(false);
-     return;
+     console.warn("Silent token refresh skipped:", err);
    }
  }
  
@@ -336,7 +336,7 @@ const Profile = React.memo(function Profile() {
  startTime: t.previewStart!,
  endTime: t.previewEnd!
  }));
- if (eventsToUpdate.length > 0) {
+ if (eventsToUpdate.length > 0 && token) {
  const updateSuccess = await rescheduleCalendarEvents(eventsToUpdate);
  if (!updateSuccess) allSuccess = false;
  }
@@ -424,7 +424,9 @@ const Profile = React.memo(function Profile() {
 
  setTodos(cleanTodos);
 
- if (allSuccess) {
+ if (!token) {
+ showToast("Schedule updated locally!", "success");
+ } else if (allSuccess) {
  showToast("Timeline applied successfully to Google Calendar!", "success");
  } else {
  showToast("Saved locally, but failed to apply all changes to Google Calendar.", "error");

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getAccessToken } from '../lib/firebase';
+import { getAccessToken, refreshGoogleToken } from '../lib/firebase';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 /**
@@ -13,7 +13,10 @@ export function useAuthToken() {
       if (!user) {
         setToken(null);
       } else {
-        const currentToken = await getAccessToken();
+        let currentToken = await getAccessToken();
+        if (!currentToken) {
+          currentToken = await refreshGoogleToken();
+        }
         setToken(currentToken);
       }
     });

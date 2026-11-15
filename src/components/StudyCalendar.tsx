@@ -93,6 +93,9 @@ export function StudyCalendar({
     getCurrentChapterForSubject,
     notifyCalendarPreviewOpened,
     notifyCalendarPreviewClosed,
+    hasToken,
+    setHasToken,
+    setFirebaseUser,
   } = useAppContext();
 
   useEffect(() => {
@@ -575,33 +578,27 @@ export function StudyCalendar({
 
   const handleConnectGoogle = async () => {
     try {
-      showToast("Connecting to Google Calendar (one-time setup)...", "info");
-      let token: string | null = null;
-      try {
-        const cfgRes = await fetch('/api/auth/google/config');
-        if (cfgRes.ok) {
-          const cfg = await cfgRes.json();
-          if (cfg.configured) {
-            const offlineRes = await startGoogleOfflineAuthFlow();
-            if (offlineRes?.accessToken) token = offlineRes.accessToken;
-          }
+      showToast("Connecting Google account (one-time setup)...", "info");
+      const loginRes = await googleSignIn();
+      if (loginRes) {
+        if (loginRes.user) setFirebaseUser(loginRes.user);
+        const token = loginRes.accessToken || (await getAccessToken());
+        setHasToken(Boolean(token));
+        if (token) {
+          showToast("Google Calendar connected! Your schedule will now sync silently.", "success");
+          handleCalendarSync();
+        } else {
+          showToast("Google account signed in! Grant Calendar permission if needed to sync.", "info");
         }
-      } catch (e) {
-        console.warn("Offline auth flow fallback to standard login:", e);
-      }
-
-      if (!token) {
-        const loginRes = await googleSignIn();
-        if (loginRes?.accessToken) token = loginRes.accessToken;
-      }
-
-      if (token) {
-        showToast("Google Calendar connected! Your schedule will now sync silently.", "success");
-        handleCalendarSync();
       }
     } catch (err: any) {
       console.error("Failed to connect Google Calendar:", err);
-      showToast(err?.message || "Could not connect to Google Calendar", "error");
+      const msg = String(err?.message || "");
+      if (err?.code === "auth/popup-closed-by-user" || msg.includes("closed")) {
+        showToast("Google sign-in window was closed. Click Connect Google to try again.", "info");
+      } else {
+        showToast(msg || "Could not connect Google account", "error");
+      }
     }
   };
 
@@ -3403,7 +3400,7 @@ export function StudyCalendar({
                 <BrainCircuit className="w-4 h-4 text-purple-500" />
                 <span className="hidden sm:inline">Spaced Review</span>
               </button>
-              {Boolean(getAccessTokenSync() || (typeof window !== 'undefined' && (localStorage.getItem('google_refresh_token') || localStorage.getItem('oauth_access_token')))) ? (
+              {Boolean(hasToken || getAccessTokenSync() || (typeof window !== 'undefined' && (localStorage.getItem('google_refresh_token') || localStorage.getItem('google_access_token')))) ? (
                 <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" title="Google Calendar connected and syncing silently">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Synced

@@ -71,7 +71,7 @@ import { runSyncSimulations } from "./lib/sync/syncTestRunner";
 import { useNotificationScheduler } from "./hooks/useNotificationScheduler";
 import { NotificationToastContainer } from "./components/NotificationToastContainer";
 import { OfflineIndicator } from "./components/OfflineIndicator";
-import { googleSignIn } from "./lib/firebase";
+import { googleSignIn, getAccessToken } from "./lib/firebase";
 
 const LiquidButton = lazy(() =>
   import("./components/ui/liquid-glass-button").then((m) => ({
@@ -364,33 +364,30 @@ function AppContent() {
   };
 
   const [isSigningInStart, setIsSigningInStart] = useState(false);
+  const [startAuthError, setStartAuthError] = useState<string | null>(null);
 
   const handleStartSignIn = async () => {
     setIsSigningInStart(true);
+    setStartAuthError(null);
     try {
       const res = await googleSignIn();
       if (res) {
         setFirebaseUser(res.user);
-        setHasToken(true);
+        const activeToken = res.accessToken || (await getAccessToken());
+        setHasToken(Boolean(activeToken));
       }
     } catch (err: any) {
       console.error(err);
-      if (
-        err?.code === "auth/unauthorized-domain" ||
-        err?.message?.includes("unauthorized-domain")
-      ) {
-        alert(
-          `Domain not authorized in Firebase! Note: It can take a few minutes for Firebase to apply this setting. Please ensure you have added exactly this domain to Firebase Console -> Authentication -> Settings -> Authorized domains:\n\n${window.location.hostname}`,
-        );
-      } else if (
-        err?.message?.includes("popup") ||
-        err?.message?.includes("internal-error")
-      ) {
-        alert(
-          "Authentication is restricted by the browser in this preview iframe. Please use the 'Open in New Tab' button (top right of preview) to log in.",
-        );
+      const code = err?.code || "";
+      const msg = String(err?.message || "");
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request" || msg.includes("closed")) {
+        setStartAuthError("Sign-in window was closed before completing. Click again to sign in.");
+      } else if (code === "auth/unauthorized-domain" || msg.includes("unauthorized-domain")) {
+        setStartAuthError(`Domain not authorized in Firebase Auth: ${window.location.hostname}`);
+      } else if (code === "auth/popup-blocked" || msg.includes("popup") || msg.includes("internal-error")) {
+        setStartAuthError("Pop-up blocked or restricted in preview. Allow pop-ups or open in a new tab.");
       } else {
-        alert("Login failed: " + (err?.message || "Unknown error. Check console for details."));
+        setStartAuthError("Login failed: " + (msg || "Please try again."));
       }
     } finally {
       setIsSigningInStart(false);
@@ -1488,6 +1485,11 @@ function AppContent() {
                   <p className="text-[11px] text-slate-400 text-center">
                     Sync XP, streak & tasks across all devices
                   </p>
+                  {startAuthError && (
+                    <div className="w-full mt-1 px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-200 text-[11px] text-center leading-snug">
+                      {startAuthError}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -6,6 +6,39 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 
+// Early relay if Google redirects an OAuth popup directly back to root origin (?code=...&state=google_offline_auth)
+if (typeof window !== 'undefined' && !Capacitor.isNativePlatform()) {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('state') === 'google_offline_auth' && (sp.has('code') || sp.has('error'))) {
+      const payload = {
+        type: 'GOOGLE_AUTH_CALLBACK',
+        code: sp.get('code') || '',
+        error: sp.get('error') || '',
+        redirectUri: window.location.origin,
+      };
+      let handedOff = false;
+      if (window.opener && window.opener !== window) {
+        try {
+          window.opener.postMessage(payload, window.location.origin);
+          handedOff = true;
+        } catch (e) {}
+      }
+      try {
+        const bc = new BroadcastChannel('levelup_google_auth');
+        bc.postMessage(payload);
+        bc.close();
+        if (window.opener && window.opener !== window) handedOff = true;
+      } catch (e) {}
+      if (handedOff) {
+        setTimeout(() => {
+          try { window.close(); } catch (e) {}
+        }, 150);
+      }
+    }
+  } catch (e) {}
+}
+
 // Register Service Worker for robust offline caching in web/PWA mode (production only)
 if (import.meta.env.PROD && typeof window !== 'undefined' && 'serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
   try {

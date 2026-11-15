@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signInWithCredential, getRedirectResult } from 'firebase/auth';
 import { 
   getFirestore, 
   initializeFirestore, 
@@ -370,8 +370,51 @@ export const subscribeToCloudUserData = (userId: string, callback: (data: any, m
 
 let cachedAccessToken: string | null = null;
 let cachedTokenExpiresAt: number = 0;
-
 let cachedRefreshToken: string | null = null;
+
+interface BackendOAuthConfig {
+  configured: boolean;
+  clientId: string | null;
+  redirectUri: string | null;
+  offlineSupported: boolean;
+}
+
+let cachedBackendOAuthConfig: BackendOAuthConfig | null = null;
+let configFetchPromise: Promise<BackendOAuthConfig | null> | null = null;
+
+export const prefetchGoogleAuthConfig = async (): Promise<BackendOAuthConfig | null> => {
+  if (typeof window === 'undefined' || Capacitor.isNativePlatform()) return null;
+  if (cachedBackendOAuthConfig) return cachedBackendOAuthConfig;
+  if (configFetchPromise) return configFetchPromise;
+
+  configFetchPromise = (async () => {
+    try {
+      const url = `/api/auth/google/config?origin=${encodeURIComponent(window.location.origin)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const cfg = await res.json();
+        cachedBackendOAuthConfig = {
+          configured: Boolean(cfg?.configured),
+          clientId: cfg?.clientId || null,
+          redirectUri: cfg?.redirectUri || null,
+          offlineSupported: Boolean(cfg?.offlineSupported),
+        };
+        return cachedBackendOAuthConfig;
+      }
+    } catch (e) {
+      // Backend OAuth endpoint unavailable; Firebase popup will be used
+    } finally {
+      configFetchPromise = null;
+    }
+    return null;
+  })();
+
+  return configFetchPromise;
+};
+
+if (typeof window !== 'undefined' && !Capacitor.isNativePlatform()) {
+  prefetchGoogleAuthConfig();
+}
 
 export const persistRefreshToken = async (token: string | null) => {
   cachedRefreshToken = token;
@@ -420,6 +463,8 @@ const persistOAuthToken = async (token: string | null, expiresAt: number) => {
         await Preferences.set({ key: 'google_access_token', value: token });
         await Preferences.set({ key: 'google_token_expires_at', value: String(expiresAt) });
       } else {
+        localStorage.setItem('google_access_token', token);
+        localStorage.setItem('google_token_expires_at', String(expiresAt));
         sessionStorage.setItem('google_access_token', token);
         sessionStorage.setItem('google_token_expires_at', String(expiresAt));
       }
@@ -428,12 +473,14 @@ const persistOAuthToken = async (token: string | null, expiresAt: number) => {
         await Preferences.remove({ key: 'google_access_token' });
         await Preferences.remove({ key: 'google_token_expires_at' });
       } else {
+        localStorage.removeItem('google_access_token');
+        localStorage.removeItem('google_token_expires_at');
         sessionStorage.removeItem('google_access_token');
         sessionStorage.removeItem('google_token_expires_at');
       }
     }
   } catch (e) {
-    console.warn('Preferences token persistence error:', e);
+    console.warn('Token persistence error:', e);
   }
 };
 
@@ -441,7 +488,9 @@ export const invalidateOAuthToken = async () => {
   await persistOAuthToken(null, 0);
   await persistRefreshToken(null);
   try {
+    localStorage.removeItem('google_oauth_client_id');
     sessionStorage.removeItem('google_access_token');
+    sessionStorage.removeItem('google_token_expires_at');
   } catch (e) {}
 };
 
@@ -457,8 +506,8 @@ const hydratePersistedToken = async (): Promise<string | null> => {
       tokenVal = tokenRes.value;
       expVal = expRes.value;
     } else {
-      tokenVal = sessionStorage.getItem('google_access_token');
-      expVal = sessionStorage.getItem('google_token_expires_at');
+      tokenVal = localStorage.getItem('google_access_token') || sessionStorage.getItem('google_access_token');
+      expVal = localStorage.getItem('google_token_expires_at') || sessionStorage.getItem('google_token_expires_at');
     }
     if (tokenVal) {
       const exp = expVal ? parseInt(expVal, 10) : 0;
@@ -474,9 +523,59 @@ const hydratePersistedToken = async (): Promise<string | null> => {
   return null;
 };
 
+let urlCallbackHandled = false;
+
+const processRedirectAuthCodeIfPresent = async (
+  onAuthChange?: (user: User | null, token: string | null) => void
+) => {
+  if (urlCallbackHandled || typeof window === 'undefined' || Capacitor.isNativePlatform()) return;
+  urlCallbackHandled = true;
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const googleAuthCode = params.get('google_auth_code');
+    const oauthDirectCode = params.get('state') === 'google_offline_auth' ? params.get('code') : null;
+    const code = googleAuthCode || oauthDirectCode;
+    const authError = params.get('google_auth_error') || (params.get('state') === 'google_offline_auth' ? params.get('error') : null);
+
+    if (!code && !authError) return;
+
+    // Clean URL immediately so reloads don't re-submit a single-use code
+    const cleanUrl = new URL(window.location.href);
+    ['google_auth_code', 'google_auth_error', 'code', 'scope', 'authuser', 'prompt', 'state', 'error'].forEach((k) =>
+      cleanUrl.searchParams.delete(k)
+    );
+    window.history.replaceState({}, document.title, cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+
+    if (authError) {
+      console.warn('Google OAuth redirect returned error:', authError);
+      return;
+    }
+
+    if (code) {
+      const storedRedirectUri =
+        sessionStorage.getItem('google_offline_redirect_uri') ||
+        (oauthDirectCode ? window.location.origin : `${window.location.origin}/api/auth/google/callback`);
+      const storedClientId = sessionStorage.getItem('google_offline_client_id') || undefined;
+      sessionStorage.removeItem('google_offline_redirect_uri');
+      sessionStorage.removeItem('google_offline_client_id');
+
+      const result = await connectGoogleCalendarOffline(code, storedRedirectUri, storedClientId);
+      if (result && onAuthChange) {
+        onAuthChange(result.user || auth.currentUser, result.accessToken || cachedAccessToken);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to complete redirect OAuth code exchange:', err);
+  }
+};
+
 export const initAuth = (
   onAuthChange?: (user: User | null, token: string | null) => void
 ) => {
+  prefetchGoogleAuthConfig();
+  processRedirectAuthCodeIfPresent(onAuthChange);
+
   if (!Capacitor.isNativePlatform() && sessionStorage.getItem('auth_redirect_in_progress') === 'true') {
     getRedirectResult(auth).then((result) => {
       sessionStorage.removeItem('auth_redirect_in_progress');
@@ -486,6 +585,8 @@ export const initAuth = (
           const exp = Date.now() + 3500 * 1000;
           persistOAuthToken(credential.accessToken, exp);
           if (onAuthChange) onAuthChange(result.user, credential.accessToken);
+        } else if (onAuthChange) {
+          onAuthChange(result.user, cachedAccessToken);
         }
       }
     }).catch((err) => {
@@ -500,6 +601,18 @@ export const initAuth = (
         await hydratePersistedToken();
       }
       if (onAuthChange) onAuthChange(user, cachedAccessToken);
+
+      // Silently refresh expired Google Calendar token in background if refresh token exists
+      if (!cachedAccessToken) {
+        const rt = await getRefreshToken();
+        if (rt) {
+          refreshGoogleToken().then((refreshed) => {
+            if (refreshed && onAuthChange && auth.currentUser?.uid === user.uid) {
+              onAuthChange(auth.currentUser, refreshed);
+            }
+          }).catch(() => {});
+        }
+      }
     } else {
       await persistOAuthToken(null, 0);
       if (onAuthChange) onAuthChange(null, null);
@@ -507,17 +620,19 @@ export const initAuth = (
   });
 };
 
-const getProvider = () => {
+const getProvider = (includeCalendarScopes: boolean = true) => {
   const provider = new GoogleAuthProvider();
-  provider.addScope('https://www.googleapis.com/auth/calendar');
-  provider.addScope('https://www.googleapis.com/auth/tasks');
+  if (includeCalendarScopes) {
+    provider.addScope('https://www.googleapis.com/auth/calendar');
+    provider.addScope('https://www.googleapis.com/auth/tasks');
+  }
   provider.setCustomParameters({
-    prompt: 'consent'
+    prompt: 'select_account',
   });
   return provider;
 };
 
-export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promise<{ user: User; accessToken: string } | null> => {
+export const googleSignIn = async (_useRedirectIfBlocked: boolean = false): Promise<{ user: User; accessToken: string } | null> => {
   if (pendingSignInPromise) {
     console.log('Sign-in already in progress, returning existing promise...');
     return pendingSignInPromise;
@@ -529,14 +644,14 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
         const result = await FirebaseAuthentication.signInWithGoogle({
           scopes: ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/tasks'],
         });
-        
+
         if (!result.credential) {
           throw new Error('No credential returned from native sign in');
         }
-        
+
         const credential = GoogleAuthProvider.credential(result.credential.idToken, result.credential.accessToken);
         const fbResult = await signInWithCredential(auth, credential);
-        
+
         if (result.credential.accessToken) {
           const exp = Date.now() + 3500 * 1000;
           await persistOAuthToken(result.credential.accessToken, exp);
@@ -545,31 +660,60 @@ export const googleSignIn = async (useRedirectIfBlocked: boolean = true): Promis
         return { user: fbResult.user, accessToken: cachedAccessToken || '' };
       }
 
-      // Try Popup first
-      try {
-        const result = await signInWithPopup(auth, getProvider());
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        if (!credential?.accessToken) {
-          throw new Error('Failed to get access token from Firebase Auth');
+      // Synchronous check first so browser user-gesture is preserved if interactive login is needed
+      if (auth.currentUser) {
+        const syncToken = getAccessTokenSync();
+        if (syncToken) {
+          return { user: auth.currentUser, accessToken: syncToken };
         }
+        const storedExp = parseInt(localStorage.getItem('google_token_expires_at') || '0', 10);
+        const storedTok = localStorage.getItem('google_access_token');
+        if (storedTok && storedExp > Date.now() + 60 * 1000) {
+          cachedAccessToken = storedTok;
+          cachedTokenExpiresAt = storedExp;
+          return { user: auth.currentUser, accessToken: storedTok };
+        }
+        const hasStoredRt = cachedRefreshToken || localStorage.getItem('google_refresh_token');
+        if (hasStoredRt) {
+          const refreshed = await refreshGoogleToken();
+          if (refreshed) {
+            return { user: auth.currentUser, accessToken: refreshed };
+          }
+        }
+      }
 
+      // Path 1: Unified 1-Popup Offline OAuth + Firebase Auth (gives Firebase user + access_token + permanent refresh_token)
+      const backendCfg = cachedBackendOAuthConfig;
+      if (backendCfg?.configured && backendCfg?.offlineSupported && backendCfg?.clientId && backendCfg?.redirectUri) {
+        try {
+          const offlineResult = await startGoogleOfflineAuthFlow(backendCfg.clientId, backendCfg.redirectUri);
+          if (offlineResult?.user) {
+            return { user: offlineResult.user, accessToken: offlineResult.accessToken || cachedAccessToken || '' };
+          }
+          if (auth.currentUser) {
+            return { user: auth.currentUser, accessToken: offlineResult?.accessToken || cachedAccessToken || '' };
+          }
+          return null;
+        } catch (offlineErr: any) {
+          const msg = String(offlineErr?.message || '');
+          // If user closed popup or it was denied explicitly, bubble up without opening a second surprise popup
+          if (msg.includes('closed') || msg.includes('access_denied')) {
+            throw offlineErr;
+          }
+          console.warn('Unified offline OAuth failed, attempting Firebase popup sign-in:', offlineErr);
+        }
+      }
+
+      // Path 2: Firebase Auth signInWithPopup (uses firebaseapp.com/__/auth/handler — never calls broken signInWithRedirect)
+      const result = await signInWithPopup(auth, getProvider(true));
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+
+      if (credential?.accessToken) {
         const exp = Date.now() + 3500 * 1000;
         await persistOAuthToken(credential.accessToken, exp);
-
-        return { user: result.user, accessToken: cachedAccessToken };
-      } catch (popupErr: any) {
-        console.warn('signInWithPopup failed:', popupErr);
-        
-        // Check if popup was blocked or iframe restriction triggered
-        if (useRedirectIfBlocked && !Capacitor.isNativePlatform()) {
-          console.log('Attempting fallback signInWithRedirect...');
-          sessionStorage.setItem('auth_redirect_in_progress', 'true');
-          await signInWithRedirect(auth, getProvider());
-          return null;
-        }
-        
-        throw popupErr;
       }
+
+      return { user: result.user, accessToken: credential?.accessToken || cachedAccessToken || '' };
     } catch (error: any) {
       console.error('Sign in error details:', error);
       throw error;
@@ -632,23 +776,25 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
         }
       }
 
-      // 3. Web & Offline-to-Online Silent Refresh:
-      // Even if 1 hour (or 10 hours) passed while the user was offline, as soon as the device
-      // reconnects to the network, use the stored refresh_token to obtain a brand new 1-hour access_token!
+      // 3. Web & Offline-to-Online Silent Refresh
       const refreshToken = await getRefreshToken();
       if (refreshToken) {
         try {
+          const storedClientId = typeof window !== 'undefined' ? localStorage.getItem('google_oauth_client_id') : null;
           const res = await fetch('/api/auth/google/refresh', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh_token: refreshToken }),
+            body: JSON.stringify({
+              refresh_token: refreshToken,
+              ...(storedClientId ? { client_id: storedClientId } : {}),
+            }),
           });
           if (res.ok) {
             const data = await res.json();
             if (data.access_token) {
               const exp = Date.now() + (data.expires_in || 3500) * 1000;
               await persistOAuthToken(data.access_token, exp);
-              console.log('Successfully refreshed Google Calendar access token silently after offline period!');
+              console.log('Successfully refreshed Google Calendar access token silently!');
               return data.access_token;
             }
           } else {
@@ -664,7 +810,7 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
         }
       }
 
-      console.warn('OAuth token expired and no valid refresh token found. Interactive login required.');
+      console.warn('OAuth token expired and no valid refresh token found.');
       return null;
     } catch (error) {
       console.error("Failed to refresh token:", error);
@@ -681,22 +827,27 @@ export const refreshGoogleToken = async (): Promise<string | null> => {
 
 
 /**
- * Connect Google Calendar with offline access (Authorization Code flow).
- * Exchanges the code for both an access_token and a permanent refresh_token.
+ * Exchanges authorization code for access_token, refresh_token, AND id_token,
+ * then signs the user into Firebase Auth so one single login handles everything.
  */
 export const connectGoogleCalendarOffline = async (
   code: string,
-  redirectUri?: string
-): Promise<{ accessToken: string; refreshToken?: string } | null> => {
+  redirectUri?: string,
+  clientId?: string
+): Promise<{ user: User | null; accessToken: string; refreshToken?: string } | null> => {
   try {
     const res = await fetch('/api/auth/google/exchange', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, redirect_uri: redirectUri }),
+      body: JSON.stringify({
+        code,
+        redirect_uri: redirectUri,
+        ...(clientId ? { client_id: clientId } : {}),
+      }),
     });
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.details || 'Failed to exchange authorization code');
+      throw new Error(errorData.details || errorData.error || 'Failed to exchange authorization code');
     }
     const data = await res.json();
     if (data.access_token) {
@@ -705,52 +856,82 @@ export const connectGoogleCalendarOffline = async (
       if (data.refresh_token) {
         await persistRefreshToken(data.refresh_token);
       }
+      if (data.client_id && typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('google_oauth_client_id', data.client_id);
+        } catch (e) {}
+      }
+
+      let fbUser: User | null = auth.currentUser;
+      if (data.id_token) {
+        try {
+          const credential = GoogleAuthProvider.credential(data.id_token, data.access_token);
+          const fbResult = await signInWithCredential(auth, credential);
+          fbUser = fbResult.user;
+        } catch (credErr) {
+          console.warn('Firebase signInWithCredential note:', credErr);
+        }
+      }
+
       return {
+        user: fbUser,
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
       };
     }
     return null;
   } catch (err) {
-    console.error('Failed to connect Google Calendar offline:', err);
+    console.error('Failed to connect Google offline:', err);
     throw err;
   }
 };
 
 
 /**
- * Opens a Google OAuth consent popup requesting offline access (refresh_token).
- * Exchanges the code seamlessly with the backend so user never has to re-authenticate every hour.
+ * Opens a Google OAuth consent popup requesting OpenID + Calendar + Tasks with offline access (refresh_token).
+ * Signs into Firebase AND stores persistent Calendar refresh token in one click.
  */
 export const startGoogleOfflineAuthFlow = async (
-  customClientId?: string
-): Promise<{ accessToken: string; refreshToken?: string } | null> => {
+  customClientId?: string,
+  customRedirectUri?: string
+): Promise<{ user: User | null; accessToken: string; refreshToken?: string } | null> => {
   if (typeof window === 'undefined') return null;
 
-  let clientId = customClientId || firebaseAppletConfig.oAuthClientId;
-  if (!clientId) {
-    try {
-      const cfgRes = await fetch('/api/auth/google/config');
-      if (cfgRes.ok) {
-        const cfg = await cfgRes.json();
-        if (cfg.clientId) clientId = cfg.clientId;
-      }
-    } catch (e) {}
+  let clientId = customClientId || cachedBackendOAuthConfig?.clientId || '';
+  let redirectUri = customRedirectUri || cachedBackendOAuthConfig?.redirectUri || '';
+
+  if (!clientId || !redirectUri) {
+    const cfg = await prefetchGoogleAuthConfig();
+    if (!clientId && cfg?.clientId) clientId = cfg.clientId;
+    if (!redirectUri && cfg?.redirectUri) redirectUri = cfg.redirectUri;
   }
 
   if (!clientId) {
-    throw new Error('Google OAuth Client ID is not configured. Please set GOOGLE_CLIENT_ID or oAuthClientId.');
+    clientId = firebaseAppletConfig.oAuthClientId || '';
+  }
+  if (!redirectUri) {
+    redirectUri = `${window.location.origin}/api/auth/google/callback`;
   }
 
-  const redirectUri = `${window.location.origin}/api/auth/google/callback`;
+  if (!clientId) {
+    throw new Error('Google OAuth Client ID is not configured.');
+  }
+
+  try {
+    sessionStorage.setItem('google_offline_redirect_uri', redirectUri);
+    sessionStorage.setItem('google_offline_client_id', clientId);
+  } catch (e) {}
+
+  const hasStoredRefresh = Boolean(localStorage.getItem('google_refresh_token'));
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks',
+    scope: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks',
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: hasStoredRefresh ? 'select_account' : 'consent select_account',
     include_granted_scopes: 'true',
+    state: 'google_offline_auth',
   });
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -773,40 +954,60 @@ export const startGoogleOfflineAuthFlow = async (
 
   return new Promise((resolve, reject) => {
     let resolved = false;
+    let bc: BroadcastChannel | null = null;
 
-    const messageHandler = async (event: MessageEvent) => {
-      if (event.data && event.data.type === 'GOOGLE_AUTH_CALLBACK') {
-        window.removeEventListener('message', messageHandler);
-        clearInterval(checkTimer);
-        resolved = true;
-
-        if (event.data.error) {
-          return reject(new Error(event.data.error));
-        }
-
-        if (event.data.code) {
-          try {
-            const tokens = await connectGoogleCalendarOffline(event.data.code, redirectUri);
-            return resolve(tokens);
-          } catch (err) {
-            return reject(err);
-          }
-        }
-        reject(new Error('No authorization code received from Google.'));
+    const cleanup = () => {
+      window.removeEventListener('message', messageHandler);
+      clearInterval(checkTimer);
+      if (bc) {
+        try { bc.close(); } catch (e) {}
       }
+    };
+
+    const handlePayload = async (data: any) => {
+      if (resolved || !data || data.type !== 'GOOGLE_AUTH_CALLBACK') return;
+      resolved = true;
+      cleanup();
+
+      if (data.error) {
+        return reject(new Error(data.error));
+      }
+
+      if (data.code) {
+        try {
+          const finalRedirectUri = data.redirectUri || redirectUri;
+          const result = await connectGoogleCalendarOffline(data.code, finalRedirectUri, clientId);
+          return resolve(result);
+        } catch (err) {
+          return reject(err);
+        }
+      }
+      reject(new Error('No authorization code received from Google.'));
+    };
+
+    const messageHandler = (event: MessageEvent) => {
+      handlePayload(event.data);
     };
 
     window.addEventListener('message', messageHandler);
 
+    try {
+      bc = new BroadcastChannel('levelup_google_auth');
+      bc.onmessage = (event) => handlePayload(event.data);
+    } catch (e) {}
+
     const checkTimer = setInterval(() => {
       if (popup.closed) {
-        clearInterval(checkTimer);
-        window.removeEventListener('message', messageHandler);
-        if (!resolved) {
-          reject(new Error('Google authentication window was closed.'));
-        }
+        // Brief grace period for BroadcastChannel/postMessage delivery before concluding user closed popup
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            reject(new Error('Google authentication window was closed.'));
+          }
+        }, 350);
       }
-    }, 1000);
+    }, 500);
   });
 };
 
@@ -814,10 +1015,10 @@ export const logout = async () => {
   if (Capacitor.isNativePlatform()) {
     try {
       await FirebaseAuthentication.signOut();
-    } catch(e) {}
+    } catch (e) {}
   }
   await auth.signOut();
-  await persistOAuthToken(null, 0);
+  await invalidateOAuthToken();
 };
 
 export const deleteUserAccountAndCloudData = async (): Promise<boolean> => {

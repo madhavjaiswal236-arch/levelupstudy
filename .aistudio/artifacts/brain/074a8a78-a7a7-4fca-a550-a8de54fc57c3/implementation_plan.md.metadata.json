@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan to fix Google Calendar stale event resurrection, implement automatic cleanup of old study plan events, hide non-study calendar clutter, and align with security audit findings.",
-  "updatedAt":  "2026-11-02T01:05:41.849347284Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}
