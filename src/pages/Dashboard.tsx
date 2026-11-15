@@ -44,12 +44,12 @@ import {
   Download,
 } from "lucide-react";
 import { exportRoadmapToPdf } from "@/lib/backlog/exportPdf";
-import { useAppContext, SyllabusData, getLogicalDate, getStandardDateKey, isSameLogicalDay } from "@/context/AppContext";
+import { useAppContext, SyllabusData, Todo, getLogicalDate, getStandardDateKey, isSameLogicalDay } from "@/context/AppContext";
 import TimeBar from "@/components/TimeBar";
 import JeeSessionLogger from "@/components/JeeSessionLogger";
 import { predictNextLecture, getLocalDateString, isCurrentDayTask, getTaskScheduledDate } from "@/lib/utils";
 import { DeepFocusOverlay } from "@/components/DeepFocusOverlay";
-import { calculateNextAvailableStudySlot, getActiveStudyBlock, formatTime12h } from "@/lib/studyBlock";
+import { calculateNextAvailableStudySlot, getActiveStudyBlock, formatTime12h, formatLocalISO } from "@/lib/studyBlock";
 import { ImmersiveTimer } from "@/components/ImmersiveTimer";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import { getRankInfo } from "@/lib/utils";
@@ -1163,28 +1163,41 @@ const Dashboard = React.memo(function Dashboard() {
     // 1. Move to todos and immediately save to Firestore BEFORE calendar auth/sync!
     await scheduleBacklogTask(task);
 
-    // 2. Schedule it with calendar
+    // 2. Schedule it with calendar (respecting existing dateScheduled/slot!)
     try {
-      let durationMinutes = 105;
-      if (
-        task.type === "Practice" ||
-        task.type === "Custom" ||
-        task.type === "Revision"
-      ) {
-        durationMinutes = 60;
-      } else if (task.type === "Chapter Test") {
-        durationMinutes = 120;
+      let durationMinutes = task.durationMinutes || 105;
+      if (!task.durationMinutes) {
+        if (
+          task.type === "Practice" ||
+          task.type === "Custom" ||
+          task.type === "Revision"
+        ) {
+          durationMinutes = 60;
+        } else if (task.type === "Chapter Test") {
+          durationMinutes = 120;
+        }
       }
 
       const activeBlock = getActiveStudyBlock(scheduleProfile, backlogPlan);
-      const targetDate = getLocalDateString();
-      const studySlot = calculateNextAvailableStudySlot(
-        targetDate,
-        durationMinutes,
-        todos,
-        activeBlock.start,
-        activeBlock.end
-      );
+      const targetDate = task.dateScheduled || (task.startTime ? String(task.startTime).slice(0, 10) : getLocalDateString());
+      const hasValidExistingSlot =
+        Boolean(task.startTime && task.endTime) &&
+        !isNaN(new Date(task.startTime).getTime()) &&
+        !isNaN(new Date(task.endTime).getTime());
+
+      const studySlot = hasValidExistingSlot
+        ? {
+            startTime: formatLocalISO(new Date(task.startTime)),
+            endTime: formatLocalISO(new Date(task.endTime)),
+            dateScheduled: targetDate,
+          }
+        : calculateNextAvailableStudySlot(
+            targetDate,
+            durationMinutes,
+            todos,
+            activeBlock.start,
+            activeBlock.end
+          );
 
       const result = await createCalendarEvent(
         task.text,
@@ -1207,21 +1220,25 @@ const Dashboard = React.memo(function Dashboard() {
           }
         }
 
-        const updatedTodos = todos.map((t) =>
-          t.id === task.id
-            ? {
-                ...t,
-                calendarSynced: true,
-                calendarEventId: result.id,
-                calendarTaskId: taskResult ? taskResult.id : t.calendarTaskId,
-                startTime: result.startTime,
-                endTime: result.endTime,
-                dateScheduled: studySlot.dateScheduled,
-              }
-            : t,
-        );
-        setTodos(updatedTodos);
-        await saveStateToCloudNow({ todos: updatedTodos });
+        let latestTodosSnapshot: Todo[] = [];
+        setTodos((prev) => {
+          const updated = prev.map((t) =>
+            String(t.id) === String(task.id)
+              ? {
+                  ...t,
+                  calendarSynced: true,
+                  calendarEventId: result.id,
+                  calendarTaskId: taskResult ? taskResult.id : t.calendarTaskId,
+                  startTime: studySlot.startTime,
+                  endTime: studySlot.endTime,
+                  dateScheduled: studySlot.dateScheduled,
+                }
+              : t,
+          );
+          latestTodosSnapshot = updated;
+          return updated;
+        });
+        await saveStateToCloudNow({ todos: latestTodosSnapshot });
 
         if (result.hasConflict) {
           showToast(

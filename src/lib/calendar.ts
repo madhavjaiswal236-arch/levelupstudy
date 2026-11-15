@@ -1,4 +1,5 @@
 import { getAccessToken, refreshGoogleToken, invalidateOAuthToken } from './firebase';
+import { getActiveStudyBlock, calculateNextAvailableStudySlot, formatLocalISO } from './studyBlock';
 
 /**
  * Retrieves a valid Google Access Token, attempting background offline refresh
@@ -12,26 +13,76 @@ async function getValidToken(): Promise<string | null> {
   return token;
 }
 
-import { getActiveStudyBlock, calculateNextAvailableStudySlot } from './studyBlock';
+// Serialized pacing gate for Google Calendar write operations (POST/PATCH/DELETE)
+// Prevents burst 403 rateLimitExceeded / 429 failures when syncing 5..100+ tasks.
+let lastWriteDispatchAt = 0;
+let writeGatePromise: Promise<void> = Promise.resolve();
+const MIN_WRITE_GAP_MS = 180;
+
+function acquireWriteSlot(): Promise<void> {
+  const next = writeGatePromise.then(async () => {
+    const now = Date.now();
+    const waitMs = Math.max(0, lastWriteDispatchAt + MIN_WRITE_GAP_MS - now);
+    if (waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    lastWriteDispatchAt = Date.now();
+  });
+  writeGatePromise = next.catch(() => {});
+  return next;
+}
+
+async function isRateLimitOrTransientResponse(res: Response): Promise<boolean> {
+  if ([429, 500, 502, 503, 504].includes(res.status)) return true;
+  if (res.status === 403) {
+    try {
+      const bodyText = await res.clone().text();
+      if (!bodyText) return true;
+      return /rateLimitExceeded|userRateLimitExceeded|quotaExceeded|too many requests|limit exceeded/i.test(bodyText);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function getRetryDelayMs(res: Response | null, attempt: number, initialDelayMs: number): number {
+  if (res) {
+    const retryAfter = res.headers?.get?.('Retry-After');
+    if (retryAfter) {
+      const parsedSec = Number(retryAfter);
+      if (!isNaN(parsedSec) && parsedSec > 0) {
+        return Math.min(20000, parsedSec * 1000) + Math.floor(Math.random() * 300);
+      }
+    }
+  }
+  const exponential = Math.min(16000, initialDelayMs * Math.pow(2, attempt));
+  const jitter = Math.floor(Math.random() * 350);
+  return exponential + jitter;
+}
 
 /**
- * Fetch wrapper for Google APIs with full Exponential Backoff and Jitter.
- * Gracefully handles transient network failures (TypeError), rate limiting (429),
- * server errors (500, 502, 503, 504), and 401 token refreshes.
+ * Fetch wrapper for Google APIs with write-burst pacing, full Exponential Backoff + Jitter,
+ * Retry-After support, HTTP 403 userRateLimitExceeded handling, and 401 token refreshes.
  */
 async function fetchGoogleApi(
   url: string,
   method: string = 'GET',
   body?: any,
-  maxRetries: number = 3,
-  initialDelayMs: number = 500
+  maxRetries: number = 5,
+  initialDelayMs: number = 800
 ): Promise<Response> {
   let token = await getValidToken();
   if (!token) throw new Error('No Google Access Token found.');
 
   let hasRefreshedToken = false;
+  const isWriteMethod = method.toUpperCase() !== 'GET';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (isWriteMethod) {
+      await acquireWriteSlot();
+    }
+
     const fetchOptions: RequestInit = {
       method,
       headers: {
@@ -45,7 +96,7 @@ async function fetchGoogleApi(
     }
 
     try {
-      let res = await fetch(url, fetchOptions);
+      const res = await fetch(url, fetchOptions);
 
       // Handle 401 Unauthorized with token refresh (once)
       if (res.status === 401 && !hasRefreshedToken) {
@@ -54,23 +105,17 @@ async function fetchGoogleApi(
         const newToken = await refreshGoogleToken();
         if (newToken) {
           token = newToken;
-          // Retry immediately with the refreshed token
           continue;
         } else {
           await invalidateOAuthToken();
         }
       }
 
-      // Check for transient server errors (429 Too Many Requests, 500, 502, 503, 504)
-      const isTransientError = [429, 500, 502, 503, 504].includes(res.status);
-
-      if (isTransientError && attempt < maxRetries) {
-        const backoffMs = initialDelayMs * Math.pow(2, attempt);
-        const jitterMs = Math.floor(Math.random() * 250);
-        const totalDelay = backoffMs + jitterMs;
-
+      const shouldRetry = await isRateLimitOrTransientResponse(res);
+      if (shouldRetry && attempt < maxRetries) {
+        const totalDelay = getRetryDelayMs(res, attempt, initialDelayMs);
         console.warn(
-          `Google API transient error HTTP ${res.status} for ${url}. Retrying with exponential backoff in ${totalDelay}ms (Attempt ${attempt + 1}/${maxRetries})...`
+          `Google API rate-limit/transient HTTP ${res.status} for ${url}. Retrying in ${totalDelay}ms (Attempt ${attempt + 1}/${maxRetries})...`
         );
         await new Promise((resolve) => setTimeout(resolve, totalDelay));
         continue;
@@ -78,14 +123,10 @@ async function fetchGoogleApi(
 
       return res;
     } catch (err) {
-      // Catch network-level exceptions (e.g. lost connection / DNS failure)
       if (attempt < maxRetries) {
-        const backoffMs = initialDelayMs * Math.pow(2, attempt);
-        const jitterMs = Math.floor(Math.random() * 250);
-        const totalDelay = backoffMs + jitterMs;
-
+        const totalDelay = getRetryDelayMs(null, attempt, initialDelayMs);
         console.warn(
-          `Network error during Google API request to ${url}: ${err instanceof Error ? err.message : String(err)}. Retrying with exponential backoff in ${totalDelay}ms (Attempt ${attempt + 1}/${maxRetries})...`
+          `Network error during Google API request to ${url}: ${err instanceof Error ? err.message : String(err)}. Retrying in ${totalDelay}ms (Attempt ${attempt + 1}/${maxRetries})...`
         );
         await new Promise((resolve) => setTimeout(resolve, totalDelay));
         continue;
@@ -103,6 +144,13 @@ export async function createCalendarEvent(title: string, durationMinutes: number
   let startTime = specificStartTime;
   let endTime = specificEndTime;
 
+  if (specificStartTime !== undefined && (!specificStartTime || isNaN(specificStartTime.getTime()))) {
+    throw new Error('Cannot create Google Calendar event: explicit startTime is invalid.');
+  }
+  if (specificEndTime !== undefined && (!specificEndTime || isNaN(specificEndTime.getTime()))) {
+    throw new Error('Cannot create Google Calendar event: explicit endTime is invalid.');
+  }
+
   if (!startTime || !endTime) {
     const block = getActiveStudyBlock();
     const todayDate = new Date();
@@ -118,8 +166,8 @@ export async function createCalendarEvent(title: string, durationMinutes: number
     endTime = new Date(slot.endTime);
   }
 
-  const safeStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
-  let safeEnd = endTime && !isNaN(endTime.getTime()) ? endTime : new Date(safeStart.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
+  const safeStart = startTime;
+  let safeEnd = endTime;
   if (safeEnd.getTime() <= safeStart.getTime()) {
     safeEnd = new Date(safeStart.getTime() + Math.max(30, durationMinutes) * 60 * 1000);
   }
@@ -131,8 +179,8 @@ export async function createCalendarEvent(title: string, durationMinutes: number
     return {
       id: 'local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
       hasConflict: hasConflict,
-      startTime: safeStart.toISOString(),
-      endTime: safeEnd.toISOString()
+      startTime: formatLocalISO(safeStart),
+      endTime: formatLocalISO(safeEnd)
     };
   }
 
@@ -189,9 +237,8 @@ export async function createCalendarEvent(title: string, durationMinutes: number
       });
       if (duplicate && duplicate.id) {
         console.log("Reusing existing Google Calendar event to prevent duplicates:", duplicate.id);
-        // Ensure its time is updated to current safeStart/safeEnd
         await updateCalendarEventTime(duplicate.id, safeStart, safeEnd, title, colorId);
-        return { ...duplicate, hasConflict, startTime: safeStart.toISOString(), endTime: safeEnd.toISOString() };
+        return { ...duplicate, hasConflict, startTime: formatLocalISO(safeStart), endTime: formatLocalISO(safeEnd) };
       }
     } catch (checkErr) {
       console.warn("Could not pre-check calendar duplicates, proceeding with creation:", checkErr);
@@ -207,7 +254,7 @@ export async function createCalendarEvent(title: string, durationMinutes: number
       throw new Error(`Google Calendar API error: ${res.status} ${errorText}`);
     }
     const data = await res.json();
-    return { ...data, hasConflict, startTime: safeStart.toISOString(), endTime: safeEnd.toISOString() };
+    return { ...data, hasConflict, startTime: formatLocalISO(safeStart), endTime: formatLocalISO(safeEnd) };
   } catch (err) {
     console.error('Failed to create Calendar event:', err);
     throw err;
@@ -224,8 +271,12 @@ export async function createCalendarEventDirect(
   const token = await getValidToken();
   if (!token) return null;
 
-  const safeStart = startTime && !isNaN(startTime.getTime()) ? startTime : new Date();
-  let safeEnd = endTime && !isNaN(endTime.getTime()) ? endTime : new Date(safeStart.getTime() + 60 * 60 * 1000);
+  if (!startTime || isNaN(startTime.getTime()) || !endTime || isNaN(endTime.getTime())) {
+    throw new Error(`Cannot create Google Calendar event "${title}": invalid start or end Date.`);
+  }
+
+  const safeStart = startTime;
+  let safeEnd = endTime;
   if (safeEnd.getTime() <= safeStart.getTime()) {
     safeEnd = new Date(safeStart.getTime() + 60 * 60 * 1000);
   }
@@ -281,8 +332,8 @@ export async function createCalendarEventDirect(
   const data = await res.json();
   return {
     id: data.id,
-    startTime: safeStart.toISOString(),
-    endTime: safeEnd.toISOString(),
+    startTime: formatLocalISO(safeStart),
+    endTime: formatLocalISO(safeEnd),
   };
 }
 
@@ -355,51 +406,76 @@ export async function batchDeleteCalendarEvents(eventIds: (string | undefined | 
   if (!token) return 0;
 
   let deletedCount = 0;
-  const concurrency = 4;
+  const failedIds: string[] = [];
+  const concurrency = 2;
+
   for (let i = 0; i < validIds.length; i += concurrency) {
     const chunk = validIds.slice(i, i + concurrency);
     const results = await Promise.allSettled(chunk.map((id) => deleteCalendarEvent(id)));
-    results.forEach((r) => {
+    results.forEach((r, idx) => {
       if (r.status === 'fulfilled' && r.value) {
         deletedCount++;
+      } else {
+        failedIds.push(chunk[idx]);
       }
     });
+    if (i + concurrency < validIds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
   }
+
+  // Sequential retry pass for any rate-limited deletes
+  if (failedIds.length > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    for (const id of failedIds) {
+      const ok = await deleteCalendarEvent(id);
+      if (ok) deletedCount++;
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    }
+  }
+
   return deletedCount;
 }
 
 export async function rescheduleCalendarEvents(eventsToReschedule: { eventId: string, startTime: Date, endTime: Date }[]) {
+  let token = await getValidToken();
+  if (!token) return false;
 
- let token = await getValidToken();
- if (!token) return false;
+  let allOk = true;
+  try {
+    for (const evt of eventsToReschedule) {
+      if (!evt.eventId || evt.eventId.startsWith('local-')) continue;
+      if (!evt.startTime || isNaN(evt.startTime.getTime()) || !evt.endTime || isNaN(evt.endTime.getTime())) {
+        allOk = false;
+        continue;
+      }
 
- try {
- for (const evt of eventsToReschedule) {
- if (!evt.eventId) continue;
+      const patchBody = {
+        start: {
+          dateTime: evt.startTime.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+        end: {
+          dateTime: evt.endTime.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }
+      };
 
- const patchBody = {
- start: {
- dateTime: evt.startTime.toISOString(),
- timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
- },
- end: {
- dateTime: evt.endTime.toISOString(),
- timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
- }
- };
+      const res = await fetchGoogleApi(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${evt.eventId}`, 'PATCH', patchBody);
 
- const res = await fetchGoogleApi(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${evt.eventId}`, 'PATCH', patchBody);
-
- if (!res.ok && res.status === 401) {
- await invalidateOAuthToken();
- throw new Error('Google Calendar access token expired.');
- }
- }
- return true;
- } catch (err) {
- console.error('Failed to reschedule Calendar events:', err);
- return false;
- }
+      if (!res.ok) {
+        if (res.status === 401) {
+          await invalidateOAuthToken();
+          throw new Error('Google Calendar access token expired.');
+        }
+        allOk = false;
+      }
+    }
+    return allOk;
+  } catch (err) {
+    console.error('Failed to reschedule Calendar events:', err);
+    return false;
+  }
 }
 
 export async function createGoogleTask(title: string, dueDate?: Date, _isRetry = false): Promise<any> {

@@ -284,15 +284,22 @@ export interface SyncScheduleWithRoadmapResult {
   deletedLocalCount: number;
   deletedGoogleCount: number;
   createdGoogleCount: number;
+  failedGoogleCount: number;
   keptGoogleCount: number;
   remainingGoogleEvents: any[];
+}
+
+export interface SyncScheduleOptions {
+  batchSize?: number;
+  batchDelayMs?: number;
+  retryDelayMs?: number;
 }
 
 /**
  * Full authoritative sync:
  * 1. Syncs local `todos` strictly to `backlogPlan.roadmap` and tombstones all non-roadmap tasks inside `[planStartDate .. planEndDate]`.
  * 2. If `hasGoogleAuth`, fetches ALL Google Calendar events in `[planStartDate .. planEndDate]`, keeps exact 1-to-1 roadmap matches,
- *    DELETES every other event inside `[planStartDate .. planEndDate]`, and creates all missing roadmap events cleanly.
+ *    DELETES every other event inside `[planStartDate .. planEndDate]`, and creates all missing roadmap events cleanly with rate-limit pacing & retries.
  */
 export async function syncScheduleWithRoadmap(params: {
   backlogPlan: BacklogPlan;
@@ -300,8 +307,9 @@ export async function syncScheduleWithRoadmap(params: {
   hasGoogleAuth: boolean;
   todayStr?: string;
   calendarOps?: RoadmapCalendarOps;
+  syncOptions?: SyncScheduleOptions;
 }): Promise<SyncScheduleWithRoadmapResult> {
-  const { backlogPlan, todos, hasGoogleAuth, todayStr, calendarOps } = params;
+  const { backlogPlan, todos, hasGoogleAuth, todayStr, calendarOps, syncOptions } = params;
   const roadmap = backlogPlan.roadmap || [];
 
   const fetchEventsFn = calendarOps?.fetchEvents ?? fetchGoogleCalendarEvents;
@@ -328,6 +336,7 @@ export async function syncScheduleWithRoadmap(params: {
       deletedLocalCount,
       deletedGoogleCount: 0,
       createdGoogleCount: 0,
+      failedGoogleCount: 0,
       keptGoogleCount: 0,
       remainingGoogleEvents: [],
     };
@@ -447,7 +456,7 @@ export async function syncScheduleWithRoadmap(params: {
     }
   }
 
-  // Create missing roadmap tasks in Google Calendar in controlled concurrent batches
+  // Create missing roadmap tasks in Google Calendar in paced batches + sequential retry passes
   const toCreateIndices: number[] = [];
   updatedRoadmapTodos.forEach((rt, idx) => {
     if (!rt.calendarEventId && rt.startTime && rt.endTime) {
@@ -455,37 +464,76 @@ export async function syncScheduleWithRoadmap(params: {
     }
   });
 
-  let createdGoogleCount = 0;
-  const BATCH_SIZE = 3;
-  for (let i = 0; i < toCreateIndices.length; i += BATCH_SIZE) {
-    const chunk = toCreateIndices.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(
-      chunk.map(async (idx) => {
-        const task = updatedRoadmapTodos[idx];
-        const created = await createDirectFn(
-          task.text,
-          new Date(task.startTime!),
-          new Date(task.endTime!),
-          task.type || 'Lecture',
-          Boolean(task.completed)
-        );
-        return { idx, created };
-      })
-    );
+  const batchSize = Math.max(1, syncOptions?.batchSize ?? 2);
+  const batchDelayMs = syncOptions?.batchDelayMs ?? 260;
+  const retryDelayMs = syncOptions?.retryDelayMs ?? 1200;
 
-    results.forEach((res) => {
-      if (res.status === 'fulfilled' && res.value.created?.id) {
-        const { idx, created } = res.value;
-        updatedRoadmapTodos[idx] = {
-          ...updatedRoadmapTodos[idx],
-          calendarEventId: created!.id,
-          calendarSynced: true,
-        };
-        createdGoogleCount++;
+  let createdGoogleCount = 0;
+
+  const tryCreateSingle = async (idx: number): Promise<boolean> => {
+    const task = updatedRoadmapTodos[idx];
+    const startDt = new Date(task.startTime!);
+    const endDt = new Date(task.endTime!);
+    if (isNaN(startDt.getTime()) || isNaN(endDt.getTime())) {
+      return false;
+    }
+    const created = await createDirectFn(
+      task.text,
+      startDt,
+      endDt,
+      task.type || 'Lecture',
+      Boolean(task.completed)
+    );
+    if (created?.id) {
+      updatedRoadmapTodos[idx] = {
+        ...updatedRoadmapTodos[idx],
+        calendarEventId: created.id,
+        calendarSynced: true,
+      };
+      createdGoogleCount++;
+      return true;
+    }
+    return false;
+  };
+
+  // Pass 1: Paced batches
+  let failedIndices: number[] = [];
+  for (let i = 0; i < toCreateIndices.length; i += batchSize) {
+    const chunk = toCreateIndices.slice(i, i + batchSize);
+    const results = await Promise.allSettled(chunk.map((idx) => tryCreateSingle(idx)));
+    results.forEach((res, offset) => {
+      if (res.status !== 'fulfilled' || !res.value) {
+        failedIndices.push(chunk[offset]);
       }
     });
+    if (batchDelayMs > 0 && i + batchSize < toCreateIndices.length) {
+      await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
+    }
   }
 
+  // Pass 2 & Pass 3: Strictly sequential recovery passes after cooldown for any rate-limited stragglers
+  for (let retryRound = 0; retryRound < 2 && failedIndices.length > 0; retryRound++) {
+    const cooldown = retryRound === 0 ? retryDelayMs : Math.round(retryDelayMs * 1.5);
+    if (cooldown > 0) {
+      await new Promise((resolve) => setTimeout(resolve, cooldown));
+    }
+    const stillFailed: number[] = [];
+    for (const idx of failedIndices) {
+      try {
+        const ok = await tryCreateSingle(idx);
+        if (!ok) stillFailed.push(idx);
+      } catch (err) {
+        console.warn('Sequential retry create failed for task', updatedRoadmapTodos[idx]?.text, err);
+        stillFailed.push(idx);
+      }
+      if (batchDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
+      }
+    }
+    failedIndices = stillFailed;
+  }
+
+  const failedGoogleCount = failedIndices.length;
   const finalTodos = [...preservedOutsideTodos, ...updatedRoadmapTodos, ...deletedTodos];
 
   return {
@@ -496,6 +544,7 @@ export async function syncScheduleWithRoadmap(params: {
     deletedLocalCount,
     deletedGoogleCount,
     createdGoogleCount,
+    failedGoogleCount,
     keptGoogleCount: keptGoogleIds.size,
     remainingGoogleEvents: matchedEventsList,
   };

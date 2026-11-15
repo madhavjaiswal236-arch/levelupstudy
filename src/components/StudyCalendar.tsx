@@ -36,6 +36,7 @@ import { useAppContext, Todo } from "../context/AppContext";
 import {
   rescheduleCalendarEvents,
   createCalendarEvent,
+  createCalendarEventDirect,
   updateCalendarEventTime,
   deleteCalendarEvent,
   markCalendarEventCompleted,
@@ -54,7 +55,7 @@ import {
   addMonths,
 } from "date-fns";
 import { predictNextLecture, getLocalDateString } from "../lib/utils";
-import { formatLocalISO } from "../lib/studyBlock";
+import { formatLocalISO, getActiveStudyBlock, calculateNextAvailableStudySlot } from "../lib/studyBlock";
 import {
   syncScheduleWithRoadmap,
   normalizeCalendarTitle,
@@ -141,6 +142,7 @@ export function StudyCalendar({
     setHasToken,
     setFirebaseUser,
     backlogPlan,
+    scheduleProfile,
     saveStateToCloudNow,
   } = useAppContext();
 
@@ -716,7 +718,12 @@ export function StudyCalendar({
             });
             return [...outside, ...result.remainingGoogleEvents];
           });
-          customSuccessMsg = `Synced ${result.roadmapTaskCount} roadmap tasks (${result.createdGoogleCount} created, ${result.keptGoogleCount} matched, ${result.deletedGoogleCount} stray calendar events & ${result.deletedLocalCount} extra tasks cleared).`;
+          if (result.failedGoogleCount > 0) {
+            allSuccess = false;
+            errorMessage = `Synced ${result.createdGoogleCount + result.keptGoogleCount}/${result.roadmapTaskCount} roadmap tasks to Google Calendar (${result.failedGoogleCount} rate-limited — click Sync again to finish remaining).`;
+          } else {
+            customSuccessMsg = `Synced ${result.roadmapTaskCount} roadmap tasks (${result.createdGoogleCount} created, ${result.keptGoogleCount} matched, ${result.deletedGoogleCount} stray calendar events & ${result.deletedLocalCount} extra tasks cleared).`;
+          }
         } else {
           customSuccessMsg = `Synced ${result.roadmapTaskCount} tasks strictly to your roadmap (${result.deletedLocalCount} extra tasks cleared).`;
         }
@@ -1012,67 +1019,87 @@ export function StudyCalendar({
           );
 
           if (eventsToCreate.length > 0) {
-            const createdEventIds: { id: string | number; calendarEventId: string }[] = [];
+            const retryCreateQueue: typeof eventsToCreate = [];
+
+            const createSingleFallbackEvent = async (t: (typeof eventsToCreate)[number]): Promise<boolean> => {
+              const tStart = new Date(t.startTime!);
+              const tEnd = new Date(t.endTime!);
+              if (isNaN(tStart.getTime()) || isNaN(tEnd.getTime())) return false;
+
+              const normTitle = normalizeCalendarTitle(t.text);
+              const existingMatch = gcalEvents.find((ge: any) => {
+                if (!ge.start?.dateTime || !ge.id) return false;
+                const geStart = new Date(ge.start.dateTime).getTime();
+                return (
+                  normalizeCalendarTitle(ge.summary) === normTitle &&
+                  Math.abs(geStart - tStart.getTime()) <= 2 * 60 * 1000
+                );
+              });
+
+              if (existingMatch && existingMatch.id) {
+                const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
+                if (idx !== -1) {
+                  cleanTodos[idx] = {
+                    ...cleanTodos[idx],
+                    calendarEventId: existingMatch.id,
+                    calendarSynced: true,
+                  };
+                }
+                return true;
+              }
+
+              const result = await createCalendarEventDirect(
+                t.text,
+                tStart,
+                tEnd,
+                t.type || "Lecture",
+                Boolean(t.completed)
+              );
+              if (result && result.id && !result.id.startsWith("local-")) {
+                const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
+                if (idx !== -1) {
+                  cleanTodos[idx] = {
+                    ...cleanTodos[idx],
+                    calendarEventId: result.id,
+                    calendarSynced: true,
+                  };
+                }
+                return true;
+              }
+              return false;
+            };
+
             for (const t of eventsToCreate) {
               inFlightTaskIdsRef.current.add(t.id);
               try {
-                const tStart = new Date(t.startTime!);
-                const tEnd = new Date(t.endTime!);
-                const durationMinutes = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
-
-                const normTitle = normalizeCalendarTitle(t.text);
-                const existingMatch = gcalEvents.find((ge: any) => {
-                  if (!ge.start?.dateTime || !ge.id) return false;
-                  const geStart = new Date(ge.start.dateTime).getTime();
-                  return (
-                    normalizeCalendarTitle(ge.summary) === normTitle &&
-                    Math.abs(geStart - tStart.getTime()) <= 2 * 60 * 1000
-                  );
-                });
-
-                if (existingMatch && existingMatch.id) {
-                  createdEventIds.push({ id: t.id, calendarEventId: existingMatch.id });
-                  const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
-                  if (idx !== -1) {
-                    cleanTodos[idx] = {
-                      ...cleanTodos[idx],
-                      calendarEventId: existingMatch.id,
-                      calendarSynced: true,
-                    };
-                  }
-                  continue;
-                }
-
-                const result = await createCalendarEvent(
-                  t.text,
-                  durationMinutes,
-                  t.type || "Lecture",
-                  false,
-                  cleanTodos,
-                  tStart,
-                  tEnd
-                );
-                if (result && result.id && !result.id.startsWith("local-")) {
-                  createdEventIds.push({ id: t.id, calendarEventId: result.id });
-                  const idx = cleanTodos.findIndex((ct) => ct.id === t.id);
-                  if (idx !== -1) {
-                    cleanTodos[idx] = {
-                      ...cleanTodos[idx],
-                      calendarEventId: result.id,
-                      calendarSynced: true,
-                    };
-                  }
-                }
+                const ok = await createSingleFallbackEvent(t);
+                if (!ok) retryCreateQueue.push(t);
               } catch (e) {
-                console.error("Error creating Google Calendar event:", e);
-                allSuccess = false;
+                console.warn("Google Calendar create pass 1 error:", t.text, e);
+                retryCreateQueue.push(t);
               } finally {
                 inFlightTaskIdsRef.current.delete(t.id);
               }
+              await new Promise((resolve) => setTimeout(resolve, 220));
             }
-            if (createdEventIds.length > 0) {
-              setCalendarTodos(cleanTodos);
+
+            if (retryCreateQueue.length > 0) {
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+              for (const t of retryCreateQueue) {
+                inFlightTaskIdsRef.current.add(t.id);
+                try {
+                  const ok = await createSingleFallbackEvent(t);
+                  if (!ok) allSuccess = false;
+                } catch (e) {
+                  console.error("Error creating Google Calendar event on retry:", e);
+                  allSuccess = false;
+                } finally {
+                  inFlightTaskIdsRef.current.delete(t.id);
+                }
+                await new Promise((resolve) => setTimeout(resolve, 260));
+              }
             }
+            setCalendarTodos(cleanTodos);
           }
         }
         await saveStateToCloudNow({ todos: cleanTodos });
@@ -1104,62 +1131,80 @@ export function StudyCalendar({
     }
   };
 
-  const handleScheduleSingle = async (task: Todo) => {
-    let latestEnd = new Date();
-    if (scheduledEvents.length > 0) {
-      const futureEvents = scheduledEvents.filter((e) => e.end > new Date());
-      if (futureEvents.length > 0) {
-        latestEnd = new Date(
-          Math.max(...futureEvents.map((e) => e.end.getTime())),
+  const resolveIntendedDateForTask = (task: Todo): string => {
+    if (task.dateScheduled && /^\d{4}-\d{2}-\d{2}/.test(task.dateScheduled)) {
+      return task.dateScheduled.slice(0, 10);
+    }
+    if (task.startTime && /^\d{4}-\d{2}-\d{2}/.test(task.startTime) && !isNaN(new Date(task.startTime).getTime())) {
+      return task.startTime.slice(0, 10);
+    }
+    if (backlogPlan?.roadmap) {
+      for (const day of backlogPlan.roadmap) {
+        const found = day.tasks.find(
+          (rt) =>
+            String(rt.id) === String(task.id) ||
+            (rt.chapterId === task.backlogChapterId &&
+              rt.type === task.backlogTaskType &&
+              rt.lectureNumber === task.lectureNumber)
         );
+        if (found?.plannedDate || day.date) {
+          return (found?.plannedDate || day.date).slice(0, 10);
+        }
       }
     }
+    return getLocalDateString();
+  };
 
-    let currentStart = new Date(latestEnd);
-    if (currentStart < new Date()) {
-      currentStart = new Date();
-      currentStart.setMinutes(currentStart.getMinutes() + 10);
-    }
+  const handleScheduleSingle = async (task: Todo) => {
+    const activeBlock = getActiveStudyBlock(scheduleProfile, backlogPlan);
+    const intendedDate = resolveIntendedDateForTask(task);
+    const durationMins = task.durationMinutes || (task.lectureHours ? task.lectureHours * 60 : 105);
 
-    // Removed 9 AM to 10 PM restrictions per user request
-
-    const durationMins = task.lectureHours ? task.lectureHours * 60 : 105;
-    const end = new Date(currentStart.getTime() + durationMins * 60000);
+    const slot = calculateNextAvailableStudySlot(
+      intendedDate,
+      durationMins,
+      todos,
+      activeBlock.start,
+      activeBlock.end
+    );
+    const currentStart = new Date(slot.startTime);
+    const end = new Date(slot.endTime);
 
     const updatedTodos = todos.map((t) =>
       t.id === task.id
         ? {
             ...t,
-            startTime: formatLocalISO(currentStart),
-            endTime: formatLocalISO(end),
-            dateScheduled: getLocalDateString(currentStart),
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            dateScheduled: slot.dateScheduled,
+            durationMinutes: durationMins,
           }
         : t,
     );
 
     setCalendarTodos(updatedTodos);
     showToast(
-      `Scheduled ${task.text} for ${format(currentStart, "h:mm a")}`,
+      `Scheduled ${task.text} on ${slot.dateScheduled} at ${format(currentStart, "h:mm a")}`,
       "success",
     );
 
     try {
-      await ensureCalendarAuth();
-      const res = await createCalendarEvent(
-        task.text,
-        durationMins,
-        task.type || "Lecture",
-        false,
-        updatedTodos,
-        currentStart,
-        end,
-      );
-      if (res && res.id) {
-        setCalendarTodos(
-          updatedTodos.map((t) =>
-            t.id === task.id ? { ...t, calendarEventId: res.id } : t,
-          ),
+      const authed = await ensureCalendarAuth();
+      if (authed) {
+        const res = await createCalendarEventDirect(
+          task.text,
+          currentStart,
+          end,
+          task.type || "Lecture",
+          Boolean(task.completed)
         );
+        if (res && res.id) {
+          setCalendarTodos((prev) =>
+            prev.map((t) =>
+              t.id === task.id ? { ...t, calendarEventId: res.id, calendarSynced: true } : t,
+            ),
+          );
+        }
       }
     } catch (err: any) {
       console.error("Calendar sync error:", err);
@@ -1172,72 +1217,122 @@ export function StudyCalendar({
       return;
     }
 
-    // Auto schedule unscheduled tasks starting from tomorrow morning 9 AM or today if early
-    let latestEnd = new Date();
-    if (scheduledEvents.length > 0) {
-      const futureEvents = scheduledEvents.filter((e) => e.end > new Date());
-      if (futureEvents.length > 0) {
-        latestEnd = new Date(
-          Math.max(...futureEvents.map((e) => e.end.getTime())),
-        );
-      }
-    }
-
-    const updatedTodos = [...todos];
-    let currentStart = new Date(latestEnd);
-    if (currentStart < new Date()) {
-      currentStart = new Date();
-      currentStart.setMinutes(currentStart.getMinutes() + 10);
-    }
+    const activeBlock = getActiveStudyBlock(scheduleProfile, backlogPlan);
+    const workingTodos = [...todos];
+    const scheduledIds: (string | number)[] = [];
 
     showToast("Generating study plan...", "info");
 
     for (const task of unscheduledTasks) {
-      // Advance to next valid hour (9 AM to 10 PM)
-      if (currentStart.getHours() >= 22) {
-        currentStart.setDate(currentStart.getDate() + 1);
-        currentStart.setHours(9, 0, 0, 0);
-      } else if (currentStart.getHours() < 9) {
-        currentStart.setHours(9, 0, 0, 0);
-      }
+      const intendedDate = resolveIntendedDateForTask(task);
+      const durationMins = Math.max(15, task.durationMinutes || (task.lectureHours ? task.lectureHours * 60 : 105));
 
-      const durationMins = task.lectureHours ? task.lectureHours * 60 : 105;
-      const end = new Date(currentStart.getTime() + durationMins * 60000);
+      // Find latest scheduled end on intendedDate in workingTodos to enforce 15-min break cleanly
+      const dayExistingEnds = workingTodos
+        .filter((t) => !t.isDeleted && t.startTime && t.endTime && (t.dateScheduled?.slice(0, 10) || t.startTime.slice(0, 10)) === intendedDate)
+        .map((t) => new Date(t.endTime!).getTime())
+        .filter((ms) => !isNaN(ms));
 
-      const tIndex = updatedTodos.findIndex((t) => t.id === task.id);
-      if (tIndex >= 0) {
-        updatedTodos[tIndex] = {
-          ...updatedTodos[tIndex],
-          startTime: formatLocalISO(currentStart),
-          endTime: formatLocalISO(end),
-          dateScheduled: getLocalDateString(currentStart),
-        };
-      }
-
-      // Try pushing to google calendar
-      try {
-        await ensureCalendarAuth();
-        const res = await createCalendarEvent(
-          task.text,
+      let slotStart: Date;
+      if (dayExistingEnds.length > 0) {
+        slotStart = new Date(Math.max(...dayExistingEnds) + 15 * 60000);
+      } else {
+        const fallbackSlot = calculateNextAvailableStudySlot(
+          intendedDate,
           durationMins,
-          task.type || "Lecture",
-          false,
-          updatedTodos,
-          currentStart,
-          end,
+          workingTodos,
+          activeBlock.start,
+          activeBlock.end
         );
-        if (res && res.id) {
-          updatedTodos[tIndex].calendarEventId = res.id;
-        }
-      } catch (err: any) {
-        console.error("Calendar sync error:", err);
+        slotStart = new Date(fallbackSlot.startTime);
       }
+      const slotEnd = new Date(slotStart.getTime() + durationMins * 60000);
 
-      currentStart = new Date(end.getTime() + 15 * 60000); // 15 min break between tasks
+      const tIndex = workingTodos.findIndex((t) => t.id === task.id);
+      if (tIndex >= 0) {
+        workingTodos[tIndex] = {
+          ...workingTodos[tIndex],
+          startTime: formatLocalISO(slotStart),
+          endTime: formatLocalISO(slotEnd),
+          dateScheduled: intendedDate,
+          durationMinutes: durationMins,
+        };
+        scheduledIds.push(task.id);
+      }
     }
 
-    setCalendarTodos(updatedTodos);
-    showToast("Study plan generated with 15-minute breaks!", "success");
+    setCalendarTodos(workingTodos);
+
+    const authed = await ensureCalendarAuth();
+    let syncedCount = 0;
+    let failedCount = 0;
+    if (authed && scheduledIds.length > 0) {
+      const retryQueue: (string | number)[] = [];
+      for (const tid of scheduledIds) {
+        const item = workingTodos.find((t) => t.id === tid);
+        if (!item?.startTime || !item?.endTime) continue;
+        try {
+          const res = await createCalendarEventDirect(
+            item.text,
+            new Date(item.startTime),
+            new Date(item.endTime),
+            item.type || "Lecture",
+            Boolean(item.completed)
+          );
+          if (res?.id) {
+            syncedCount++;
+            const idx = workingTodos.findIndex((t) => t.id === tid);
+            if (idx !== -1) {
+              workingTodos[idx] = { ...workingTodos[idx], calendarEventId: res.id, calendarSynced: true };
+            }
+          } else {
+            retryQueue.push(tid);
+          }
+        } catch (err) {
+          console.warn("Auto-schedule calendar create pass 1 failed:", item.text, err);
+          retryQueue.push(tid);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 220));
+      }
+
+      if (retryQueue.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        for (const tid of retryQueue) {
+          const item = workingTodos.find((t) => t.id === tid);
+          if (!item?.startTime || !item?.endTime) continue;
+          try {
+            const res = await createCalendarEventDirect(
+              item.text,
+              new Date(item.startTime),
+              new Date(item.endTime),
+              item.type || "Lecture",
+              Boolean(item.completed)
+            );
+            if (res?.id) {
+              syncedCount++;
+              const idx = workingTodos.findIndex((t) => t.id === tid);
+              if (idx !== -1) {
+                workingTodos[idx] = { ...workingTodos[idx], calendarEventId: res.id, calendarSynced: true };
+              }
+            } else {
+              failedCount++;
+            }
+          } catch (err) {
+            failedCount++;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 260));
+        }
+      }
+
+      setCalendarTodos([...workingTodos]);
+      await saveStateToCloudNow({ todos: workingTodos });
+    }
+
+    if (failedCount > 0) {
+      showToast(`Scheduled ${scheduledIds.length} tasks locally (${syncedCount} synced to Google Calendar, ${failedCount} rate-limited — click Sync to finish).`, "info");
+    } else {
+      showToast("Study plan generated with 15-minute breaks!", "success");
+    }
   };
 
   const hours = Array.from({ length: 24 }, (_, i) => i); // 12 AM to 11 PM

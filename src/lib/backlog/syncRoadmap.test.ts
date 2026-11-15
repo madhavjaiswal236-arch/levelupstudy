@@ -412,4 +412,136 @@ describe('syncRoadmap', () => {
   it('normalizes [Done] prefixes and whitespace consistently', () => {
     expect(normalizeCalendarTitle('[Done]  Friction — Lecture 2 ')).toBe('friction — lecture 2');
   });
+
+  it('schedules 12 tasks across a 12-hour timeline day and recovers all tasks via retry passes after Google rate-limit errors', async () => {
+    // 6 tasks x 105m + 5 breaks x 15m = 705m (~11h45m timeline starting 09:00 -> 20:45) on Day 1 + 6 tasks on Day 2
+    const makeDayTasks = (dayIdx: number, dateStr: string, offset: number) =>
+      Array.from({ length: 6 }, (_, i) => ({
+        id: `t_${dayIdx}_${i}`,
+        type: (i % 2 === 0 ? 'lecture' : 'practice') as 'lecture' | 'practice',
+        subject: i % 3 === 0 ? 'Physics' : i % 3 === 1 ? 'Chemistry' : 'Mathematics',
+        chapter: `Chapter ${offset + i}`,
+        chapterId: `ch_${offset + i}`,
+        lectureNumber: i + 1,
+        title: `Chapter ${offset + i} — Task ${i + 1}`,
+        durationMinutes: 105,
+        plannedDate: dateStr,
+        dayIndex: dayIdx,
+      }));
+
+    const largeRoadmap: RoadmapDay[] = [
+      {
+        dayIndex: 1,
+        date: '2026-12-01',
+        dayType: 'LEARNING',
+        totalMinutes: 630,
+        tasks: makeDayTasks(1, '2026-12-01', 1),
+      },
+      {
+        dayIndex: 2,
+        date: '2026-12-02',
+        dayType: 'LEARNING',
+        totalMinutes: 630,
+        tasks: makeDayTasks(2, '2026-12-02', 7),
+      },
+    ];
+
+    const largePlan = makePlan(largeRoadmap);
+    const attemptCounter = new Map<string, number>();
+
+    // Simulate Google Calendar rejecting tasks #3..#12 on first pass (rate-limit after 2 writes!)
+    // and recovering on sequential retry passes
+    const flakyCreateSpy = vi.fn(async (title: string, startTime: Date, endTime: Date) => {
+      const prevAttempts = attemptCounter.get(title) || 0;
+      attemptCounter.set(title, prevAttempts + 1);
+
+      const totalCallsSoFar = flakyCreateSpy.mock.calls.length;
+      if (prevAttempts === 0 && totalCallsSoFar > 2) {
+        throw new Error('Google Calendar API error: 403 rateLimitExceeded');
+      }
+
+      return {
+        id: `gcal_${title.replace(/\s+/g, '_')}`,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+      };
+    });
+
+    const res = await syncScheduleWithRoadmap({
+      backlogPlan: largePlan,
+      todos: [],
+      hasGoogleAuth: true,
+      todayStr: '2026-11-15',
+      calendarOps: {
+        fetchEvents: async () => [],
+        batchDeleteEvents: async () => 0,
+        createEventDirect: flakyCreateSpy,
+      },
+      syncOptions: {
+        batchSize: 2,
+        batchDelayMs: 0,
+        retryDelayMs: 0,
+      },
+    });
+
+    expect(res.roadmapTaskCount).toBe(12);
+    expect(res.createdGoogleCount).toBe(12);
+    expect(res.failedGoogleCount).toBe(0);
+
+    const active = res.finalTodos.filter((t) => !t.isDeleted);
+    expect(active).toHaveLength(12);
+    expect(active.every((t) => t.calendarSynced && Boolean(t.calendarEventId))).toBe(true);
+
+    // Every task must stay on its planned Dec 1 or Dec 2 date at exact sequential :00 second slots (never today's date/now())
+    const day1Tasks = active.filter((t) => t.dateScheduled === '2026-12-01');
+    const day2Tasks = active.filter((t) => t.dateScheduled === '2026-12-02');
+    expect(day1Tasks).toHaveLength(6);
+    expect(day2Tasks).toHaveLength(6);
+    expect(day1Tasks[0].startTime).toBe('2026-12-01T09:00:00');
+    expect(day1Tasks[5].startTime).toBe('2026-12-01T19:00:00');
+    expect(day1Tasks[5].endTime).toBe('2026-12-01T20:45:00');
+    expect(day2Tasks[0].startTime).toBe('2026-12-02T09:00:00');
+  });
+
+  it('accurately reports failedGoogleCount without marking failed events as synced', async () => {
+    const roadmap = makeRoadmap();
+    const plan = makePlan(roadmap);
+
+    const failingCreateSpy = vi.fn(async (title: string, startTime: Date, endTime: Date) => {
+      if (title.includes('Lecture 4')) {
+        throw new Error('403 persistent quota exceeded');
+      }
+      return {
+        id: `gcal_${title.length}`,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+      };
+    });
+
+    const res = await syncScheduleWithRoadmap({
+      backlogPlan: plan,
+      todos: [],
+      hasGoogleAuth: true,
+      todayStr: '2026-11-15',
+      calendarOps: {
+        fetchEvents: async () => [],
+        batchDeleteEvents: async () => 0,
+        createEventDirect: failingCreateSpy,
+      },
+      syncOptions: {
+        batchSize: 2,
+        batchDelayMs: 0,
+        retryDelayMs: 0,
+      },
+    });
+
+    expect(res.roadmapTaskCount).toBe(6);
+    expect(res.createdGoogleCount).toBe(5);
+    expect(res.failedGoogleCount).toBe(1);
+
+    const failedTask = res.finalTodos.find((t) => t.text.includes('Lecture 4'));
+    expect(failedTask?.calendarSynced).toBe(false);
+    expect(failedTask?.calendarEventId).toBeUndefined();
+  });
 });
+

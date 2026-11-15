@@ -64,21 +64,21 @@ const coerceValidTimeString = (val: any): string | undefined => {
   if (typeof val === "object") {
     if (typeof val.toMillis === "function") {
       const ms = val.toMillis();
-      return !isNaN(ms) ? new Date(ms).toISOString() : undefined;
+      return !isNaN(ms) ? formatLocalISO(new Date(ms)) : undefined;
     }
     if (typeof val.seconds === "number") {
       const d = new Date(val.seconds * 1000);
-      return !isNaN(d.getTime()) ? d.toISOString() : undefined;
+      return !isNaN(d.getTime()) ? formatLocalISO(d) : undefined;
     }
     if (val instanceof Date) {
-      return !isNaN(val.getTime()) ? val.toISOString() : undefined;
+      return !isNaN(val.getTime()) ? formatLocalISO(val) : undefined;
     }
     return undefined;
   }
   if (typeof val === "number") {
     if (isNaN(val)) return undefined;
     const d = new Date(val);
-    return !isNaN(d.getTime()) ? d.toISOString() : undefined;
+    return !isNaN(d.getTime()) ? formatLocalISO(d) : undefined;
   }
   const s = String(val).trim();
   if (!s || s.includes("NaN") || s.toLowerCase().includes("invalid")) return undefined;
@@ -255,11 +255,14 @@ export function calculateNextAvailableStudySlot(
   const baseDate = parseDateKeySafely(targetDateStr);
 
   const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const isTargetToday = targetDateStr === todayStr;
   const nowOffsetMins = (now.getTime() - baseDate.getTime()) / 60000;
   const taskDuration = Math.max(30, durationMinutes);
 
   // Check if now is within target date and currently inside the morning tail of an overnight block (e.g. 00:00 to 08:00 AM)
   const isCurrentlyInMorningTail =
+    isTargetToday &&
     isOvernight &&
     nowOffsetMins >= 0 &&
     nowOffsetMins < morningTailMins - 15;
@@ -271,8 +274,8 @@ export function calculateNextAvailableStudySlot(
     // Student is studying right now in the morning segment (00:00 -> 08:00)
     windowStartMins = Math.ceil(nowOffsetMins / 15) * 15;
     windowEndMins = morningTailMins;
-  } else if (nowOffsetMins > blockStartMins && nowOffsetMins < blockEndMins - 15) {
-    // Student is studying in the evening segment (e.g. past 23:00)
+  } else if (isTargetToday && nowOffsetMins > blockStartMins && nowOffsetMins < blockEndMins - 15) {
+    // Only adjust to current quarter-hour when scheduling ad-hoc tasks for TODAY
     windowStartMins = Math.ceil(nowOffsetMins / 15) * 15;
   }
 

@@ -114,4 +114,25 @@ describe("Study Block Realignment & Cross-Midnight 30-Day Robustness Suite", () 
       expect(t.dateScheduled).not.toContain("NaN");
     });
   });
+
+  it("calculateNextAvailableStudySlot schedules future dates cleanly at blockStart without snapping to current time", () => {
+    const futureDate = "2099-12-20";
+    const slot1 = calculateNextAvailableStudySlot(futureDate, 120, [], "09:00", "22:00");
+    expect(slot1.dateScheduled).toBe(futureDate);
+    expect(slot1.startTime).toBe("2099-12-20T09:00:00");
+    expect(slot1.endTime).toBe("2099-12-20T11:00:00");
+
+    // Second task on the same future day stacks cleanly after slot1 + 5m breather
+    const slot2 = calculateNextAvailableStudySlot(
+      futureDate,
+      90,
+      [{ id: 1, text: "Task 1", completed: false, xpReward: 100, startTime: slot1.startTime, endTime: slot1.endTime } as any],
+      "09:00",
+      "22:00"
+    );
+    expect(slot2.dateScheduled).toBe(futureDate);
+    expect(slot2.startTime).toBe("2099-12-20T11:05:00");
+    expect(slot2.endTime).toBe("2099-12-20T12:35:00");
+  });
 });
+

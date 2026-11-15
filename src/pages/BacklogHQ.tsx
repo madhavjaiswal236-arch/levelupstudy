@@ -60,6 +60,7 @@ import { getTaskSignaturesWithLegacy } from '@/lib/backlog/signature';
 import { getLocalDateString } from '@/lib/utils';
 import {
   createCalendarEvent,
+  createCalendarEventDirect,
   rescheduleCalendarEvents,
   fetchGoogleCalendarEvents,
   batchDeleteCalendarEvents,
@@ -123,10 +124,12 @@ export default function BacklogHQ() {
 
         setSyncMessage(
           token
-            ? `Synced ${result.roadmapTaskCount} roadmap tasks (${result.createdGoogleCount} created, ${result.keptGoogleCount} matched, ${result.deletedGoogleCount} stray calendar events & ${result.deletedLocalCount} extra tasks cleared)!`
+            ? result.failedGoogleCount > 0
+              ? `Synced ${result.roadmapTaskCount} roadmap tasks (${result.createdGoogleCount} created, ${result.keptGoogleCount} matched, ${result.failedGoogleCount} rate-limited by Google — click Sync Calendar again to finish remaining).`
+              : `Synced ${result.roadmapTaskCount} roadmap tasks (${result.createdGoogleCount} created, ${result.keptGoogleCount} matched, ${result.deletedGoogleCount} stray calendar events & ${result.deletedLocalCount} extra tasks cleared)!`
             : `Synced ${result.roadmapTaskCount} tasks strictly to your roadmap (${result.deletedLocalCount} extra tasks cleared)!`
         );
-        setTimeout(() => setSyncMessage(null), 5000);
+        setTimeout(() => setSyncMessage(null), 6000);
         return;
       }
 
@@ -182,36 +185,59 @@ export default function BacklogHQ() {
       });
 
       let syncedCount = 0;
+      let failedCount = 0;
       if (token) {
         const unsynced = currentTodos.filter(t => !t.isDeleted && t.startTime && t.endTime && (!t.calendarEventId || t.calendarEventId.startsWith("local-")));
+        const retryQueue: typeof unsynced = [];
+
+        const tryCreateTaskEvent = async (t: (typeof unsynced)[number]): Promise<boolean> => {
+          const tStart = new Date(t.startTime!);
+          const tEnd = new Date(t.endTime!);
+          if (isNaN(tStart.getTime()) || isNaN(tEnd.getTime())) return false;
+          const res = await createCalendarEventDirect(
+            t.text,
+            tStart,
+            tEnd,
+            t.type || "Lecture",
+            Boolean(t.completed)
+          );
+          if (res && res.id) {
+            syncedCount++;
+            const idx = currentTodos.findIndex((ct) => ct.id === t.id);
+            if (idx !== -1) {
+              currentTodos[idx] = {
+                ...currentTodos[idx],
+                calendarEventId: res.id,
+                calendarSynced: true,
+              };
+            }
+            return true;
+          }
+          return false;
+        };
 
         for (const t of unsynced) {
           try {
-            const tStart = new Date(t.startTime!);
-            const tEnd = new Date(t.endTime!);
-            const durationMins = Math.max(15, Math.round((tEnd.getTime() - tStart.getTime()) / 60000));
-            const res = await createCalendarEvent(
-              t.text,
-              durationMins,
-              t.type || "Lecture",
-              false,
-              currentTodos,
-              tStart,
-              tEnd
-            );
-            if (res && res.id) {
-              syncedCount++;
-              const idx = currentTodos.findIndex((ct) => ct.id === t.id);
-              if (idx !== -1) {
-                currentTodos[idx] = {
-                  ...currentTodos[idx],
-                  calendarEventId: res.id,
-                  calendarSynced: true,
-                };
-              }
-            }
+            const ok = await tryCreateTaskEvent(t);
+            if (!ok) retryQueue.push(t);
           } catch (e) {
-            console.warn("Failed to create event for task", t.id, e);
+            console.warn("Failed to create event for task on pass 1", t.id, e);
+            retryQueue.push(t);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 220));
+        }
+
+        if (retryQueue.length > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          for (const t of retryQueue) {
+            try {
+              const ok = await tryCreateTaskEvent(t);
+              if (!ok) failedCount++;
+            } catch (e) {
+              console.warn("Failed to create event for task on retry pass", t.id, e);
+              failedCount++;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 260));
           }
         }
       }
@@ -222,11 +248,13 @@ export default function BacklogHQ() {
       }
 
       setSyncMessage(
-        syncedCount > 0
-          ? `All tasks scheduled with 15-minute breaks & ${syncedCount} synced to Google Calendar!`
-          : "All tasks scheduled on Calendar with 15-minute breaks!"
+        failedCount > 0
+          ? `Scheduled locally & synced ${syncedCount} to Google Calendar (${failedCount} rate-limited — click Sync Calendar again to finish).`
+          : syncedCount > 0
+            ? `All tasks scheduled with 15-minute breaks & ${syncedCount} synced to Google Calendar!`
+            : "All tasks scheduled on Calendar with 15-minute breaks!"
       );
-      setTimeout(() => setSyncMessage(null), 4000);
+      setTimeout(() => setSyncMessage(null), 5000);
     } catch (err: any) {
       console.error("Single click apply all error:", err);
       setSyncMessage("Sync encountered an error. Please try again.");

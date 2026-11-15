@@ -7,10 +7,12 @@ import { useAppContext } from '@/context/AppContext';
 import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, GripVertical, Lock as LockIcon, CheckCircle2, AlertTriangle, Settings, LogOut, RefreshCw, Clock, ChevronUp, ChevronDown, CalendarDays, CloudDownload, CloudUpload, Loader2 } from 'lucide-react';
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { getRankInfo } from '@/lib/utils';
+import { getRankInfo, getLocalDateString } from '@/lib/utils';
 import { initAuth, googleSignIn, logout, getAccessToken, refreshGoogleToken, formatAuthError } from '@/lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
-import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask, deleteCalendarEvent } from '@/lib/calendar';
+import { rescheduleCalendarEvents, createCalendarEventDirect, batchDeleteCalendarEvents } from '@/lib/calendar';
+import { formatLocalISO, parseDateKeySafely } from '@/lib/studyBlock';
+import { syncScheduleWithRoadmap } from '@/lib/backlog/syncRoadmap';
 import { Todo } from '@/context/AppContext';
 import { format } from 'date-fns';
 
@@ -39,7 +41,7 @@ const Profile = React.memo(function Profile() {
     playerName = "Player", setPlayerName, xp = 0, level = 1, streakDays = 0, syllabus = {}, todos = [], setTodos, 
     pendingTasks = [], setPendingTasks, firebaseUser, setFirebaseUser, hasToken, setHasToken, 
     resetApp, logoutUser, equippedTitle = "", setEquippedTitle, equippedAura = "", setEquippedAura, history = [], questionsSolved = 0,
-    notificationSettings, setNotificationSettings, forceFetchAndRestoreFromCloud, saveStateToCloudNow
+    notificationSettings, setNotificationSettings, forceFetchAndRestoreFromCloud, saveStateToCloudNow, backlogPlan
   } = useAppContext();
   const [isEditing, setIsEditing] = useState(false);
   const [tempName, setTempName] = useState(playerName || "Player");
@@ -240,7 +242,7 @@ const Profile = React.memo(function Profile() {
   const [syncedTasks, setSyncedTasks] = useState<(Todo & { previewStart?: Date, previewEnd?: Date })[]>([]);
   
   useEffect(() => {
-    const tasks = Array.isArray(todos) ? todos : [];
+    const tasks = Array.isArray(todos) ? todos.filter((t) => !t.isDeleted) : [];
     setSyncedTasks(tasks.map(t => ({
       ...t,
       previewStart: safeParseDate(t?.startTime),
@@ -260,19 +262,43 @@ const Profile = React.memo(function Profile() {
  };
 
  const resequencePreviewTimes = (tasks: (Todo & { previewStart?: Date, previewEnd?: Date })[]) => {
-   const firstScheduled = tasks.find(t => t.previewStart);
-   let currentStart = firstScheduled?.previewStart ? new Date(firstScheduled.previewStart) : new Date();
-   return tasks.map(task => {
-     const durationMilli = (task.previewStart && task.previewEnd) 
+   const todayStr = getLocalDateString();
+   const dayCursor = new Map<string, Date>();
+
+   return tasks.map((task) => {
+     const dateKey =
+       (task.dateScheduled && /^\d{4}-\d{2}-\d{2}/.test(task.dateScheduled) ? task.dateScheduled.slice(0, 10) : null) ||
+       (task.previewStart ? getLocalDateString(task.previewStart) : null) ||
+       todayStr;
+
+     let cursor = dayCursor.get(dateKey);
+     if (!cursor) {
+       // Start this day at its earliest existing preview time or 09:00 AM (never raw new Date() clock time)
+       const earliestForDay = tasks
+         .filter((t) => (t.dateScheduled?.slice(0, 10) || (t.previewStart ? getLocalDateString(t.previewStart) : todayStr)) === dateKey)
+         .map((t) => t.previewStart)
+         .filter((d): d is Date => Boolean(d && !isNaN(d.getTime())))
+         .sort((a, b) => a.getTime() - b.getTime())[0];
+
+       if (earliestForDay) {
+         cursor = new Date(earliestForDay);
+       } else {
+         cursor = parseDateKeySafely(dateKey);
+         cursor.setHours(9, 0, 0, 0);
+       }
+     }
+
+     const durationMilli = (task.previewStart && task.previewEnd)
        ? Math.max(15 * 60000, task.previewEnd.getTime() - task.previewStart.getTime())
-       : 45 * 60000;
-     
-     const newStart = new Date(currentStart);
+       : Math.max(15, task.durationMinutes || 90) * 60000;
+
+     const newStart = new Date(cursor);
      const newEnd = new Date(newStart.getTime() + durationMilli);
-     currentStart = new Date(newEnd.getTime() + 10 * 60000);
+     dayCursor.set(dateKey, new Date(newEnd.getTime() + 15 * 60000));
 
      return {
        ...task,
+       dateScheduled: dateKey,
        previewStart: newStart,
        previewEnd: newEnd,
      };
@@ -308,121 +334,221 @@ const Profile = React.memo(function Profile() {
 
  const handleSaveSchedule = async () => {
     vibrate(HAPTIC_PATTERNS.TAP);
- setIsRescheduling(true);
- let allSuccess = true;
+    setIsRescheduling(true);
 
- let token = await getAccessToken();
- if (!token) {
-   try {
-     token = await refreshGoogleToken();
-   } catch (err) {
-     console.warn("Silent token refresh skipped:", err);
-   }
- }
- 
- // Reschedule existing events
- const eventsToUpdate = syncedTasks.filter(t => t.calendarEventId && t.previewStart && t.previewEnd).map(t => ({
- eventId: t.calendarEventId!,
- startTime: t.previewStart!,
- endTime: t.previewEnd!
- }));
- if (eventsToUpdate.length > 0 && token) {
- const updateSuccess = await rescheduleCalendarEvents(eventsToUpdate);
- if (!updateSuccess) allSuccess = false;
- }
+    try {
+      let token = await getAccessToken();
+      if (!token) {
+        try {
+          token = await refreshGoogleToken();
+        } catch (err) {
+          console.warn("Silent token refresh skipped:", err);
+        }
+      }
 
- // Create new events for backlog items that were dragged to timeline
- const eventsToCreate = syncedTasks.filter(t => !t.calendarEventId && t.previewStart && t.previewEnd);
- const newTodos = [...todos];
- 
- for (const t of eventsToCreate) {
- try {
- const durationMinutes = (t.previewEnd!.getTime() - t.previewStart!.getTime()) / 60000;
- const result = await createCalendarEvent(t.text, durationMinutes, t.type || 'Lecture', false, newTodos, t.previewStart!, t.previewEnd!);
- 
- // Update the task context
- const index = newTodos.findIndex(td => td.id === t.id);
- if (index !== -1) {
- newTodos[index] = { ...newTodos[index], calendarEventId: result.id, calendarSynced: true, startTime: t.previewStart!.toISOString(), endTime: t.previewEnd!.toISOString() };
- }
- } catch (err) {
- console.error("Failed to create event for backlog task", err);
- allSuccess = false;
- }
- }
+      // Authoritative roadmap sync when active backlogPlan exists
+      if (backlogPlan && backlogPlan.roadmap && backlogPlan.roadmap.length > 0) {
+        const result = await syncScheduleWithRoadmap({
+          backlogPlan,
+          todos,
+          hasGoogleAuth: Boolean(token),
+        });
+        setTodos(result.finalTodos);
+        await saveStateToCloudNow({ todos: result.finalTodos });
 
- if (allSuccess && eventsToUpdate.length === 0 && eventsToCreate.length === 0) {
- showToast("No changes to apply.", "success");
- setIsRescheduling(false);
- return;
- }
+        if (!token) {
+          showToast("Schedule synced strictly to your roadmap locally!", "success");
+        } else if (result.failedGoogleCount > 0) {
+          showToast(`Synced ${result.createdGoogleCount + result.keptGoogleCount}/${result.roadmapTaskCount} events (${result.failedGoogleCount} rate-limited — click Sync again to finish).`, "error");
+        } else {
+          showToast(`Synced ${result.roadmapTaskCount} roadmap tasks to Google Calendar!`, "success");
+        }
+        setIsRescheduling(false);
+        return;
+      }
 
- if (eventsToUpdate.length > 0) {
- // Update global context with new mapped times for updated events
- for (const t of eventsToUpdate) {
- const index = newTodos.findIndex(td => td.calendarEventId === t.eventId);
- if (index !== -1) {
- newTodos[index] = { ...newTodos[index], startTime: t.startTime.toISOString(), endTime: t.endTime.toISOString() };
- }
- }
- }
- 
- // Clear any other tasks during scheduled lectures and deduplicate
- const isLecture = (t: any) => {
- const text = (t.text || "").toLowerCase();
- const type = (t.type || "").toLowerCase();
- const backlogType = (t.backlogTaskType || "").toLowerCase();
- return (
- type === "lecture" ||
- backlogType === "lecture" ||
- t.lectureNumber !== undefined ||
- /lecture|lec\s*\d+|class|session/i.test(text)
- );
- };
+      let allSuccess = true;
+      const eventsToUpdate = syncedTasks
+        .filter((t) => !t.isDeleted && t.calendarEventId && !t.calendarEventId.startsWith('local-') && t.previewStart && t.previewEnd)
+        .map((t) => ({
+          eventId: t.calendarEventId!,
+          startTime: t.previewStart!,
+          endTime: t.previewEnd!,
+        }));
+      if (eventsToUpdate.length > 0 && token) {
+        const updateSuccess = await rescheduleCalendarEvents(eventsToUpdate);
+        if (!updateSuccess) allSuccess = false;
+      }
 
- const scheduledLectures = newTodos.filter(t => !t.isDeleted && t.startTime && t.endTime && isLecture(t));
- const conflictingIdsToDelete = new Set<string | number>();
- for (const l of scheduledLectures) {
- const lStart = new Date(l.startTime!).getTime();
- const lEnd = new Date(l.endTime!).getTime();
- newTodos.forEach(t => {
- if (t.id === l.id || t.isDeleted || !t.startTime || !t.endTime) return;
- const tStart = new Date(t.startTime).getTime();
- const tEnd = new Date(t.endTime).getTime();
- if (tStart < lEnd && tEnd > lStart) {
- conflictingIdsToDelete.add(t.id);
- if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
- deleteCalendarEvent(t.calendarEventId).catch(console.error);
- }
- }
- });
- }
+      const eventsToCreate = syncedTasks.filter(
+        (t) => !t.isDeleted && (!t.calendarEventId || t.calendarEventId.startsWith('local-')) && t.previewStart && t.previewEnd
+      );
+      const newTodos = [...todos];
 
- const seenIds = new Set<string | number>();
- const seenSlots = new Set<string>();
- const cleanTodos = newTodos.filter(t => {
- if (conflictingIdsToDelete.has(t.id) || t.isDeleted) return false;
- if (seenIds.has(t.id)) return false;
- seenIds.add(t.id);
- if (t.startTime && t.text) {
- const slotKey = `${(t.subject || "").toLowerCase()}_${t.text.trim().toLowerCase()}_${Math.round(new Date(t.startTime).getTime() / (15 * 60 * 1000))}`;
- if (seenSlots.has(slotKey)) return false;
- seenSlots.add(slotKey);
- }
- return true;
- });
+      if (token && eventsToCreate.length > 0) {
+        const retryQueue: typeof eventsToCreate = [];
+        for (const t of eventsToCreate) {
+          try {
+            const result = await createCalendarEventDirect(
+              t.text,
+              t.previewStart!,
+              t.previewEnd!,
+              t.type || 'Lecture',
+              Boolean(t.completed)
+            );
+            if (result?.id) {
+              const index = newTodos.findIndex((td) => td.id === t.id);
+              if (index !== -1) {
+                newTodos[index] = {
+                  ...newTodos[index],
+                  calendarEventId: result.id,
+                  calendarSynced: true,
+                  startTime: formatLocalISO(t.previewStart!),
+                  endTime: formatLocalISO(t.previewEnd!),
+                  dateScheduled: getLocalDateString(t.previewStart!),
+                };
+              }
+            } else {
+              retryQueue.push(t);
+            }
+          } catch (err) {
+            console.warn("Profile pass 1 create failed:", t.text, err);
+            retryQueue.push(t);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 220));
+        }
 
- setTodos(cleanTodos);
+        if (retryQueue.length > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          for (const t of retryQueue) {
+            try {
+              const result = await createCalendarEventDirect(
+                t.text,
+                t.previewStart!,
+                t.previewEnd!,
+                t.type || 'Lecture',
+                Boolean(t.completed)
+              );
+              if (result?.id) {
+                const index = newTodos.findIndex((td) => td.id === t.id);
+                if (index !== -1) {
+                  newTodos[index] = {
+                    ...newTodos[index],
+                    calendarEventId: result.id,
+                    calendarSynced: true,
+                    startTime: formatLocalISO(t.previewStart!),
+                    endTime: formatLocalISO(t.previewEnd!),
+                    dateScheduled: getLocalDateString(t.previewStart!),
+                  };
+                }
+              } else {
+                allSuccess = false;
+              }
+            } catch (err) {
+              console.error("Failed to create event for backlog task", err);
+              allSuccess = false;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 260));
+          }
+        }
+      }
 
- if (!token) {
- showToast("Schedule updated locally!", "success");
- } else if (allSuccess) {
- showToast("Timeline applied successfully to Google Calendar!", "success");
- } else {
- showToast("Saved locally, but failed to apply all changes to Google Calendar.", "error");
- }
- setIsRescheduling(false);
- };
+      if (allSuccess && eventsToUpdate.length === 0 && eventsToCreate.length === 0) {
+        showToast("No changes to apply.", "success");
+        setIsRescheduling(false);
+        return;
+      }
+
+      if (eventsToUpdate.length > 0) {
+        for (const t of eventsToUpdate) {
+          const index = newTodos.findIndex((td) => td.calendarEventId === t.eventId);
+          if (index !== -1) {
+            newTodos[index] = {
+              ...newTodos[index],
+              startTime: formatLocalISO(t.startTime),
+              endTime: formatLocalISO(t.endTime),
+              dateScheduled: getLocalDateString(t.startTime),
+            };
+          }
+        }
+      }
+
+      // Clear conflicting tasks during scheduled lectures with tombstones so cloud sync preserves deletions
+      const isLecture = (t: any) => {
+        const text = (t.text || "").toLowerCase();
+        const type = (t.type || "").toLowerCase();
+        const backlogType = (t.backlogTaskType || "").toLowerCase();
+        return (
+          type === "lecture" ||
+          backlogType === "lecture" ||
+          t.lectureNumber !== undefined ||
+          /lecture|lec\s*\d+|class|session/i.test(text)
+        );
+      };
+
+      const scheduledLectures = newTodos.filter((t) => !t.isDeleted && t.startTime && t.endTime && isLecture(t));
+      const conflictingIdsToDelete = new Set<string | number>();
+      const gcalIdsToDelete: string[] = [];
+      for (const l of scheduledLectures) {
+        const lStart = new Date(l.startTime!).getTime();
+        const lEnd = new Date(l.endTime!).getTime();
+        newTodos.forEach((t) => {
+          if (t.id === l.id || t.isDeleted || !t.startTime || !t.endTime) return;
+          const tStart = new Date(t.startTime).getTime();
+          const tEnd = new Date(t.endTime).getTime();
+          if (tStart < lEnd && tEnd > lStart) {
+            conflictingIdsToDelete.add(t.id);
+            if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
+              gcalIdsToDelete.push(t.calendarEventId);
+            }
+          }
+        });
+      }
+
+      if (gcalIdsToDelete.length > 0 && token) {
+        batchDeleteCalendarEvents(gcalIdsToDelete).catch(console.error);
+      }
+
+      const nowMs = Date.now();
+      const seenIds = new Set<string | number>();
+      const seenSlots = new Set<string>();
+      const tombstonedTodos: Todo[] = [];
+
+      newTodos.forEach((t) => {
+        if (t.isDeleted) {
+          tombstonedTodos.push(t);
+          return;
+        }
+        if (conflictingIdsToDelete.has(t.id) || seenIds.has(t.id)) {
+          tombstonedTodos.push({ ...t, isDeleted: true, deletedAt: nowMs, updatedAt: nowMs });
+          return;
+        }
+        seenIds.add(t.id);
+        if (t.startTime && t.text) {
+          const slotKey = `${(t.subject || "").toLowerCase()}_${t.text.trim().toLowerCase()}_${Math.round(new Date(t.startTime).getTime() / (15 * 60 * 1000))}`;
+          if (seenSlots.has(slotKey)) {
+            tombstonedTodos.push({ ...t, isDeleted: true, deletedAt: nowMs, updatedAt: nowMs });
+            return;
+          }
+          seenSlots.add(slotKey);
+        }
+        tombstonedTodos.push(t);
+      });
+
+      setTodos(tombstonedTodos);
+      await saveStateToCloudNow({ todos: tombstonedTodos });
+
+      if (!token) {
+        showToast("Schedule updated locally!", "success");
+      } else if (allSuccess) {
+        showToast("Timeline applied successfully to Google Calendar!", "success");
+      } else {
+        showToast("Saved locally, but some changes were rate-limited by Google Calendar. Click Sync again to retry.", "error");
+      }
+    } finally {
+      setIsRescheduling(false);
+    }
+  };
 
  const handleSaveName = () => {
     vibrate(HAPTIC_PATTERNS.DOUBLE_TAP);

@@ -24,7 +24,7 @@ export type { BacklogPlan };
 import { reconstructPlanFromTodos } from "@/lib/backlog/engine";
 import { getLevelFromXp, getLocalDateString, isCurrentDayTask, getLogicalDate, setCachedRolloverTime } from "@/lib/utils";
 export { getLogicalDate, setCachedRolloverTime };
-import { sanitizeAndHealTodos } from "@/lib/studyBlock";
+import { sanitizeAndHealTodos, getActiveStudyBlock, calculateNextAvailableStudySlot } from "@/lib/studyBlock";
 import { deleteCalendarEvent, deleteGoogleTask } from "@/lib/calendar";
 import { StudentScheduleProfile, DEFAULT_SCHEDULE_PROFILE } from "@/lib/coach/student-model/profile";
 export type { StudentScheduleProfile };
@@ -2974,10 +2974,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const scheduleBacklogTask = useCallback(
     async (task: Todo): Promise<void> => {
       const updatedPending = pendingTasks.filter((pt) => String(pt.id) !== String(task.id));
+      const hasValidExistingSlot =
+        Boolean(task.startTime && task.endTime) &&
+        !isNaN(new Date(task.startTime!).getTime()) &&
+        !isNaN(new Date(task.endTime!).getTime());
+
+      let resolvedStart = task.startTime;
+      let resolvedEnd = task.endTime;
+      let resolvedDate = task.dateScheduled || (resolvedStart ? resolvedStart.slice(0, 10) : getLocalDateString());
+
+      if (!hasValidExistingSlot) {
+        const block = getActiveStudyBlock(scheduleProfile, backlogPlan);
+        const slot = calculateNextAvailableStudySlot(
+          resolvedDate,
+          task.durationMinutes || 90,
+          todos,
+          block.start,
+          block.end,
+        );
+        resolvedStart = slot.startTime;
+        resolvedEnd = slot.endTime;
+        resolvedDate = slot.dateScheduled;
+      }
+
       const taskToMove: Todo = {
         ...task,
         completed: false,
-        startTime: task.startTime || new Date().toISOString(),
+        startTime: resolvedStart,
+        endTime: resolvedEnd,
+        dateScheduled: resolvedDate,
       };
       const updatedTodos = [...todos.filter((t) => String(t.id) !== String(task.id)), taskToMove];
 
@@ -2989,7 +3014,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         todos: updatedTodos,
       });
     },
-    [pendingTasks, todos, saveStateToCloudNow],
+    [pendingTasks, todos, scheduleProfile, backlogPlan, saveStateToCloudNow],
   );
 
   const contextValue = useMemo(
