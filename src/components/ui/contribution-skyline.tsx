@@ -35,7 +35,11 @@ export const smoothstep = (a: number, b: number, x: number): number => {
 }
 
 /** UTC midnight → "YYYY-MM-DD". */
-export const toKey = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+export const toKey = (ms: number): string => {
+  if (!Number.isFinite(ms)) return "1970-01-01"
+  const d = new Date(ms)
+  return isNaN(d.getTime()) ? "1970-01-01" : d.toISOString().slice(0, 10)
+}
 
 /**
  * Any date-ish value → UTC midnight of its calendar day. "YYYY-MM-DD" strings
@@ -43,11 +47,18 @@ export const toKey = (ms: number): string => new Date(ms).toISOString().slice(0,
  * numbers as UTC timestamps.
  */
 export const dayMs = (v: string | number | Date): number => {
-  if (typeof v === "number") return Math.floor(v / DAY_MS) * DAY_MS
+  if (typeof v === "number") return Number.isFinite(v) ? Math.floor(v / DAY_MS) * DAY_MS : Date.now()
   if (typeof v === "string") {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v)
     if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3])
     v = new Date(v)
+  } else if (v && typeof v === "object" && !(v instanceof Date)) {
+    const sec = (v as any).seconds
+    v = typeof sec === "number" ? new Date(sec * 1000) : new Date(NaN)
+  }
+  if (!(v instanceof Date) || isNaN(v.getTime())) {
+    const now = new Date()
+    return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
   }
   return Date.UTC(v.getFullYear(), v.getMonth(), v.getDate())
 }

@@ -59,6 +59,33 @@ export function parseDateKeySafely(rawKey?: string | null): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 }
 
+const coerceValidTimeString = (val: any): string | undefined => {
+  if (!val) return undefined;
+  if (typeof val === "object") {
+    if (typeof val.toMillis === "function") {
+      const ms = val.toMillis();
+      return !isNaN(ms) ? new Date(ms).toISOString() : undefined;
+    }
+    if (typeof val.seconds === "number") {
+      const d = new Date(val.seconds * 1000);
+      return !isNaN(d.getTime()) ? d.toISOString() : undefined;
+    }
+    if (val instanceof Date) {
+      return !isNaN(val.getTime()) ? val.toISOString() : undefined;
+    }
+    return undefined;
+  }
+  if (typeof val === "number") {
+    if (isNaN(val)) return undefined;
+    const d = new Date(val);
+    return !isNaN(d.getTime()) ? d.toISOString() : undefined;
+  }
+  const s = String(val).trim();
+  if (!s || s.includes("NaN") || s.toLowerCase().includes("invalid")) return undefined;
+  const d = new Date(s);
+  return !isNaN(d.getTime()) ? s : undefined;
+};
+
 /**
  * Automatically inspects and heals any corrupted tasks with NaN or invalid dates.
  */
@@ -68,26 +95,41 @@ export function sanitizeAndHealTodos<T extends Record<string, any>>(rawList: T[]
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   return rawList.map((t: any) => {
     if (!t || typeof t !== "object") return t;
-    const sTime = t.startTime ? String(t.startTime) : undefined;
-    const eTime = t.endTime ? String(t.endTime) : undefined;
+    const cleanStart = coerceValidTimeString(t.startTime);
+    const cleanEnd = coerceValidTimeString(t.endTime);
+    const rawStartStr = t.startTime ? String(t.startTime) : undefined;
+    const rawEndStr = t.endTime ? String(t.endTime) : undefined;
     const dSched = t.dateScheduled ? String(t.dateScheduled) : undefined;
 
-    const isStartTimeCorrupt = Boolean(sTime && (sTime.includes("NaN") || isNaN(new Date(sTime).getTime())));
-    const isEndTimeCorrupt = Boolean(eTime && (eTime.includes("NaN") || isNaN(new Date(eTime).getTime())));
+    const isStartTimeCorrupt = Boolean(t.startTime && !cleanStart);
+    const isEndTimeCorrupt = Boolean(t.endTime && !cleanEnd);
     const isDateSchedCorrupt = Boolean(dSched && (dSched.includes("NaN") || !/^\d{4}-\d{2}-\d{2}/.test(dSched)));
 
-    if (isStartTimeCorrupt || isEndTimeCorrupt || isDateSchedCorrupt) {
+    // Also ensure we never leave half-corrupted start/end pairs or non-string timestamps
+    const needsNormalization =
+      isStartTimeCorrupt ||
+      isEndTimeCorrupt ||
+      isDateSchedCorrupt ||
+      (cleanStart && cleanStart !== rawStartStr) ||
+      (cleanEnd && cleanEnd !== rawEndStr) ||
+      (Boolean(cleanStart) && !cleanEnd) ||
+      (!cleanStart && Boolean(cleanEnd));
+
+    if (needsNormalization) {
       let cleanDate = todayStr;
-      if (dSched && /^\d{4}-\d{2}-\d{2}/.test(dSched)) {
+      if (dSched && /^\d{4}-\d{2}-\d{2}/.test(dSched) && !dSched.includes("NaN")) {
         cleanDate = dSched.slice(0, 10);
-      } else if (sTime && /^\d{4}-\d{2}-\d{2}/.test(sTime)) {
-        cleanDate = sTime.slice(0, 10);
+      } else if (cleanStart && /^\d{4}-\d{2}-\d{2}/.test(cleanStart)) {
+        cleanDate = cleanStart.slice(0, 10);
+      } else if (rawStartStr && /^\d{4}-\d{2}-\d{2}/.test(rawStartStr) && !rawStartStr.includes("NaN")) {
+        cleanDate = rawStartStr.slice(0, 10);
       }
+      const bothValid = Boolean(cleanStart && cleanEnd);
       return {
         ...t,
         dateScheduled: cleanDate,
-        startTime: isStartTimeCorrupt ? undefined : sTime,
-        endTime: isEndTimeCorrupt ? undefined : eTime,
+        startTime: bothValid ? cleanStart : undefined,
+        endTime: bothValid ? cleanEnd : undefined,
       };
     }
     return t;

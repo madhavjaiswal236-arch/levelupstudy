@@ -11,6 +11,52 @@ export function getTimestampMs(val: any): number {
   return 0;
 }
 
+const sanitizeTimeValue = (val: any): string | undefined => {
+  if (!val) return undefined;
+  if (typeof val === "object") {
+    const ms = getTimestampMs(val);
+    if (ms > 0) return new Date(ms).toISOString();
+    if (val instanceof Date && !isNaN(val.getTime())) return val.toISOString();
+    return undefined;
+  }
+  if (typeof val === "number") {
+    if (isNaN(val)) return undefined;
+    const d = new Date(val);
+    return !isNaN(d.getTime()) ? d.toISOString() : undefined;
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!trimmed || trimmed.includes("NaN") || trimmed.toLowerCase().includes("invalid")) return undefined;
+    const d = new Date(trimmed);
+    return !isNaN(d.getTime()) ? trimmed : undefined;
+  }
+  return undefined;
+};
+
+const sanitizeTodoTimestamps = (t: Todo): Todo => {
+  if (!t || typeof t !== "object") return t;
+  const startTime = sanitizeTimeValue(t.startTime);
+  const endTime = sanitizeTimeValue(t.endTime);
+  const hasInvalidDateSched = Boolean(
+    t.dateScheduled && (String(t.dateScheduled).includes("NaN") || !/^\d{4}-\d{2}-\d{2}/.test(String(t.dateScheduled)))
+  );
+  if (
+    startTime !== t.startTime ||
+    endTime !== t.endTime ||
+    hasInvalidDateSched ||
+    (Boolean(startTime) !== Boolean(endTime))
+  ) {
+    const bothValid = Boolean(startTime && endTime);
+    return {
+      ...t,
+      startTime: bothValid ? startTime : undefined,
+      endTime: bothValid ? endTime : undefined,
+      ...(hasInvalidDateSched ? { dateScheduled: startTime ? startTime.slice(0, 10) : undefined } : {}),
+    };
+  }
+  return t;
+};
+
 export function mergeTaskArrays(
   localTasks: Todo[] = [],
   cloudTasks: Todo[] = [],
@@ -19,14 +65,14 @@ export function mergeTaskArrays(
   const localMap = new Map<string, Todo>();
   (localTasks || []).forEach((t) => {
     if (t && (typeof t.id === "string" || typeof t.id === "number")) {
-      localMap.set(String(t.id), t);
+      localMap.set(String(t.id), sanitizeTodoTimestamps(t));
     }
   });
 
   const cloudMap = new Map<string, Todo>();
   (cloudTasks || []).forEach((t) => {
     if (t && (typeof t.id === "string" || typeof t.id === "number")) {
-      cloudMap.set(String(t.id), t);
+      cloudMap.set(String(t.id), sanitizeTodoTimestamps(t));
     }
   });
 
@@ -64,7 +110,7 @@ export function mergeTaskArrays(
       const localIsNewer = localUpdated >= cloudUpdated;
 
       const baseTask = localIsNewer ? { ...cloud, ...local } : { ...local, ...cloud };
-      mergedMap.set(id, {
+      mergedMap.set(id, sanitizeTodoTimestamps({
         ...baseTask,
         updatedAt: Math.max((local as any).updatedAt || 0, (cloud as any).updatedAt || 0, localUpdated, cloudUpdated) || Date.now(),
         // Completion reversibility based on newest mutation timestamp
@@ -80,7 +126,7 @@ export function mergeTaskArrays(
         calendarSynced: Boolean(local.calendarSynced || cloud.calendarSynced),
         calendarEventId: local.calendarEventId || cloud.calendarEventId,
         calendarTaskId: local.calendarTaskId || cloud.calendarTaskId,
-      });
+      }));
     } else if (local && !cloud) {
       mergedMap.set(id, local);
     } else if (!local && cloud) {
@@ -109,12 +155,14 @@ export function mergeTaskArrays(
 
     if (t.text && t.startTime) {
       const sMs = new Date(t.startTime).getTime();
-      const roundedSlot = Math.round(sMs / (20 * 60 * 1000));
-      const sig = `${(t.subject || "").trim().toLowerCase()}_${t.text.trim().toLowerCase().replace(/^\[done\]\s*/i, "")}_${roundedSlot}`;
-      if (seenSlotSignatures.has(sig)) {
-        continue; // duplicate task in identical slot
+      if (!isNaN(sMs)) {
+        const roundedSlot = Math.round(sMs / (20 * 60 * 1000));
+        const sig = `${(t.subject || "").trim().toLowerCase()}_${t.text.trim().toLowerCase().replace(/^\[done\]\s*/i, "")}_${roundedSlot}`;
+        if (seenSlotSignatures.has(sig)) {
+          continue; // duplicate task in identical slot
+        }
+        seenSlotSignatures.add(sig);
       }
-      seenSlotSignatures.add(sig);
     }
 
     deduplicated.push(t);
@@ -129,26 +177,36 @@ export function mergeHistoryEntries(
 ): PlayHistoryEntry[] {
   const map = new Map<string, PlayHistoryEntry>();
 
+  const normalizeEntryDate = (rawDate: any): string => {
+    const clean = sanitizeTimeValue(rawDate);
+    return clean || "";
+  };
+
   const getKey = (h: PlayHistoryEntry) => {
     if (!h || !h.date) return "";
-    const d = new Date(h.date);
-    if (isNaN(d.getTime())) return String(h.date);
+    const normalized = normalizeEntryDate(h.date);
+    if (!normalized) return "";
+    const d = new Date(normalized);
+    if (isNaN(d.getTime())) return "";
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
   (cloudHistory || []).forEach((h) => {
     const key = getKey(h);
-    if (key) map.set(key, { ...h });
+    const normalizedDate = normalizeEntryDate(h?.date);
+    if (key && normalizedDate) map.set(key, { ...h, date: normalizedDate });
   });
 
   (localHistory || []).forEach((h) => {
     const key = getKey(h);
-    if (!key) return;
+    const normalizedDate = normalizeEntryDate(h?.date);
+    if (!key || !normalizedDate) return;
     const existing = map.get(key);
     if (existing) {
       map.set(key, {
         ...existing,
         ...h,
+        date: normalizedDate,
         hoursStudied: Math.max(existing.hoursStudied || 0, h.hoursStudied || 0),
         xpEarned: Math.max(existing.xpEarned || 0, h.xpEarned || 0),
         completedTasks: mergeTaskArrays(

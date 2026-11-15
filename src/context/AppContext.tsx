@@ -519,28 +519,32 @@ export function reconcilePerDayHistory(
       xpEarned: Math.max(updated[lastDateIndex].xpEarned || 0, xpGainedOnLastDate || 0),
     };
   } else {
-    updated.push({
-      date: new Date(lastKey).toISOString(),
-      hoursStudied: Number((hoursStudiedOnLastDate || 0).toFixed(1)),
-      xpEarned: xpGainedOnLastDate || 0,
-      completedTasks: [],
-      plannedTasks: [],
-      sleepTime: 0,
-      screenTime: 0,
-    });
+    const parsedLast = new Date(lastKey);
+    if (!isNaN(parsedLast.getTime())) {
+      updated.push({
+        date: parsedLast.toISOString(),
+        hoursStudied: Number((hoursStudiedOnLastDate || 0).toFixed(1)),
+        xpEarned: xpGainedOnLastDate || 0,
+        completedTasks: [],
+        plannedTasks: [],
+        sleepTime: 0,
+        screenTime: 0,
+      });
+    }
   }
 
   // 2. Fill all gap dates between lastKey and todayKey
   const tempDate = new Date(lastKey);
-  tempDate.setDate(tempDate.getDate() + 1);
-  let safety = 0;
-  while (safety < 60) {
-    const gapKey = getStandardDateKey(tempDate);
-    if (!gapKey || gapKey >= todayKey) break;
+  if (!isNaN(tempDate.getTime())) {
+    tempDate.setDate(tempDate.getDate() + 1);
+    let safety = 0;
+    while (safety < 60 && !isNaN(tempDate.getTime())) {
+      const gapKey = getStandardDateKey(tempDate);
+      if (!gapKey || gapKey >= todayKey) break;
 
-    if (!updated.some((h) => getStandardDateKey(h.date) === gapKey)) {
-      updated.push({
-        date: tempDate.toISOString(),
+      if (!updated.some((h) => getStandardDateKey(h.date) === gapKey)) {
+        updated.push({
+          date: tempDate.toISOString(),
         hoursStudied: 0,
         xpEarned: 0,
         completedTasks: [],
@@ -550,9 +554,10 @@ export function reconcilePerDayHistory(
         isMissed: true,
         missedReason: "Absent day",
       });
+      }
+      tempDate.setDate(tempDate.getDate() + 1);
+      safety++;
     }
-    tempDate.setDate(tempDate.getDate() + 1);
-    safety++;
   }
 
   updated.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -859,7 +864,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (mergedState.todos !== undefined) setTodos(sanitizeAndHealTodos(mergedState.todos));
     if (mergedState.loggedTasksToday !== undefined) setLoggedTasksToday(sanitizeAndHealTodos(mergedState.loggedTasksToday));
     if (mergedState.pendingTasks !== undefined) setPendingTasks(sanitizeAndHealTodos(mergedState.pendingTasks));
-    if (mergedState.history !== undefined) setHistory(mergedState.history);
+    if (mergedState.history !== undefined) {
+      const cleanHistory = Array.isArray(mergedState.history)
+        ? mergedState.history
+            .filter((h: any) => h && h.date)
+            .map((h: any) => {
+              if (typeof h.date === "object" && typeof h.date.seconds === "number") {
+                return { ...h, date: new Date(h.date.seconds * 1000).toISOString() };
+              }
+              return h;
+            })
+            .filter((h: any) => !isNaN(new Date(h.date).getTime()))
+        : [];
+      setHistory(cleanHistory);
+    }
     if (mergedState.practiceSessions !== undefined) setPracticeSessions(mergedState.practiceSessions);
     if (mergedState.playerName !== undefined) setPlayerName(mergedState.playerName);
     if (mergedState.hasSeenRules !== undefined) setHasSeenRules(mergedState.hasSeenRules);

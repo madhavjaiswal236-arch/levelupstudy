@@ -70,6 +70,42 @@ const COLORS: Record<string, string> = {
     "bg-slate-100 border border-slate-300 text-slate-900 shadow-sm dark:border-slate-500/50 dark:text-slate-200 dark:bg-slate-800/60 hover:border-slate-500 hover:shadow-lg hover:shadow-slate-500/30 dark:hover:shadow-slate-500/50 hover:scale-[1.02] transition-all duration-300",
 };
 
+const safeParseDate = (val: any): Date | null => {
+  if (!val) return null;
+  try {
+    if (val instanceof Date) {
+      return isNaN(val.getTime()) ? null : val;
+    }
+    if (typeof val === "object") {
+      if (typeof val.toMillis === "function") {
+        const ms = val.toMillis();
+        return !isNaN(ms) ? new Date(ms) : null;
+      }
+      if (typeof val.seconds === "number") {
+        const d = new Date(val.seconds * 1000);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      return null;
+    }
+    const s = String(val).trim();
+    if (!s || s.includes("NaN") || s.toLowerCase().includes("invalid")) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+};
+
+const safeFormat = (val: any, fmt: string, fallback = ""): string => {
+  const d = safeParseDate(val);
+  if (!d) return fallback;
+  try {
+    return format(d, fmt);
+  } catch {
+    return fallback;
+  }
+};
+
 export function StudyCalendar({
   onClose,
   dailyXpRequired = 100,
@@ -220,11 +256,15 @@ export function StudyCalendar({
             if (t.calendarEventId && !t.calendarEventId.startsWith("local-")) {
               const match = events.find((e: any) => e.id === t.calendarEventId && e.status !== "cancelled");
               if (match && match.start?.dateTime && match.end?.dateTime) {
-                const mStart = new Date(match.start.dateTime).toISOString();
-                const mEnd = new Date(match.end.dateTime).toISOString();
-                if (t.startTime !== mStart || t.endTime !== mEnd) {
-                  updated = true;
-                  return { ...t, startTime: mStart, endTime: mEnd };
+                const mStartDate = safeParseDate(match.start.dateTime);
+                const mEndDate = safeParseDate(match.end.dateTime);
+                if (mStartDate && mEndDate) {
+                  const mStart = mStartDate.toISOString();
+                  const mEnd = mEndDate.toISOString();
+                  if (t.startTime !== mStart || t.endTime !== mEnd) {
+                    updated = true;
+                    return { ...t, startTime: mStart, endTime: mEnd };
+                  }
                 }
               }
             } else if ((!t.calendarEventId || t.calendarEventId.startsWith("local-")) && t.startTime) {
@@ -299,8 +339,9 @@ export function StudyCalendar({
       .filter((t) => activeCalendars.includes(t.subject || "General"))
       .filter((t) => t.startTime && t.endTime)
       .forEach((t) => {
-        const start = new Date(t.startTime as string);
-        const end = new Date(t.endTime as string);
+        const start = safeParseDate(t.startTime);
+        const end = safeParseDate(t.endTime);
+        if (!start || !end) return;
         const dedupeKey = `${t.text?.trim().toLowerCase()}_${start.getTime()}`;
         if (!seenLocalKeys.has(dedupeKey)) {
           seenLocalKeys.add(dedupeKey);
@@ -1208,12 +1249,12 @@ export function StudyCalendar({
                 <span
                   className={`text-[10px] font-bold uppercase tracking-wider ${isSameDay(d, currentDate) ? "text-indigo-400" : isSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-400"}`}
                 >
-                  {format(d, "EEE")}
+                  {safeFormat(d, "EEE")}
                 </span>
                 <span
                   className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${isSameDay(d, currentDate) ? "bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.9)]" : isSameDay(d, new Date()) ? "text-indigo-500" : "text-slate-700 dark:text-slate-200"}`}
                 >
-                  {format(d, "d")}
+                  {safeFormat(d, "d")}
                 </span>
               </div>
             ))}
@@ -1264,7 +1305,7 @@ export function StudyCalendar({
             }}
           >
             <div className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_4px_12px_rgba(79,70,229,0.9)] border border-indigo-400/30">
-              {format(currentLocalTime, "h:mm a")}
+              {safeFormat(currentLocalTime, "h:mm a")}
             </div>
           </div>
         </div>
@@ -1693,7 +1734,7 @@ export function StudyCalendar({
                             const tempStart = new Date(visibleDays[currentDayIndex]);
                             tempStart.setHours(h, m, 0, 0);
                             const tempEnd = new Date(tempStart.getTime() + durationMilli);
-                            timeEl.innerHTML = `${format(tempStart, "h:mm a")} <span class="mx-0.5 opacity-60">→</span> ${format(tempEnd, "h:mm a")}`;
+                            timeEl.innerHTML = `${safeFormat(tempStart, "h:mm a")} <span class="mx-0.5 opacity-60">→</span> ${safeFormat(tempEnd, "h:mm a")}`;
                           }
                         }
                       };
@@ -2010,7 +2051,7 @@ export function StudyCalendar({
                             data-time-display="true"
                             className="text-[9px] opacity-75 font-mono ml-auto truncate flex-shrink-0"
                           >
-                            {format(displayStart, "h:mm a")}
+                            {safeFormat(displayStart, "h:mm a")}
                           </span>
                         </div>
                       ) : (
@@ -2097,9 +2138,9 @@ export function StudyCalendar({
                               data-time-display="true"
                               className="text-[9px] font-medium flex items-center gap-1 truncate font-mono"
                             >
-                              {format(displayStart, "h:mm a")}{" "}
+                              {safeFormat(displayStart, "h:mm a")}{" "}
                               <ArrowRight className="w-2 h-2 opacity-60" />{" "}
-                              {format(displayEnd, "h:mm a")}
+                              {safeFormat(displayEnd, "h:mm a")}
                             </p>
                             <p
                               data-duration-display="true"
@@ -2525,7 +2566,7 @@ export function StudyCalendar({
       <div className="bg-[#18181A] rounded-2xl p-4 border border-white/5 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-sm text-white">
-            {format(currentDate, "MMMM yyyy")}
+            {safeFormat(currentDate, "MMMM yyyy")}
           </h3>
           <div className="flex gap-1">
             <button
@@ -2714,21 +2755,20 @@ export function StudyCalendar({
         </div>
         <div className="space-y-3">
           {todos
-            .filter(
-              (t) =>
-                t.startTime &&
-                t.endTime &&
-                !t.completed &&
-                new Date(t.endTime) > new Date(),
-            )
+            .filter((t) => {
+              if (t.isDeleted || t.completed) return false;
+              const st = safeParseDate(t.startTime);
+              const en = safeParseDate(t.endTime);
+              return Boolean(st && en && en > new Date());
+            })
             .sort(
               (a, b) =>
-                new Date(a.startTime!).getTime() -
-                new Date(b.startTime!).getTime(),
+                (safeParseDate(a.startTime)?.getTime() || 0) -
+                (safeParseDate(b.startTime)?.getTime() || 0),
             )
             .slice(0, 3)
             .map((t) => {
-              const st = new Date(t.startTime!);
+              const st = safeParseDate(t.startTime)!;
               const colorMap: Record<string, string> = {
                 Physics: "bg-blue-500",
                 Chemistry: "bg-emerald-500",
@@ -2736,12 +2776,12 @@ export function StudyCalendar({
                 Personal: "bg-rose-500",
               };
               const color = colorMap[t.subject || ""] || "bg-indigo-500";
-              let timeStr = format(st, "h:mm a");
+              let timeStr = safeFormat(st, "h:mm a");
               let dateStr = isSameDay(st, new Date())
                 ? "Today"
                 : isSameDay(st, addDays(new Date(), 1))
                   ? "Tomorrow"
-                  : format(st, "MMM d");
+                  : safeFormat(st, "MMM d");
 
               return (
                 <div
@@ -2760,13 +2800,12 @@ export function StudyCalendar({
                 </div>
               );
             })}
-          {todos.filter(
-            (t) =>
-              t.startTime &&
-              t.endTime &&
-              !t.completed &&
-              new Date(t.endTime) > new Date(),
-          ).length === 0 && (
+          {todos.filter((t) => {
+            if (t.isDeleted || t.completed) return false;
+            const st = safeParseDate(t.startTime);
+            const en = safeParseDate(t.endTime);
+            return Boolean(st && en && en > new Date());
+          }).length === 0 && (
             <p className="text-xs text-slate-500 italic">No upcoming tasks.</p>
           )}
         </div>
@@ -2815,7 +2854,7 @@ export function StudyCalendar({
                       New Study Session
                     </h3>
                     <p className="text-sm text-slate-500 mb-4">
-                      {format(dragSelection.day, "MMMM d, yyyy")}
+                      {safeFormat(dragSelection.day, "MMMM d, yyyy")}
                     </p>
                     <div className="flex gap-4 items-center">
                       <div className="flex-1">
@@ -3385,10 +3424,10 @@ export function StudyCalendar({
               </div>
               <h2 className="text-lg md:text-xl font-semibold tracking-tight min-w-[150px]">
                 {view === "Month"
-                  ? format(currentDate, "MMMM yyyy")
+                  ? safeFormat(currentDate, "MMMM yyyy")
                   : view === "Day"
-                    ? format(currentDate, "MMMM d, yyyy")
-                    : `${format(visibleDays[0], "MMM d")} – ${format(visibleDays[visibleDays.length - 1], "MMM d, yyyy")}`}
+                    ? safeFormat(currentDate, "MMMM d, yyyy")
+                    : `${safeFormat(visibleDays[0], "MMM d")} – ${safeFormat(visibleDays[visibleDays.length - 1], "MMM d, yyyy")}`}
               </h2>
             </div>
 
@@ -3456,7 +3495,7 @@ export function StudyCalendar({
           <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div
-                key={view + "-" + currentDate.toISOString()}
+                key={view + "-" + (safeParseDate(currentDate)?.toISOString() || "invalid")}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
