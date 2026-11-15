@@ -8,7 +8,7 @@ import { User, Trophy, Zap, Target, BookOpen, Edit2, Check, Shield, Calendar, Gr
 import { HAPTIC_PATTERNS, vibrate } from "@/lib/haptics";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getRankInfo } from '@/lib/utils';
-import { initAuth, googleSignIn, logout, getAccessToken, refreshGoogleToken } from '@/lib/firebase';
+import { initAuth, googleSignIn, logout, getAccessToken, refreshGoogleToken, formatAuthError } from '@/lib/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
 import { rescheduleCalendarEvents, createCalendarEvent, createGoogleTask, deleteCalendarEvent } from '@/lib/calendar';
 import { Todo } from '@/context/AppContext';
@@ -226,17 +226,7 @@ const Profile = React.memo(function Profile() {
  }
  } catch (err: any) {
  console.error(err);
- const code = err?.code || "";
- const msg = String(err?.message || "");
- if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || msg.includes('closed')) {
- showToast("Sign-in window was closed. Click again when ready.", "error");
- } else if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
- showToast(`Domain not authorized in Firebase Auth: ${window.location.hostname}`, "error");
- } else if (code === 'auth/popup-blocked' || msg.includes('popup') || msg.includes('internal-error')) {
- showToast("Pop-up blocked or restricted in preview. Allow pop-ups or open in a new tab.", "error");
- } else {
- showToast("Login failed: " + (msg || 'Please try again.'), "error");
- }
+ showToast(formatAuthError(err), "error");
  } finally {
  setIsLoggingIn(false);
  }

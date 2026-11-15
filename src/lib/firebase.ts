@@ -379,8 +379,42 @@ interface BackendOAuthConfig {
   offlineSupported: boolean;
 }
 
+const TARGET_GOOGLE_OAUTH_CLIENT_ID =
+  firebaseAppletConfig.oAuthClientId ||
+  '807015900608-gagaqm29c2ol637rvqp0a0p14ovft8po.apps.googleusercontent.com';
+
+const KNOWN_OFFLINE_REDIRECT_URIS: Record<string, string> = {
+  'https://levelupstudy.vercel.app': 'https://levelupstudy.vercel.app',
+  'https://ais-dev-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app':
+    'https://ais-dev-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app/api/auth/callback',
+};
+
 let cachedBackendOAuthConfig: BackendOAuthConfig | null = null;
 let configFetchPromise: Promise<BackendOAuthConfig | null> | null = null;
+
+const getEffectiveOfflineOAuthConfig = (): BackendOAuthConfig | null => {
+  if (
+    cachedBackendOAuthConfig?.configured &&
+    cachedBackendOAuthConfig?.offlineSupported &&
+    cachedBackendOAuthConfig?.clientId &&
+    cachedBackendOAuthConfig?.redirectUri
+  ) {
+    return cachedBackendOAuthConfig;
+  }
+  if (typeof window !== 'undefined' && !Capacitor.isNativePlatform()) {
+    const cleanOrigin = window.location.origin.replace(/\/+$/, '');
+    const knownRedirect = KNOWN_OFFLINE_REDIRECT_URIS[cleanOrigin];
+    if (knownRedirect) {
+      return {
+        configured: true,
+        clientId: TARGET_GOOGLE_OAUTH_CLIENT_ID,
+        redirectUri: knownRedirect,
+        offlineSupported: true,
+      };
+    }
+  }
+  return cachedBackendOAuthConfig;
+};
 
 export const prefetchGoogleAuthConfig = async (): Promise<BackendOAuthConfig | null> => {
   if (typeof window === 'undefined' || Capacitor.isNativePlatform()) return null;
@@ -395,7 +429,7 @@ export const prefetchGoogleAuthConfig = async (): Promise<BackendOAuthConfig | n
         const cfg = await res.json();
         cachedBackendOAuthConfig = {
           configured: Boolean(cfg?.configured),
-          clientId: cfg?.clientId || null,
+          clientId: cfg?.clientId || TARGET_GOOGLE_OAUTH_CLIENT_ID,
           redirectUri: cfg?.redirectUri || null,
           offlineSupported: Boolean(cfg?.offlineSupported),
         };
@@ -683,25 +717,16 @@ export const googleSignIn = async (_useRedirectIfBlocked: boolean = false): Prom
       }
 
       // Path 1: Unified 1-Popup Offline OAuth + Firebase Auth (gives Firebase user + access_token + permanent refresh_token)
-      const backendCfg = cachedBackendOAuthConfig;
+      const backendCfg = getEffectiveOfflineOAuthConfig();
       if (backendCfg?.configured && backendCfg?.offlineSupported && backendCfg?.clientId && backendCfg?.redirectUri) {
-        try {
-          const offlineResult = await startGoogleOfflineAuthFlow(backendCfg.clientId, backendCfg.redirectUri);
-          if (offlineResult?.user) {
-            return { user: offlineResult.user, accessToken: offlineResult.accessToken || cachedAccessToken || '' };
-          }
-          if (auth.currentUser) {
-            return { user: auth.currentUser, accessToken: offlineResult?.accessToken || cachedAccessToken || '' };
-          }
-          return null;
-        } catch (offlineErr: any) {
-          const msg = String(offlineErr?.message || '');
-          // If user closed popup or it was denied explicitly, bubble up without opening a second surprise popup
-          if (msg.includes('closed') || msg.includes('access_denied')) {
-            throw offlineErr;
-          }
-          console.warn('Unified offline OAuth failed, attempting Firebase popup sign-in:', offlineErr);
+        const offlineResult = await startGoogleOfflineAuthFlow(backendCfg.clientId, backendCfg.redirectUri);
+        if (offlineResult?.user) {
+          return { user: offlineResult.user, accessToken: offlineResult.accessToken || cachedAccessToken || '' };
         }
+        if (auth.currentUser) {
+          return { user: auth.currentUser, accessToken: offlineResult?.accessToken || cachedAccessToken || '' };
+        }
+        return null;
       }
 
       // Path 2: Firebase Auth signInWithPopup (uses firebaseapp.com/__/auth/handler — never calls broken signInWithRedirect)
@@ -725,6 +750,33 @@ export const googleSignIn = async (_useRedirectIfBlocked: boolean = false): Prom
   } finally {
     pendingSignInPromise = null;
   }
+};
+
+export const formatAuthError = (err: any): string => {
+  const code = String(err?.code || '');
+  const msg = String(err?.message || '');
+  const lower = `${code} ${msg}`.toLowerCase();
+
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || lower.includes('window was closed')) {
+    return 'Sign-in window was closed before completing. Click again to sign in.';
+  }
+  if (lower.includes('google oauth backend is not configured')) {
+    return 'Server OAuth secret is missing on this deployment. Add GOOGLE_CLIENT_SECRET (or paste your Google OAuth JSON) in Vercel Environment Variables and redeploy.';
+  }
+  if (lower.includes('redirect_uri_mismatch')) {
+    return 'OAuth redirect URI mismatch in Google Cloud Console for this URL. Ensure this domain callback URI is in Authorized redirect URIs.';
+  }
+  if (lower.includes('invalid_client') || lower.includes('provided client secret is invalid')) {
+    return 'Google OAuth client secret mismatch. Ensure your server GOOGLE_CLIENT_SECRET (and Firebase Console → Authentication → Google → Web SDK configuration) uses your active client secret.';
+  }
+  if (code === 'auth/unauthorized-domain' || lower.includes('unauthorized-domain')) {
+    const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+    return `Domain not authorized in Firebase Auth: ${host}. Add it in Firebase Console → Authentication → Settings → Authorized domains.`;
+  }
+  if (code === 'auth/popup-blocked' || lower.includes('popup')) {
+    return 'Pop-up was blocked by the browser. Please allow pop-ups or open the app in a new tab.';
+  }
+  return msg ? `Login failed: ${msg}` : 'Login failed. Please try again.';
 };
 
 export const getAccessTokenSync = (): string | null => {
@@ -869,7 +921,13 @@ export const connectGoogleCalendarOffline = async (
           const fbResult = await signInWithCredential(auth, credential);
           fbUser = fbResult.user;
         } catch (credErr) {
-          console.warn('Firebase signInWithCredential note:', credErr);
+          try {
+            const idOnlyCredential = GoogleAuthProvider.credential(data.id_token);
+            const fbResult = await signInWithCredential(auth, idOnlyCredential);
+            fbUser = fbResult.user;
+          } catch (fallbackErr) {
+            console.warn('Firebase signInWithCredential note:', credErr, fallbackErr);
+          }
         }
       }
 
@@ -897,8 +955,9 @@ export const startGoogleOfflineAuthFlow = async (
 ): Promise<{ user: User | null; accessToken: string; refreshToken?: string } | null> => {
   if (typeof window === 'undefined') return null;
 
-  let clientId = customClientId || cachedBackendOAuthConfig?.clientId || '';
-  let redirectUri = customRedirectUri || cachedBackendOAuthConfig?.redirectUri || '';
+  const effectiveCfg = getEffectiveOfflineOAuthConfig();
+  let clientId = customClientId || effectiveCfg?.clientId || '';
+  let redirectUri = customRedirectUri || effectiveCfg?.redirectUri || '';
 
   if (!clientId || !redirectUri) {
     const cfg = await prefetchGoogleAuthConfig();
@@ -907,10 +966,11 @@ export const startGoogleOfflineAuthFlow = async (
   }
 
   if (!clientId) {
-    clientId = firebaseAppletConfig.oAuthClientId || '';
+    clientId = TARGET_GOOGLE_OAUTH_CLIENT_ID;
   }
   if (!redirectUri) {
-    redirectUri = `${window.location.origin}/api/auth/google/callback`;
+    const cleanOrigin = window.location.origin.replace(/\/+$/, '');
+    redirectUri = KNOWN_OFFLINE_REDIRECT_URIS[cleanOrigin] || `${cleanOrigin}/api/auth/google/callback`;
   }
 
   if (!clientId) {

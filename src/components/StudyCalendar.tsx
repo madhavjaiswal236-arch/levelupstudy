@@ -30,6 +30,7 @@ import {
   refreshGoogleToken,
   startGoogleOfflineAuthFlow,
   auth,
+  formatAuthError,
 } from "../lib/firebase";
 import { useAppContext, Todo } from "../context/AppContext";
 import {
@@ -597,7 +598,7 @@ export function StudyCalendar({
       if (err?.code === "auth/popup-closed-by-user" || msg.includes("closed")) {
         showToast("Google sign-in window was closed. Click Connect Google to try again.", "info");
       } else {
-        showToast(msg || "Could not connect Google account", "error");
+        showToast(formatAuthError(err), "error");
       }
     }
   };

@@ -28,49 +28,115 @@ try {
   // ignore
 }
 
-try {
-  const assetDir = path.resolve(process.cwd(), 'public/assets/aistudio');
-  if (fs.existsSync(assetDir)) {
-    const files = fs.readdirSync(assetDir);
-    for (const file of files) {
-      if (file.startsWith('client_secret') && file.endsWith('.json')) {
-        try {
-          const secretContent = JSON.parse(fs.readFileSync(path.join(assetDir, file), 'utf8'));
-          const webCfg = secretContent.web || secretContent.installed;
-          if (webCfg?.client_id && webCfg?.client_secret) {
-            oauthClientsMap.set(webCfg.client_id, {
-              clientId: webCfg.client_id,
-              clientSecret: webCfg.client_secret,
-              redirectUris: Array.isArray(webCfg.redirect_uris) ? webCfg.redirect_uris : [],
-            });
+const TARGET_CLIENT_ID =
+  firebaseOAuthClientId || '807015900608-gagaqm29c2ol637rvqp0a0p14ovft8po.apps.googleusercontent.com';
+
+const KNOWN_TARGET_REDIRECT_URIS = [
+  'https://ais-dev-2euhcrau4rvk3hkgfjrppb-413884331750.asia-southeast1.run.app/api/auth/callback',
+  'https://levelupstudy.vercel.app',
+  'https://levelupstudy.vercel.app/__/auth/handler',
+];
+
+const registerOAuthJson = (rawJson: string): boolean => {
+  const trimmed = rawJson.trim();
+  if (!trimmed.startsWith('{')) return false;
+  try {
+    const parsed = JSON.parse(trimmed);
+    const webCfg = parsed.web || parsed.installed || parsed;
+    const secret = typeof webCfg?.client_secret === 'string' ? webCfg.client_secret.trim() : '';
+    const clientId = typeof webCfg?.client_id === 'string' ? webCfg.client_id.trim() : TARGET_CLIENT_ID;
+    if (!secret) return false;
+    const existing = oauthClientsMap.get(clientId);
+    const parsedRedirects = Array.isArray(webCfg?.redirect_uris) ? webCfg.redirect_uris : [];
+    oauthClientsMap.set(clientId, {
+      clientId,
+      clientSecret: secret,
+      redirectUris: parsedRedirects.length > 0 ? parsedRedirects : (existing?.redirectUris || []),
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+// 1. Load from local gitignored client_secret*.json files if present (e.g., AI Studio dev)
+for (const dirPath of [path.resolve(process.cwd(), 'public/assets/aistudio'), process.cwd()]) {
+  try {
+    if (fs.existsSync(dirPath)) {
+      const files = fs.readdirSync(dirPath);
+      for (const file of files) {
+        if (file.startsWith('client_secret') && file.endsWith('.json')) {
+          try {
+            registerOAuthJson(fs.readFileSync(path.join(dirPath, file), 'utf8'));
+          } catch (e) {
+            // ignore malformed file
           }
-        } catch (e) {
-          // ignore malformed file
         }
       }
     }
+  } catch (e) {
+    // ignore
   }
-} catch (e) {
-  // ignore
 }
 
+// 2. Load raw OAuth JSON if pasted directly into Vercel / server environment variables
+const jsonCandidateEnvKeys = [
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_CLIENT_SECRET_JSON',
+  'GOOGLE_OAUTH_JSON',
+  'GOOGLE_OAUTH_SECRET',
+  'GOOGLE_CREDENTIALS',
+  'GOOGLE_AUTH_JSON',
+  'CLIENT_SECRET_JSON',
+];
+for (const key of jsonCandidateEnvKeys) {
+  const val = process.env[key];
+  if (typeof val === 'string') {
+    registerOAuthJson(val);
+  }
+}
+for (const val of Object.values(process.env)) {
+  if (typeof val === 'string' && val.trim().startsWith('{') && val.includes('client_secret')) {
+    registerOAuthJson(val);
+  }
+}
+
+// 3. Load plain secret / client ID environment variables (preferring TARGET_CLIENT_ID)
 const envClientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
-const envClientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
-if (envClientId && envClientSecret) {
-  const existing = oauthClientsMap.get(envClientId);
-  oauthClientsMap.set(envClientId, {
-    clientId: envClientId,
-    clientSecret: envClientSecret,
-    redirectUris: existing?.redirectUris || [],
-  });
+const rawEnvSecret = (
+  process.env.GOOGLE_CLIENT_SECRET ||
+  process.env.GOOGLE_OAUTH_SECRET ||
+  process.env.CLIENT_SECRET ||
+  ''
+).trim();
+const envClientSecret = rawEnvSecret.startsWith('{') ? '' : rawEnvSecret;
+
+if (envClientSecret) {
+  if (!oauthClientsMap.has(TARGET_CLIENT_ID)) {
+    oauthClientsMap.set(TARGET_CLIENT_ID, {
+      clientId: TARGET_CLIENT_ID,
+      clientSecret: envClientSecret,
+      redirectUris: KNOWN_TARGET_REDIRECT_URIS,
+    });
+  }
+  if (envClientId && envClientId !== TARGET_CLIENT_ID && !oauthClientsMap.has(envClientId)) {
+    oauthClientsMap.set(envClientId, {
+      clientId: envClientId,
+      clientSecret: envClientSecret,
+      redirectUris: [],
+    });
+  }
 }
 
 function getActiveOAuthClient(preferredClientId?: string): OAuthClientRecord | null {
+  if (oauthClientsMap.has(TARGET_CLIENT_ID) && (!preferredClientId || preferredClientId === TARGET_CLIENT_ID)) {
+    return oauthClientsMap.get(TARGET_CLIENT_ID)!;
+  }
   if (preferredClientId && oauthClientsMap.has(preferredClientId)) {
     return oauthClientsMap.get(preferredClientId)!;
   }
-  if (firebaseOAuthClientId && oauthClientsMap.has(firebaseOAuthClientId)) {
-    return oauthClientsMap.get(firebaseOAuthClientId)!;
+  if (oauthClientsMap.has(TARGET_CLIENT_ID)) {
+    return oauthClientsMap.get(TARGET_CLIENT_ID)!;
   }
   if (envClientId && oauthClientsMap.has(envClientId)) {
     return oauthClientsMap.get(envClientId)!;
@@ -89,7 +155,14 @@ function resolveRedirectUriForOrigin(client: OAuthClientRecord | null, origin: s
     return { redirectUri: process.env.GOOGLE_REDIRECT_URI.trim(), offlineSupported: true };
   }
 
-  if (client.redirectUris.length > 0) {
+  const effectiveRedirects =
+    client.redirectUris.length > 0
+      ? client.redirectUris
+      : client.clientId === TARGET_CLIENT_ID
+        ? KNOWN_TARGET_REDIRECT_URIS
+        : [];
+
+  if (effectiveRedirects.length > 0) {
     const candidates = [
       `${cleanOrigin}/api/auth/google/callback`,
       `${cleanOrigin}/api/auth/callback`,
@@ -97,14 +170,14 @@ function resolveRedirectUriForOrigin(client: OAuthClientRecord | null, origin: s
       `${cleanOrigin}/`,
     ];
     for (const candidate of candidates) {
-      if (client.redirectUris.includes(candidate)) {
+      if (effectiveRedirects.includes(candidate)) {
         return { redirectUri: candidate, offlineSupported: true };
       }
     }
     return { redirectUri: null, offlineSupported: false };
   }
 
-  // Env-var only deployment (e.g. Vercel where client_secret*.json is not checked in)
+  // Env-var only deployment fallback
   try {
     const parsed = new URL(cleanOrigin);
     if (parsed.hostname === 'levelupstudy.vercel.app') {
@@ -128,7 +201,7 @@ googleAuthRouter.get('/config', (req: express.Request, res: express.Response) =>
 
   res.json({
     configured: Boolean(activeClient),
-    clientId: activeClient?.clientId || firebaseOAuthClientId || envClientId || null,
+    clientId: activeClient?.clientId || TARGET_CLIENT_ID,
     redirectUri,
     offlineSupported: Boolean(activeClient && offlineSupported),
   });
@@ -145,7 +218,7 @@ googleAuthRouter.post('/exchange', async (req: express.Request, res: express.Res
 
     if (!activeClient) {
       return res.status(500).json({
-        error: 'Google OAuth backend is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+        error: 'Google OAuth backend is not configured. Please set GOOGLE_CLIENT_SECRET in environment variables.',
       });
     }
 
@@ -182,7 +255,7 @@ googleAuthRouter.post('/refresh', async (req: express.Request, res: express.Resp
 
     if (!activeClient) {
       return res.status(500).json({
-        error: 'Google OAuth backend is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+        error: 'Google OAuth backend is not configured. Please set GOOGLE_CLIENT_SECRET in environment variables.',
       });
     }
 

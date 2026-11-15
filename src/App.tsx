@@ -71,7 +71,7 @@ import { runSyncSimulations } from "./lib/sync/syncTestRunner";
 import { useNotificationScheduler } from "./hooks/useNotificationScheduler";
 import { NotificationToastContainer } from "./components/NotificationToastContainer";
 import { OfflineIndicator } from "./components/OfflineIndicator";
-import { googleSignIn, getAccessToken } from "./lib/firebase";
+import { googleSignIn, getAccessToken, formatAuthError } from "./lib/firebase";
 
 const LiquidButton = lazy(() =>
   import("./components/ui/liquid-glass-button").then((m) => ({
@@ -378,17 +378,7 @@ function AppContent() {
       }
     } catch (err: any) {
       console.error(err);
-      const code = err?.code || "";
-      const msg = String(err?.message || "");
-      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request" || msg.includes("closed")) {
-        setStartAuthError("Sign-in window was closed before completing. Click again to sign in.");
-      } else if (code === "auth/unauthorized-domain" || msg.includes("unauthorized-domain")) {
-        setStartAuthError(`Domain not authorized in Firebase Auth: ${window.location.hostname}`);
-      } else if (code === "auth/popup-blocked" || msg.includes("popup") || msg.includes("internal-error")) {
-        setStartAuthError("Pop-up blocked or restricted in preview. Allow pop-ups or open in a new tab.");
-      } else {
-        setStartAuthError("Login failed: " + (msg || "Please try again."));
-      }
+      setStartAuthError(formatAuthError(err));
     } finally {
       setIsSigningInStart(false);
     }
@@ -1486,7 +1476,7 @@ function AppContent() {
                     Sync XP, streak & tasks across all devices
                   </p>
                   {startAuthError && (
-                    <div className="w-full mt-1 px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-200 text-[11px] text-center leading-snug">
+                    <div className="w-full mt-1 px-3 py-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-200 text-[11px] text-center leading-relaxed break-words [overflow-wrap:anywhere] max-h-40 overflow-y-auto">
                       {startAuthError}
                     </div>
                   )}
