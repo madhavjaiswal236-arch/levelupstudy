@@ -12,6 +12,7 @@ interface SortableTodoItemProps {
   toggleTodo: (id: number | string) => void;
   deleteTodo: (id: number | string) => any;
   onMoveToToday?: (todo: any) => void;
+  todayStr?: string;
   key?: any;
 }
 
@@ -20,6 +21,7 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
   toggleTodo,
   deleteTodo,
   onMoveToToday,
+  todayStr: todayStrProp,
 }: SortableTodoItemProps) {
   const {
     attributes,
@@ -46,7 +48,7 @@ export const SortableTodoItem = React.memo(function SortableTodoItem({
     : "cyan";
 
   const scheduledDate = getTaskScheduledDate(todo);
-  const todayStr = getLocalDateString();
+  const todayStr = todayStrProp || getLocalDateString();
   const isDifferentDate = Boolean(scheduledDate && scheduledDate !== todayStr);
 
   return (

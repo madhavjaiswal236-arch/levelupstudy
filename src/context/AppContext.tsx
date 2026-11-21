@@ -7,7 +7,7 @@ import {
   deleteUserAccountAndCloudData,
   auth,
 } from "@/lib/firebase";
-import { reconcileState } from "@/lib/sync/reconciliation";
+import { reconcileState, hasMeaningfulUserData } from "@/lib/sync/reconciliation";
 import React, {
   createContext,
   useContext,
@@ -582,11 +582,431 @@ export const calculate8HourGoalXp = (
   return { goalXp, daysRemaining, totalHours };
 };
 
+const BACKUP_STORAGE_KEY = `${LOCAL_STORAGE_KEY}_backup`;
+const VAULT_STORAGE_KEY = `${LOCAL_STORAGE_KEY}_vault`;
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  taskReminders: true,
+  motivationalAlerts: true,
+  studyBlockReminders: true,
+  streakProtectionAlerts: true,
+  soundEnabled: true,
+  frequency: "high",
+};
+
+const createDefaultLifeMetrics = (): LifeMetric[] =>
+  Array.from({ length: 31 }, (_, i) => ({
+    day: i + 1,
+    sleep: 0,
+    screenTime: 0,
+  }));
+
+function safeParseLocalKey(key: string): any | null {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readBestLocalSnapshot(): any | null {
+  const candidates = [
+    safeParseLocalKey(LOCAL_STORAGE_KEY),
+    safeParseLocalKey(BACKUP_STORAGE_KEY),
+    safeParseLocalKey(VAULT_STORAGE_KEY),
+  ].filter(Boolean);
+
+  if (candidates.length === 0) return null;
+
+  // Prefer the first snapshot that contains actual user data so an accidental empty primary key
+  // automatically self-heals from _backup or _vault.
+  const best = candidates.find((c) => hasMeaningfulUserData(c)) || candidates[0];
+
+  if (!best.backlogPlan && typeof window !== "undefined") {
+    try {
+      const backupPlanStr = localStorage.getItem("jee_tracker_backlog_plan");
+      if (backupPlanStr) {
+        best.backlogPlan = JSON.parse(backupPlanStr);
+      }
+    } catch {}
+  }
+
+  return best;
+}
+
+function hasExistingLocalUserDataOnDisk(): boolean {
+  const keys = [LOCAL_STORAGE_KEY, BACKUP_STORAGE_KEY, VAULT_STORAGE_KEY];
+  for (const key of keys) {
+    const parsed = safeParseLocalKey(key);
+    if (parsed && hasMeaningfulUserData(parsed)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+let idleBackupHandle: any = null;
+function scheduleIdleBackupWrite(jsonString: string, updateVault: boolean) {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  const writeBackups = () => {
+    idleBackupHandle = null;
+    try {
+      localStorage.setItem(BACKUP_STORAGE_KEY, jsonString);
+      if (updateVault) {
+        localStorage.setItem(VAULT_STORAGE_KEY, jsonString);
+      }
+    } catch {}
+  };
+
+  if (idleBackupHandle !== null) {
+    if (typeof (window as any).cancelIdleCallback === "function") {
+      (window as any).cancelIdleCallback(idleBackupHandle);
+    } else {
+      clearTimeout(idleBackupHandle);
+    }
+    idleBackupHandle = null;
+  }
+
+  if (typeof (window as any).requestIdleCallback === "function") {
+    idleBackupHandle = (window as any).requestIdleCallback(writeBackups, { timeout: 1500 });
+  } else {
+    idleBackupHandle = setTimeout(writeBackups, 0);
+  }
+}
+
+function safePersistLocalState(
+  stateObj: any,
+  preSerializedJson?: string,
+  options?: { forceAllowEmpty?: boolean; immediateBackup?: boolean }
+): string | null {
+  const meaningful = hasMeaningfulUserData(stateObj);
+  if (!meaningful && !options?.forceAllowEmpty && !Capacitor.isNativePlatform()) {
+    if (hasExistingLocalUserDataOnDisk()) {
+      console.warn(
+        "[Local-First Guard] Blocked empty state from overwriting existing local user data."
+      );
+      return null;
+    }
+  }
+
+  const jsonString = preSerializedJson || JSON.stringify(stateObj);
+
+  if (Capacitor.isNativePlatform()) {
+    Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString }).catch(() => {});
+  } else if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      if (options?.immediateBackup) {
+        localStorage.setItem(BACKUP_STORAGE_KEY, jsonString);
+        if (meaningful) {
+          localStorage.setItem(VAULT_STORAGE_KEY, jsonString);
+        }
+      } else {
+        scheduleIdleBackupWrite(jsonString, meaningful);
+      }
+    } catch (e) {
+      console.warn("[Local-First Guard] localStorage write warning:", e);
+    }
+  }
+
+  return jsonString;
+}
+
+function normalizeParsedLocalState(parsed: any) {
+  const today = getLogicalDate();
+  const todayKey = getStandardDateKey(today);
+  const savedStorageDate =
+    typeof window !== "undefined" ? localStorage.getItem("levelup_app_start_date") : null;
+  const loadedAppStartDate = parsed.appStartDate || savedStorageDate || todayKey;
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("levelup_app_start_date", loadedAppStartDate);
+    }
+  } catch {}
+
+  const effectiveLastStudyDate =
+    parsed.lastStudyDate ||
+    (parsed.history && parsed.history.length > 0
+      ? getStandardDateKey(parsed.history[parsed.history.length - 1].date)
+      : null);
+  const isToday = isSameLogicalDay(effectiveLastStudyDate, today);
+  const protocolRecordExists = hasTodayProtocolRecord(
+    parsed.history || [],
+    parsed.lifeMetrics || [],
+    today
+  );
+
+  let loadedHistory = Array.isArray(parsed.history) ? parsed.history : [];
+  let loadedXpToday = parsed.xpGainedToday || 0;
+  let loadedHoursToday = parsed.hoursStudiedToday || 0;
+  let loadedStreak = parsed.streakDays || 0;
+
+  if (effectiveLastStudyDate && effectiveLastStudyDate < todayKey) {
+    const { updatedHistory } = reconcilePerDayHistory(
+      loadedHistory,
+      effectiveLastStudyDate,
+      todayKey,
+      loadedXpToday,
+      loadedHoursToday
+    );
+    loadedHistory = updatedHistory;
+    loadedXpToday = 0;
+    loadedHoursToday = 0;
+    loadedStreak = 0;
+  }
+
+  let initialNeedsRollover = false;
+  let initialPendingMissedDays: string[] = [];
+  if (isToday || protocolRecordExists) {
+    initialNeedsRollover = false;
+  } else if (effectiveLastStudyDate) {
+    initialNeedsRollover = true;
+    const missingDates = calculateAbsenceGap(effectiveLastStudyDate, today);
+    if (missingDates.length > 0) {
+      initialPendingMissedDays = missingDates;
+    }
+  }
+
+  const loadedSyllabus = parsed.syllabus || initialSyllabusData;
+  const mergedSyllabus: SyllabusData = { ...initialSyllabusData };
+  (["Physics", "Chemistry", "Mathematics"] as const).forEach((subject) => {
+    if (loadedSyllabus[subject]) {
+      const subjectChapters = [...loadedSyllabus[subject]];
+      initialSyllabusData[subject].forEach((defaultCap) => {
+        if (!subjectChapters.some((c: any) => c.name === defaultCap.name)) {
+          subjectChapters.push(defaultCap);
+        }
+      });
+      mergedSyllabus[subject] = subjectChapters;
+    }
+  });
+
+  const loadedEndDate = parsed.class11EndDate || null;
+  const calc8Hr = calculate8HourGoalXp(loadedEndDate, parsed.xp || 0);
+
+  let loadedBacklogPlan: BacklogPlan | null = parsed.backlogPlan || null;
+  if (!loadedBacklogPlan && typeof window !== "undefined") {
+    try {
+      const backupPlanStr = localStorage.getItem("jee_tracker_backlog_plan");
+      if (backupPlanStr) {
+        loadedBacklogPlan = JSON.parse(backupPlanStr);
+      }
+    } catch {}
+  }
+
+  const rawTodos = sanitizeAndHealTodos<Todo>(parsed.todos || []);
+  const dedupedTodos = Array.from(
+    new Map(rawTodos.map((t: Todo) => [t.id, t])).values()
+  ) as Todo[];
+
+  if (!loadedBacklogPlan && dedupedTodos.length > 0) {
+    loadedBacklogPlan = reconstructPlanFromTodos(dedupedTodos);
+  }
+
+  const rawLoggedTasks = sanitizeAndHealTodos<Todo>(parsed.loggedTasksToday || []);
+  const dedupedLoggedTasks = Array.from(
+    new Map(rawLoggedTasks.map((t: Todo) => [t.id, t])).values()
+  ) as Todo[];
+
+  const rawPendingTasks = sanitizeAndHealTodos<Todo>(parsed.pendingTasks || []);
+  const dedupedPendingTasks = Array.from(
+    new Map(rawPendingTasks.map((t: Todo) => [t.id, t])).values()
+  ) as Todo[];
+
+  let loadMetrics: LifeMetric[] = parsed.lifeMetrics;
+  if (!loadMetrics || loadMetrics.length < 31) {
+    loadMetrics = Array.from({ length: 31 }, (_, i) => {
+      const ext = (parsed.lifeMetrics || []).find((m: any) => m.day === i + 1);
+      return ext || { day: i + 1, sleep: 0, screenTime: 0 };
+    });
+  }
+
+  let loadedScheduleProfile: StudentScheduleProfile = DEFAULT_SCHEDULE_PROFILE;
+  if (parsed.scheduleProfile) {
+    loadedScheduleProfile = parsed.scheduleProfile;
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(
+          "LEVELUP_SCHEDULE_PROFILE",
+          JSON.stringify(parsed.scheduleProfile)
+        );
+      }
+    } catch {}
+  } else {
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("LEVELUP_SCHEDULE_PROFILE");
+        if (saved) loadedScheduleProfile = JSON.parse(saved);
+      }
+    } catch {}
+  }
+
+  if (parsed.extendedSettings) {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(
+          "app_settings_extended",
+          JSON.stringify(parsed.extendedSettings)
+        );
+      }
+    } catch {}
+  }
+
+  return {
+    appStartDate: loadedAppStartDate,
+    xp: parsed.xp || 0,
+    xpGainedToday: loadedXpToday,
+    spentXpToday: parsed.spentXpToday || 0,
+    totalSpentXp: parsed.totalSpentXp || 0,
+    hoursStudiedToday: loadedHoursToday,
+    level: parsed.level || 1,
+    questionsSolved: parsed.questionsSolved || 0,
+    dailyTarget: parsed.dailyTarget || 100,
+    accuracy: parsed.accuracy || 0,
+    speedScore: parsed.speedScore || 0,
+    streakDays: loadedStreak,
+    lastStudyDate: todayKey,
+    focusBadges: parsed.focusBadges || 0,
+    syllabus: mergedSyllabus,
+    activeBoost: parsed.activeBoost || null,
+    class11EndDate: loadedEndDate,
+    totalXpGoal: parsed.totalXpGoal || calc8Hr.goalXp,
+    isClass11SetupDone: loadedEndDate ? parsed.isClass11SetupDone || false : false,
+    scheduleProfile: loadedScheduleProfile,
+    backlogPriorities: parsed.backlogPriorities || {},
+    backlogPlan: loadedBacklogPlan,
+    hasSeenRules: parsed.hasSeenRules || false,
+    todos: dedupedTodos,
+    loggedTasksToday: dedupedLoggedTasks,
+    pendingTasks: dedupedPendingTasks,
+    history: loadedHistory,
+    practiceSessions: parsed.practiceSessions || [],
+    playerName: parsed.playerName || "Player 1",
+    habits: parsed.habits || [],
+    lifeMetrics: loadMetrics,
+    monthlyGoals: parsed.monthlyGoals || [],
+    lastBossDayDate: parsed.lastBossDayDate || null,
+    bossDayTargetXp: parsed.bossDayTargetXp || null,
+    bossDayCompleted: parsed.bossDayCompleted || false,
+    equippedTitle: parsed.equippedTitle || "",
+    equippedAura: parsed.equippedAura || "",
+    unlockedItems: parsed.unlockedItems || [],
+    ongoingChapters: parsed.ongoingChapters || {},
+    notificationSettings: parsed.notificationSettings || DEFAULT_NOTIFICATION_SETTINGS,
+    lastSyncTimestamp: parsed.lastSyncTimestamp || 0,
+    needsRollover: initialNeedsRollover,
+    pendingMissedDays: initialPendingMissedDays,
+  };
+}
+
+function buildInitialBootstrap() {
+  const isNative = Capacitor.isNativePlatform();
+  const defaultAppStart = (() => {
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("levelup_app_start_date");
+        if (saved) return saved;
+      }
+    } catch {}
+    return getStandardDateKey(getLogicalDate());
+  })();
+
+  const defaultScheduleProfile = (() => {
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("LEVELUP_SCHEDULE_PROFILE");
+        if (saved) return JSON.parse(saved);
+      }
+    } catch {}
+    return DEFAULT_SCHEDULE_PROFILE;
+  })();
+
+  if (!isNative && typeof window !== "undefined") {
+    const bestLocal = readBestLocalSnapshot();
+    if (bestLocal) {
+      const normalized = normalizeParsedLocalState(bestLocal);
+      // Immediately seed vault if primary/backup had meaningful data and vault didn't exist yet
+      if (hasMeaningfulUserData(bestLocal)) {
+        try {
+          if (!localStorage.getItem(VAULT_STORAGE_KEY)) {
+            localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(bestLocal));
+          }
+        } catch {}
+      }
+      return {
+        isLoadedImmediately: true,
+        hadSavedData: true,
+        state: normalized,
+      };
+    }
+  }
+
+  return {
+    isLoadedImmediately: !isNative,
+    hadSavedData: false,
+    state: {
+      appStartDate: defaultAppStart,
+      xp: 0,
+      xpGainedToday: 0,
+      spentXpToday: 0,
+      totalSpentXp: 0,
+      hoursStudiedToday: 0,
+      level: 1,
+      questionsSolved: 0,
+      dailyTarget: 100,
+      accuracy: 0,
+      speedScore: 0,
+      streakDays: 0,
+      lastStudyDate: null as string | null,
+      focusBadges: 0,
+      syllabus: initialSyllabusData,
+      activeBoost: null as { multiplier: number; expiresAt: number } | null,
+      class11EndDate: null as string | null,
+      totalXpGoal: 800000,
+      isClass11SetupDone: false,
+      scheduleProfile: defaultScheduleProfile as StudentScheduleProfile,
+      backlogPriorities: {} as Record<string, "Must-Do" | "Review">,
+      backlogPlan: null as BacklogPlan | null,
+      hasSeenRules: false,
+      todos: [] as Todo[],
+      loggedTasksToday: [] as Todo[],
+      pendingTasks: [] as Todo[],
+      history: [] as PlayHistoryEntry[],
+      practiceSessions: [] as PracticeSession[],
+      playerName: "Player 1",
+      habits: [] as Habit[],
+      lifeMetrics: createDefaultLifeMetrics(),
+      monthlyGoals: [] as MonthlyGoal[],
+      lastBossDayDate: null as string | null,
+      bossDayTargetXp: null as number | null,
+      bossDayCompleted: false,
+      equippedTitle: "",
+      equippedAura: "",
+      unlockedItems: [] as string[],
+      ongoingChapters: {} as Record<string, string>,
+      notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+      lastSyncTimestamp: 0,
+      needsRollover: false,
+      pendingMissedDays: [] as string[],
+    },
+  };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [needsRolloverState, setNeedsRolloverState] = useState(false);
-  const [lastSyncTimestamp, setLastSyncTimestampState] = useState<number>(0);
-  const lastSyncTimestampRef = useRef<number>(0);
+  const bootstrapRef = useRef<ReturnType<typeof buildInitialBootstrap> | null>(null);
+  if (bootstrapRef.current === null) {
+    bootstrapRef.current = buildInitialBootstrap();
+  }
+  const boot = bootstrapRef.current;
+
+  const [isLoaded, setIsLoaded] = useState<boolean>(boot.isLoadedImmediately);
+  const [needsRolloverState, setNeedsRolloverState] = useState<boolean>(boot.state.needsRollover);
+  const [lastSyncTimestamp, setLastSyncTimestampState] = useState<number>(boot.state.lastSyncTimestamp);
+  const lastSyncTimestampRef = useRef<number>(boot.state.lastSyncTimestamp);
 
   const setLastSyncTimestamp = useCallback((val: number | ((prev: number) => number)) => {
     setLastSyncTimestampState((prev) => {
@@ -607,36 +1027,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [consistencyBroken, setConsistencyBroken] = useState(false);
   const saveStateToCloudNowRef = useRef<any>(null);
-  const [xp, setXp] = useState(0);
-  const [xpGainedToday, setXpGainedToday] = useState(0);
-  const [spentXpToday, setSpentXpToday] = useState(0);
-  const [totalSpentXp, setTotalSpentXp] = useState(0);
-  const [hoursStudiedToday, setHoursStudiedToday] = useState(0);
-  const [level, setLevel] = useState(1);
-  const [questionsSolved, setQuestionsSolved] = useState(0);
-  const [dailyTarget, setDailyTarget] = useState(100);
-  const [accuracy, setAccuracy] = useState(0);
-  const [speedScore, setSpeedScore] = useState(0);
+  const [xp, setXp] = useState<number>(boot.state.xp);
+  const [xpGainedToday, setXpGainedToday] = useState<number>(boot.state.xpGainedToday);
+  const [spentXpToday, setSpentXpToday] = useState<number>(boot.state.spentXpToday);
+  const [totalSpentXp, setTotalSpentXp] = useState<number>(boot.state.totalSpentXp);
+  const [hoursStudiedToday, setHoursStudiedToday] = useState<number>(boot.state.hoursStudiedToday);
+  const [level, setLevel] = useState<number>(boot.state.level);
+  const [questionsSolved, setQuestionsSolved] = useState<number>(boot.state.questionsSolved);
+  const [dailyTarget, setDailyTarget] = useState<number>(boot.state.dailyTarget);
+  const [accuracy, setAccuracy] = useState<number>(boot.state.accuracy);
+  const [speedScore, setSpeedScore] = useState<number>(boot.state.speedScore);
 
-  const [streakDays, setStreakDays] = useState(0);
-  const [lastStudyDate, setLastStudyDateState] = useState<string | null>(null);
-  const lastStudyDateRef = useRef<string | null>(null);
+  const [streakDays, setStreakDays] = useState<number>(boot.state.streakDays);
+  const [lastStudyDate, setLastStudyDateState] = useState<string | null>(boot.state.lastStudyDate);
+  const lastStudyDateRef = useRef<string | null>(boot.state.lastStudyDate);
   const setLastStudyDate = (val) => {
     setLastStudyDateState(val);
     lastStudyDateRef.current =
       typeof val === "function" ? val(lastStudyDateRef.current) : val;
   };
-  const [focusBadges, setFocusBadges] = useState(0);
-  const [syllabus, setSyllabus] = useState<SyllabusData>(initialSyllabusData);
-  const [appStartDate, setAppStartDateState] = useState<string>(() => {
-    try {
-      if (typeof window !== "undefined") {
-        const saved = localStorage.getItem("levelup_app_start_date");
-        if (saved) return saved;
-      }
-    } catch (e) {}
-    return getStandardDateKey(getLogicalDate());
-  });
+  const [focusBadges, setFocusBadges] = useState<number>(boot.state.focusBadges);
+  const [syllabus, setSyllabus] = useState<SyllabusData>(boot.state.syllabus);
+  const [appStartDate, setAppStartDateState] = useState<string>(boot.state.appStartDate);
 
   const setAppStartDate = useCallback((val: string | ((prev: string) => string)) => {
     setAppStartDateState((prev) => {
@@ -650,8 +1062,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             try {
               const p = JSON.parse(raw);
               p.appStartDate = key;
-              localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(p));
-              localStorage.setItem(`${LOCAL_STORAGE_KEY}_backup`, JSON.stringify(p));
+              safePersistLocalState(p);
             } catch (err) {}
           }
         }
@@ -665,19 +1076,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeBoost, setActiveBoost] = useState<{
     multiplier: number;
     expiresAt: number;
-  } | null>(null);
-  const [class11EndDate, setClass11EndDate] = useState<string | null>(null);
-  const [totalXpGoal, setTotalXpGoal] = useState<number>(800000);
-  const [isClass11SetupDone, setIsClass11SetupDone] = useState(false);
-  const [scheduleProfile, setScheduleProfile] = useState<StudentScheduleProfile>(() => {
-    try {
-      if (typeof window !== "undefined") {
-        const saved = localStorage.getItem("LEVELUP_SCHEDULE_PROFILE");
-        if (saved) return JSON.parse(saved);
-      }
-    } catch (e) {}
-    return DEFAULT_SCHEDULE_PROFILE;
-  });
+  } | null>(boot.state.activeBoost);
+  const [class11EndDate, setClass11EndDate] = useState<string | null>(boot.state.class11EndDate);
+  const [totalXpGoal, setTotalXpGoal] = useState<number>(boot.state.totalXpGoal);
+  const [isClass11SetupDone, setIsClass11SetupDone] = useState<boolean>(boot.state.isClass11SetupDone);
+  const [scheduleProfile, setScheduleProfile] = useState<StudentScheduleProfile>(boot.state.scheduleProfile);
 
   useEffect(() => {
     try {
@@ -688,7 +1091,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [scheduleProfile]);
   const [backlogPriorities, setBacklogPriorities] = useState<
     Record<string, "Must-Do" | "Review">
-  >({});
+  >(boot.state.backlogPriorities);
   const [hasSeenReminder, setHasSeenReminder] = useState<boolean>(() => {
     try {
       if (typeof window !== "undefined") {
@@ -714,36 +1117,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch (e) {}
   }, []);
-  const [hasSeenRules, setHasSeenRules] = useState(false);
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [backlogPlan, setBacklogPlan] = useState<BacklogPlan | null>(null);
-  const [loggedTasksToday, setLoggedTasksToday] = useState<Todo[]>([]);
-  const [pendingTasks, setPendingTasks] = useState<Todo[]>([]);
-  const [history, setHistory] = useState<PlayHistoryEntry[]>([]);
+  const [hasSeenRules, setHasSeenRules] = useState<boolean>(boot.state.hasSeenRules);
+  const [todos, setTodos] = useState<Todo[]>(boot.state.todos);
+  const [backlogPlan, setBacklogPlan] = useState<BacklogPlan | null>(boot.state.backlogPlan);
+  const [loggedTasksToday, setLoggedTasksToday] = useState<Todo[]>(boot.state.loggedTasksToday);
+  const [pendingTasks, setPendingTasks] = useState<Todo[]>(boot.state.pendingTasks);
+  const [history, setHistory] = useState<PlayHistoryEntry[]>(boot.state.history);
   const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(
-    [],
+    boot.state.practiceSessions,
   );
-  const [pendingMissedDays, setPendingMissedDays] = useState<string[]>([]);
+  const [pendingMissedDays, setPendingMissedDays] = useState<string[]>(boot.state.pendingMissedDays);
 
-  const [playerName, setPlayerName] = useState<string>("Player 1");
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [lifeMetrics, setLifeMetrics] = useState<LifeMetric[]>(
-    Array.from({ length: 31 }, (_, i) => ({
-      day: i + 1,
-      sleep: 0,
-      screenTime: 0,
-    })),
-  );
-  const [monthlyGoals, setMonthlyGoals] = useState<MonthlyGoal[]>([]);
-  const [lastBossDayDate, setLastBossDayDate] = useState<string | null>(null);
-  const [bossDayTargetXp, setBossDayTargetXp] = useState<number | null>(null);
-  const [bossDayCompleted, setBossDayCompleted] = useState<boolean>(false);
+  const [playerName, setPlayerName] = useState<string>(boot.state.playerName);
+  const [habits, setHabits] = useState<Habit[]>(boot.state.habits);
+  const [lifeMetrics, setLifeMetrics] = useState<LifeMetric[]>(boot.state.lifeMetrics);
+  const [monthlyGoals, setMonthlyGoals] = useState<MonthlyGoal[]>(boot.state.monthlyGoals);
+  const [lastBossDayDate, setLastBossDayDate] = useState<string | null>(boot.state.lastBossDayDate);
+  const [bossDayTargetXp, setBossDayTargetXp] = useState<number | null>(boot.state.bossDayTargetXp);
+  const [bossDayCompleted, setBossDayCompleted] = useState<boolean>(boot.state.bossDayCompleted);
   const [pendingBossDayBonus, setPendingBossDayBonus] =
     useState<boolean>(false);
-  const [equippedTitle, setEquippedTitle] = useState<string>("");
-  const [equippedAura, setEquippedAura] = useState<string>("");
-  const [unlockedItems, setUnlockedItems] = useState<string[]>([]);
-  const [ongoingChapters, setOngoingChapters] = useState<Record<string, string>>({});
+  const [equippedTitle, setEquippedTitle] = useState<string>(boot.state.equippedTitle);
+  const [equippedAura, setEquippedAura] = useState<string>(boot.state.equippedAura);
+  const [unlockedItems, setUnlockedItems] = useState<string[]>(boot.state.unlockedItems);
+  const [ongoingChapters, setOngoingChapters] = useState<Record<string, string>>(boot.state.ongoingChapters);
   const isCalendarPreviewOpenRef = useRef(false);
   const calendarSyncTimerRef = useRef<any>(null);
 
@@ -753,19 +1150,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const dismissedForever = localStorage.getItem("welcome_hero_dismissed_forever");
       if (dismissedForever === "true") return false;
 
-      // If user already has any recorded local state, do not show welcome hero on load
-      const localRaw = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem("jee_tracker_state");
-      if (localRaw) {
-        try {
-          const parsed = JSON.parse(localRaw);
-          if (
-            (parsed.xp && parsed.xp > 0) ||
-            (parsed.todos && parsed.todos.length > 0) ||
-            (parsed.history && parsed.history.length > 0)
-          ) {
-            return false;
-          }
-        } catch {}
+      if (hasMeaningfulUserData(boot.state)) {
+        return false;
       }
 
       const lastWelcomeDate = localStorage.getItem("levelup_last_welcome_hero_date");
@@ -798,24 +1184,89 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
   const [notificationSettings, setNotificationSettings] =
-    useState<NotificationSettings>({
-      taskReminders: true,
-      motivationalAlerts: true,
-      studyBlockReminders: true,
-      streakProtectionAlerts: true,
-      soundEnabled: true,
-      frequency: "high",
-    });
+    useState<NotificationSettings>(boot.state.notificationSettings);
   const [firebaseUser, setFirebaseUser] = useState<
     import("firebase/auth").User | null
   >(null);
   const [hasToken, setHasToken] = useState<boolean>(false);
   const [isCloudSyncComplete, setIsCloudSyncComplete] = useState<boolean>(false);
   const lastSavedCloudJsonRef = useRef<string>("");
+  const lastSavedLocalJsonRef = useRef<string>("");
   const isRemoteSyncingRef = useRef<boolean>(false);
   const lastLocalMutationTimeRef = useRef<number>(0);
   const lastCalendarMutationTimeRef = useRef<number>(0);
   const hasUnsavedLocalChangesRef = useRef<boolean>(false);
+  const latestStateRef = useRef<any>(boot.state);
+  const pendingRolloverSaveRef = useRef<boolean>(false);
+
+  // Keep latestStateRef synchronously current on every render BEFORE any useEffect runs
+  // (prevents race where syncCloudOnLogin read an empty {} ref before an effect updated it).
+  latestStateRef.current = {
+    appStartDate,
+    xp,
+    xpGainedToday,
+    spentXpToday,
+    totalSpentXp,
+    hoursStudiedToday,
+    level,
+    questionsSolved,
+    dailyTarget,
+    accuracy,
+    speedScore,
+    streakDays,
+    lastStudyDate,
+    focusBadges,
+    syllabus,
+    activeBoost,
+    class11EndDate,
+    isClass11SetupDone,
+    backlogPriorities,
+    backlogPlan,
+    todos,
+    loggedTasksToday,
+    pendingTasks,
+    history,
+    practiceSessions,
+    playerName,
+    hasSeenRules,
+    habits,
+    lifeMetrics,
+    monthlyGoals,
+    lastBossDayDate,
+    bossDayTargetXp,
+    bossDayCompleted,
+    equippedTitle,
+    equippedAura,
+    unlockedItems,
+    notificationSettings,
+    totalXpGoal,
+    ongoingChapters,
+    scheduleProfile,
+    lastSyncTimestamp: lastSyncTimestampRef.current,
+  };
+
+  // Helper: always guarantees local disk/vault fallback if in-memory state looks blank
+  const getReliableLocalState = useCallback(() => {
+    const inMemory = latestStateRef.current || {};
+    if (hasMeaningfulUserData(inMemory)) {
+      return inMemory;
+    }
+    const diskBest = readBestLocalSnapshot();
+    if (diskBest && hasMeaningfulUserData(diskBest)) {
+      return { ...inMemory, ...diskBest };
+    }
+    return inMemory;
+  }, []);
+
+  const remoteSyncResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beginRemoteSyncApply = useCallback(() => {
+    isRemoteSyncingRef.current = true;
+    if (remoteSyncResetTimerRef.current) clearTimeout(remoteSyncResetTimerRef.current);
+    remoteSyncResetTimerRef.current = setTimeout(() => {
+      isRemoteSyncingRef.current = false;
+      remoteSyncResetTimerRef.current = null;
+    }, 80);
+  }, []);
 
   const applyStateSnapshot = useCallback((mergedState: any) => {
     if (!mergedState || typeof mergedState !== "object") return;
@@ -839,7 +1290,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (mergedState.isClass11SetupDone !== undefined) setIsClass11SetupDone(mergedState.isClass11SetupDone);
     if (mergedState.backlogPriorities !== undefined) setBacklogPriorities(mergedState.backlogPriorities);
     if (mergedState.backlogPlan !== undefined) {
-      setBacklogPlan(mergedState.backlogPlan);
+      // Never overwrite an active local backlog plan with a null/empty remote value
+      if (mergedState.backlogPlan || !(latestStateRef.current?.backlogPlan?.subjects?.length > 0)) {
+        setBacklogPlan(mergedState.backlogPlan);
+      }
       if (mergedState.backlogPlan && typeof window !== "undefined") {
         try {
           localStorage.setItem("jee_tracker_backlog_plan", JSON.stringify(mergedState.backlogPlan));
@@ -930,10 +1384,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Load state on mount with safety fallback timeout
+  // Load state on mount ONLY for native Capacitor Preferences (web already hydrated synchronously on frame 1)
   const isStorageCorruptedRef = useRef<boolean>(false);
 
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      return;
+    }
+
     let unmounted = false;
     const safetyTimeout = setTimeout(() => {
       if (!unmounted) {
@@ -941,212 +1399,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 3000);
 
-    const applyParsedState = (parsed: any) => {
-      setXp(parsed.xp || 0);
-      setLevel(parsed.level || 1);
-      setQuestionsSolved(parsed.questionsSolved || 0);
-      setDailyTarget(parsed.dailyTarget || 100);
-      setAccuracy(parsed.accuracy || 0);
-      setSpeedScore(parsed.speedScore || 0);
-
-      const today = getLogicalDate();
-      const todayKey = getStandardDateKey(today);
-      const savedStorageDate = typeof window !== "undefined" ? localStorage.getItem("levelup_app_start_date") : null;
-      const loadedAppStartDate = parsed.appStartDate || savedStorageDate || todayKey;
-      setAppStartDate(loadedAppStartDate);
+    const loadNativeState = async () => {
       try {
-        localStorage.setItem("levelup_app_start_date", loadedAppStartDate);
-      } catch (e) {}
-
-      const effectiveLastStudyDate = parsed.lastStudyDate || (parsed.history && parsed.history.length > 0 ? getStandardDateKey(parsed.history[parsed.history.length - 1].date) : null);
-      const isToday = isSameLogicalDay(effectiveLastStudyDate, today);
-      const protocolRecordExists = hasTodayProtocolRecord(parsed.history || [], parsed.lifeMetrics || [], today);
-
-      let loadedHistory = parsed.history || [];
-      let loadedXpToday = parsed.xpGainedToday || 0;
-      let loadedHoursToday = parsed.hoursStudiedToday || 0;
-      let loadedStreak = parsed.streakDays || 0;
-
-      if (effectiveLastStudyDate && effectiveLastStudyDate < todayKey) {
-        const { updatedHistory } = reconcilePerDayHistory(
-          loadedHistory,
-          effectiveLastStudyDate,
-          todayKey,
-          loadedXpToday,
-          loadedHoursToday
-        );
-        loadedHistory = updatedHistory;
-        loadedXpToday = 0;
-        loadedHoursToday = 0;
-        loadedStreak = 0; // Missed days reset active streak
-      }
-
-      setStreakDays(loadedStreak);
-      setLastStudyDate(todayKey);
-
-      if (isToday || protocolRecordExists) {
-        setNeedsRollover(false, "Local storage load: today is already completed or matches lastStudyDate");
-      } else if (effectiveLastStudyDate) {
-        setNeedsRollover(true, "Local storage load: lastStudyDate is from a previous day");
-        const missingDates = calculateAbsenceGap(effectiveLastStudyDate, today);
-        if (missingDates.length > 0) {
-          setPendingMissedDays(missingDates);
-        }
-      }
-
-      setXpGainedToday(loadedXpToday);
-      setSpentXpToday(parsed.spentXpToday || 0);
-      setTotalSpentXp(parsed.totalSpentXp || 0);
-      setHoursStudiedToday(loadedHoursToday);
-
-      setFocusBadges(parsed.focusBadges || 0);
-
-      const loadedSyllabus = parsed.syllabus || initialSyllabusData;
-      const mergedSyllabus: SyllabusData = { ...initialSyllabusData };
-
-      (["Physics", "Chemistry", "Mathematics"] as const).forEach(
-        (subject) => {
-          if (loadedSyllabus[subject]) {
-            const subjectChapters = [...loadedSyllabus[subject]];
-            initialSyllabusData[subject].forEach((defaultCap) => {
-              if (
-                !subjectChapters.some(
-                  (c: any) => c.name === defaultCap.name,
-                )
-              ) {
-                subjectChapters.push(defaultCap);
-              }
-            });
-            mergedSyllabus[subject] = subjectChapters;
-          }
-        },
-      );
-      setSyllabus(mergedSyllabus);
-
-      setActiveBoost(parsed.activeBoost || null);
-      const loadedEndDate = parsed.class11EndDate || null;
-      setClass11EndDate(loadedEndDate);
-      const calc8Hr = calculate8HourGoalXp(loadedEndDate, parsed.xp || 0);
-      setTotalXpGoal(parsed.totalXpGoal || calc8Hr.goalXp);
-      setIsClass11SetupDone(
-        loadedEndDate ? parsed.isClass11SetupDone || false : false,
-      );
-      setBacklogPriorities(parsed.backlogPriorities || {});
-
-      let loadedBacklogPlan: BacklogPlan | null = parsed.backlogPlan || null;
-      if (!loadedBacklogPlan && typeof window !== "undefined") {
-        try {
-          const backupPlanStr = localStorage.getItem("jee_tracker_backlog_plan");
-          if (backupPlanStr) {
-            loadedBacklogPlan = JSON.parse(backupPlanStr);
-          }
-        } catch (e) {
-          console.warn("Failed to load backlog plan from backup key:", e);
-        }
-      }
-
-      const loadedTodos = sanitizeAndHealTodos<Todo>(parsed.todos || []);
-      if (!loadedBacklogPlan && loadedTodos.length > 0) {
-        loadedBacklogPlan = reconstructPlanFromTodos(loadedTodos);
-      }
-      setBacklogPlan(loadedBacklogPlan);
-      setHasSeenRules(parsed.hasSeenRules || false);
-      setTodos(
-        Array.from(
-          new Map(loadedTodos.map((t: Todo) => [t.id, t])).values(),
-        ) as Todo[],
-      );
-      const loadedLoggedTasks = sanitizeAndHealTodos<Todo>(parsed.loggedTasksToday || []);
-      setLoggedTasksToday(
-        Array.from(
-          new Map(loadedLoggedTasks.map((t: Todo) => [t.id, t])).values(),
-        ) as Todo[],
-      );
-      const loadedPendingTasks = sanitizeAndHealTodos<Todo>(parsed.pendingTasks || []);
-      setPendingTasks(
-        Array.from(
-          new Map(loadedPendingTasks.map((t: Todo) => [t.id, t])).values(),
-        ) as Todo[],
-      );
-      setHistory(loadedHistory);
-      setPracticeSessions(parsed.practiceSessions || []);
-      setPlayerName(parsed.playerName || "Player 1");
-      setHabits(parsed.habits || []);
-      let loadMetrics = parsed.lifeMetrics;
-      if (!loadMetrics || loadMetrics.length < 31) {
-        loadMetrics = Array.from({ length: 31 }, (_, i) => {
-          const ext = (parsed.lifeMetrics || []).find(
-            (m: any) => m.day === i + 1,
-          );
-          return ext || { day: i + 1, sleep: 0, screenTime: 0 };
-        });
-      }
-      setLifeMetrics(loadMetrics);
-      setMonthlyGoals(parsed.monthlyGoals || []);
-
-      setLastBossDayDate(parsed.lastBossDayDate || null);
-      setBossDayTargetXp(parsed.bossDayTargetXp || null);
-      setBossDayCompleted(parsed.bossDayCompleted || false);
-      setEquippedTitle(parsed.equippedTitle || "");
-      setEquippedAura(parsed.equippedAura || "");
-      setUnlockedItems(parsed.unlockedItems || []);
-      setOngoingChapters(parsed.ongoingChapters || {});
-      if (parsed.notificationSettings) {
-        setNotificationSettings(parsed.notificationSettings);
-      }
-      if (parsed.scheduleProfile) {
-        setScheduleProfile(parsed.scheduleProfile);
-        try {
-          if (typeof window !== "undefined") {
-            localStorage.setItem("LEVELUP_SCHEDULE_PROFILE", JSON.stringify(parsed.scheduleProfile));
-          }
-        } catch (e) {}
-      }
-      if (parsed.extendedSettings) {
-        try {
-          if (typeof window !== "undefined") {
-            localStorage.setItem("app_settings_extended", JSON.stringify(parsed.extendedSettings));
-          }
-        } catch (e) {}
-      }
-    };
-
-    const loadState = async () => {
-      try {
-        let saved: string | null = null;
-        if (Capacitor.isNativePlatform()) {
-          const { value } = await Preferences.get({ key: LOCAL_STORAGE_KEY });
-          saved = value;
-        } else {
-          saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-        }
-
-        if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          applyParsedState(parsed);
-        } catch (e) {
-          console.error("Failed to parse local storage", e);
-          isStorageCorruptedRef.current = true;
-          if (saved) {
-            try {
-              localStorage.setItem(`${LOCAL_STORAGE_KEY}_CORRUPT_${Date.now()}`, saved);
-            } catch {}
-          }
-          // Attempt restore from backup
+        const { value: saved } = await Preferences.get({ key: LOCAL_STORAGE_KEY });
+        if (saved && !unmounted) {
           try {
-            const backupStr = typeof window !== "undefined" ? localStorage.getItem(`${LOCAL_STORAGE_KEY}_backup`) : null;
-            if (backupStr) {
-              const backupParsed = JSON.parse(backupStr);
-              applyParsedState(backupParsed);
-              latestStateRef.current = backupParsed;
-              isStorageCorruptedRef.current = false;
+            const parsed = JSON.parse(saved);
+            const norm = normalizeParsedLocalState(parsed);
+            beginRemoteSyncApply();
+            applyStateSnapshot(norm);
+            setNeedsRolloverState(norm.needsRollover);
+            if (norm.pendingMissedDays.length > 0) {
+              setPendingMissedDays(norm.pendingMissedDays);
             }
-          } catch {}
+          } catch (e) {
+            console.error("Failed to parse native storage", e);
+            isStorageCorruptedRef.current = true;
+          }
         }
-      }
       } catch (err) {
-        console.error("Error in loadState:", err);
+        console.error("Error in loadNativeState:", err);
       } finally {
         if (!unmounted) {
           clearTimeout(safetyTimeout);
@@ -1154,91 +1426,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    loadState();
+    loadNativeState();
     return () => {
       unmounted = true;
       clearTimeout(safetyTimeout);
     };
-  }, []);
+  }, [applyStateSnapshot]);
 
-  // Save state on change
+  // Save state on change (debounced, deduplicated, and protected against empty overwrites)
   useEffect(() => {
     if (!isLoaded || isStorageCorruptedRef.current) return;
 
     const now = Date.now();
-    if (isRemoteSyncingRef.current) {
-      // Change came from cloud listener, do not flag as local mutation
+    const cameFromRemote = isRemoteSyncingRef.current;
+    if (cameFromRemote) {
+      // Change came from cloud/storage sync, do not flag as local mutation or trigger write-back loop
       isRemoteSyncingRef.current = false;
+      if (remoteSyncResetTimerRef.current) {
+        clearTimeout(remoteSyncResetTimerRef.current);
+        remoteSyncResetTimerRef.current = null;
+      }
     } else {
-      // Genuine local mutation
       hasUnsavedLocalChangesRef.current = true;
       lastLocalMutationTimeRef.current = now;
       lastSyncTimestampRef.current = now;
     }
 
-    // Debounce state serialization and disk/cloud save to keep UI renders 60-120fps smooth
     const saveTimeoutId = setTimeout(() => {
       const stateToSave = {
-        appStartDate,
-        xp,
-        xpGainedToday,
-        spentXpToday,
-        totalSpentXp,
-        hoursStudiedToday,
-        level,
-        questionsSolved,
-        dailyTarget,
-        accuracy,
-        speedScore,
-        streakDays,
-        lastStudyDate,
-        focusBadges,
-        syllabus,
-        activeBoost,
-        class11EndDate,
-        isClass11SetupDone,
-        backlogPriorities,
-        backlogPlan,
-        todos,
-        loggedTasksToday,
-        pendingTasks,
-        history,
-        practiceSessions,
-        playerName,
-        hasSeenRules,
-        habits,
-        lifeMetrics,
-        monthlyGoals,
-        lastBossDayDate,
-        bossDayTargetXp,
-        bossDayCompleted,
-        equippedTitle,
-        equippedAura,
-        unlockedItems,
-        notificationSettings,
-        totalXpGoal,
-        ongoingChapters,
-        scheduleProfile,
+        ...latestStateRef.current,
         extendedSettings: (() => {
           try {
             const es = typeof localStorage !== "undefined" ? localStorage.getItem("app_settings_extended") : null;
             return es ? JSON.parse(es) : null;
-          } catch (e) { return null; }
+          } catch {
+            return null;
+          }
         })(),
         lastSyncTimestamp: lastSyncTimestampRef.current || now,
       };
 
       const jsonString = JSON.stringify(stateToSave);
 
-      if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
-        localStorage.setItem(`${LOCAL_STORAGE_KEY}_backup`, jsonString);
+      // Skip redundant disk writes when serialized snapshot hasn't changed
+      if (jsonString !== lastSavedLocalJsonRef.current) {
+        const persisted = safePersistLocalState(stateToSave, jsonString);
+        if (persisted) {
+          lastSavedLocalJsonRef.current = persisted;
+        }
       }
 
-      if (firebaseUser?.uid && isCloudSyncComplete) {
-        if (jsonString !== lastSavedCloudJsonRef.current) {
+      // Only push to cloud on genuine local mutations (and never push empty state over an account)
+      if (!cameFromRemote && firebaseUser?.uid && isCloudSyncComplete) {
+        if (jsonString !== lastSavedCloudJsonRef.current && hasMeaningfulUserData(stateToSave)) {
           hasUnsavedLocalChangesRef.current = true;
           saveUserDataToCloud(firebaseUser.uid, stateToSave, false).then((ok) => {
             if (ok) {
@@ -1250,7 +1490,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           hasUnsavedLocalChangesRef.current = false;
         }
       }
-    }, 250);
+    }, 400);
 
     return () => {
       clearTimeout(saveTimeoutId);
@@ -1308,14 +1548,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const stateToSave = latestStateRef.current;
       if (!stateToSave || Object.keys(stateToSave).length === 0) return;
       const currentJson = JSON.stringify(stateToSave);
-      if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: currentJson });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, currentJson);
+      if (currentJson !== lastSavedLocalJsonRef.current) {
+        const persisted = safePersistLocalState(stateToSave, currentJson, { immediateBackup: true });
+        if (persisted) {
+          lastSavedLocalJsonRef.current = persisted;
+        }
       }
       if (
         firebaseUser?.uid &&
         isCloudSyncComplete &&
+        hasMeaningfulUserData(stateToSave) &&
         (hasUnsavedLocalChangesRef.current || currentJson !== lastSavedCloudJsonRef.current)
       ) {
         saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
@@ -1331,22 +1573,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const pullLatestCloudState = async () => {
       if (!firebaseUser?.uid || !isCloudSyncComplete || isRemoteSyncingRef.current) return;
       const now = Date.now();
-      if (now - lastFocusCheckTime < 3000) return;
+      // Real-time onSnapshot listener already syncs live changes; throttle focus fallback to 60s
+      if (now - lastFocusCheckTime < 60000) return;
       lastFocusCheckTime = now;
       try {
         const cloudData = await loadUserDataFromCloud(firebaseUser.uid);
         if (!cloudData || (cloudData as any).__docExists === false) return;
-        const currentLocal = latestStateRef.current;
+        const currentLocal = getReliableLocalState();
+        // Local-first guard: never let empty cloud data wipe local progress
+        if (!hasMeaningfulUserData(cloudData) && hasMeaningfulUserData(currentLocal)) {
+          return;
+        }
         const { mergedState, needsCloudUpload } = reconcileState(currentLocal, cloudData);
-        isRemoteSyncingRef.current = true;
-        applyStateSnapshot(mergedState);
-        isRemoteSyncingRef.current = false;
-        lastSavedCloudJsonRef.current = JSON.stringify(mergedState);
-        if (needsCloudUpload && firebaseUser?.uid) {
+        const mergedJson = JSON.stringify(mergedState);
+        if (mergedJson !== lastSavedLocalJsonRef.current) {
+          beginRemoteSyncApply();
+          applyStateSnapshot(mergedState);
+          const persisted = safePersistLocalState(mergedState, mergedJson);
+          if (persisted) lastSavedLocalJsonRef.current = persisted;
+        }
+        lastSavedCloudJsonRef.current = mergedJson;
+        if (needsCloudUpload && firebaseUser?.uid && hasMeaningfulUserData(mergedState)) {
           saveUserDataToCloud(firebaseUser.uid, mergedState, true).catch(() => {});
         }
       } catch (err) {
-        console.warn("[Firestore] Auto-sync on focus/resume:", err);
+        console.warn("[Firestore] Auto-sync on focus/resume (local preserved):", err);
       }
     };
 
@@ -1378,7 +1629,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           flushCurrentState();
         } else {
           pullLatestCloudState();
-          // App resumed from background: check if date shifted past 3 AM
           const today = getLogicalDate();
           const todayKey = getStandardDateKey(today);
           if (lastStudyDateRef.current && lastStudyDateRef.current !== todayKey) {
@@ -1405,16 +1655,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         capAppStateListener.remove();
       }
     };
-  }, [isLoaded, firebaseUser, isCloudSyncComplete, applyStateSnapshot]);
+  }, [isLoaded, firebaseUser, isCloudSyncComplete, applyStateSnapshot, getReliableLocalState]);
 
-  // Initial Cloud Data Fetch on Auth to ensure cloud state is single source of truth
+  // Initial Cloud Data Fetch on Auth with strict local-first preservation
   useEffect(() => {
     if (!firebaseUser?.uid) {
       setIsCloudSyncComplete(true);
       return;
     }
 
-    // Gated: wait until local state is fully loaded from disk before reconciling with Cloud
     if (!isLoaded) {
       return;
     }
@@ -1423,7 +1672,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     const syncCloudOnLogin = async () => {
-      // Unblock UI after at most 2.5s so the user can interact immediately on slow/spotty networks
       const timeoutId = setTimeout(() => {
         if (!cancelled) {
           setIsCloudSyncComplete(true);
@@ -1435,48 +1683,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
         clearTimeout(timeoutId);
         if (cancelled) return;
 
+        // Cloud network error or offline: ALWAYS keep local data intact as last resort
         if (!cloudData) {
-          // Network error or offline: keep local state safe, do NOT overwrite cloud with empty state!
           setIsCloudSyncComplete(true);
           return;
         }
 
-        if ((cloudData as any).__docExists === false) {
-          // Brand new Firestore account with no document yet: if user has local data, push to cloud
-          const currentLocal = latestStateRef.current;
-          const hasLocalData = (currentLocal.xp || 0) > 0 || (currentLocal.todos || []).length > 0 || (currentLocal.history || []).length > 0;
-          if (hasLocalData && firebaseUser?.uid) {
+        const currentLocal = getReliableLocalState();
+        const localHasData = hasMeaningfulUserData(currentLocal);
+        const cloudHasData =
+          (cloudData as any).__docExists !== false && hasMeaningfulUserData(cloudData);
+
+        if ((cloudData as any).__docExists === false || (!cloudHasData && localHasData)) {
+          // Cloud is missing/empty while local has data: NEVER wipe local, heal cloud from local!
+          if (localHasData && firebaseUser?.uid) {
+            const persisted = safePersistLocalState(currentLocal, undefined, { immediateBackup: true });
             await saveUserDataToCloud(firebaseUser.uid, currentLocal, true);
-            lastSavedCloudJsonRef.current = JSON.stringify(currentLocal);
+            if (persisted) {
+              lastSavedCloudJsonRef.current = persisted;
+              lastSavedLocalJsonRef.current = persisted;
+            }
           }
           setIsCloudSyncComplete(true);
           return;
         }
 
-        // NON-REVERTING SMART RECONCILIATION
-        const currentLocal = latestStateRef.current;
+        // NON-REVERTING SMART RECONCILIATION (local-first protected)
         const { mergedState, needsCloudUpload } = reconcileState(currentLocal, cloudData);
+        const mergedJson = JSON.stringify(mergedState);
 
-        isRemoteSyncingRef.current = true;
+        beginRemoteSyncApply();
         applyStateSnapshot(mergedState);
-        isRemoteSyncingRef.current = false;
+        const persisted = safePersistLocalState(mergedState, mergedJson, { immediateBackup: true });
+        if (persisted) {
+          lastSavedLocalJsonRef.current = persisted;
+        }
 
         if (mergedState.lastSyncTimestamp) {
           setLastSyncTimestamp(mergedState.lastSyncTimestamp);
           lastSyncTimestampRef.current = mergedState.lastSyncTimestamp;
         }
 
-        lastSavedCloudJsonRef.current = JSON.stringify(mergedState);
+        lastSavedCloudJsonRef.current = mergedJson;
         hasUnsavedLocalChangesRef.current = false;
         lastLocalMutationTimeRef.current = 0;
 
-        if (needsCloudUpload && firebaseUser?.uid) {
+        if (needsCloudUpload && firebaseUser?.uid && hasMeaningfulUserData(mergedState)) {
           await saveUserDataToCloud(firebaseUser.uid, mergedState, true);
         }
 
-        // Evaluate day boundary and absence gaps on reconciled cloud state
+        // Evaluate day boundary and absence gaps on reconciled state
         const logicalToday = getLogicalDate();
-        const effectiveLastDate = mergedState.lastStudyDate || (mergedState.history && mergedState.history.length > 0 ? getStandardDateKey(mergedState.history[mergedState.history.length - 1].date) : null);
+        const effectiveLastDate =
+          mergedState.lastStudyDate ||
+          (mergedState.history && mergedState.history.length > 0
+            ? getStandardDateKey(mergedState.history[mergedState.history.length - 1].date)
+            : null);
         const isToday = isSameLogicalDay(effectiveLastDate, logicalToday);
         const protocolRecordExists = hasTodayProtocolRecord(
           mergedState.history || [],
@@ -1497,7 +1759,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         setIsCloudSyncComplete(true);
       } catch (err) {
-        console.error("Cloud login sync error:", err);
+        // On any cloud error, local data remains 100% intact
+        console.error("Cloud login sync error (local data preserved):", err);
         setIsCloudSyncComplete(true);
       }
     };
@@ -1507,7 +1770,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [firebaseUser, isLoaded]);
+  }, [firebaseUser, isLoaded, applyStateSnapshot, getReliableLocalState]);
 
   // Real-Time Cloud Listener for multi-device sync with write-loop suppression
   useEffect(() => {
@@ -1516,7 +1779,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const unsubscribe = subscribeToCloudUserData(firebaseUser.uid, (cloudData, metadata) => {
-      // If the write originated locally on this client, metadata.hasPendingWrites is true. Skip to prevent write loop.
       if (metadata?.hasPendingWrites) {
         return;
       }
@@ -1525,19 +1787,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check if remote data differs from our last known cloud snapshot
+      const currentLocal = getReliableLocalState();
+      // Never allow an empty/cleared cloud snapshot to delete meaningful local data
+      if (!hasMeaningfulUserData(cloudData) && hasMeaningfulUserData(currentLocal)) {
+        return;
+      }
+
       const remoteJson = JSON.stringify(cloudData);
       if (remoteJson === lastSavedCloudJsonRef.current) {
         return;
       }
 
-      // Non-reverting CRDT reconciliation across devices
-      const currentLocal = latestStateRef.current;
       const { mergedState, needsCloudUpload } = reconcileState(currentLocal, cloudData);
+      const mergedJson = JSON.stringify(mergedState);
 
-      isRemoteSyncingRef.current = true;
-      applyStateSnapshot(mergedState);
-      isRemoteSyncingRef.current = false;
+      if (mergedJson !== lastSavedLocalJsonRef.current) {
+        beginRemoteSyncApply();
+        applyStateSnapshot(mergedState);
+        const persisted = safePersistLocalState(mergedState, mergedJson);
+        if (persisted) lastSavedLocalJsonRef.current = persisted;
+      }
 
       lastSavedCloudJsonRef.current = remoteJson;
 
@@ -1546,7 +1815,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         lastSyncTimestampRef.current = mergedState.lastSyncTimestamp;
       }
 
-      if (needsCloudUpload && firebaseUser?.uid) {
+      if (needsCloudUpload && firebaseUser?.uid && hasMeaningfulUserData(mergedState)) {
         saveUserDataToCloud(firebaseUser.uid, mergedState, true).catch(() => {});
       }
     });
@@ -1556,58 +1825,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         unsubscribe();
       }
     };
-  }, [firebaseUser?.uid, isCloudSyncComplete, applyStateSnapshot]);
-
+  }, [firebaseUser?.uid, isCloudSyncComplete, applyStateSnapshot, getReliableLocalState]);
 
   // Handle Cross-Tab Synchronization
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === LOCAL_STORAGE_KEY && e.newValue) {
         try {
-          isRemoteSyncingRef.current = true;
           const parsed = JSON.parse(e.newValue);
-          if (parsed.xp !== undefined) setXp(parsed.xp);
-          if (parsed.todos !== undefined) setTodos(parsed.todos);
-          if (parsed.loggedTasksToday !== undefined) setLoggedTasksToday(parsed.loggedTasksToday);
-          if (parsed.pendingTasks !== undefined) setPendingTasks(parsed.pendingTasks);
-          if (parsed.history !== undefined) setHistory(parsed.history);
-          if (parsed.practiceSessions !== undefined) setPracticeSessions(parsed.practiceSessions);
-          if (parsed.questionsSolved !== undefined) setQuestionsSolved(parsed.questionsSolved);
-          if (parsed.xpGainedToday !== undefined) setXpGainedToday(parsed.xpGainedToday);
-          if (parsed.spentXpToday !== undefined) setSpentXpToday(parsed.spentXpToday);
-          if (parsed.totalSpentXp !== undefined) setTotalSpentXp(parsed.totalSpentXp);
-          if (parsed.hoursStudiedToday !== undefined) setHoursStudiedToday(parsed.hoursStudiedToday);
-          if (parsed.level !== undefined) setLevel(parsed.level);
-          if (parsed.streakDays !== undefined) setStreakDays(parsed.streakDays);
-          if (parsed.lastStudyDate !== undefined) setLastStudyDate(parsed.lastStudyDate);
-          if (parsed.focusBadges !== undefined) setFocusBadges(parsed.focusBadges);
-          if (parsed.syllabus !== undefined) setSyllabus(parsed.syllabus);
-          if (parsed.habits !== undefined) setHabits(parsed.habits);
-          if (parsed.lifeMetrics !== undefined) setLifeMetrics(parsed.lifeMetrics);
-          if (parsed.monthlyGoals !== undefined) setMonthlyGoals(parsed.monthlyGoals);
-          if (parsed.dailyTarget !== undefined) setDailyTarget(parsed.dailyTarget);
-          if (parsed.accuracy !== undefined) setAccuracy(parsed.accuracy);
-          if (parsed.speedScore !== undefined) setSpeedScore(parsed.speedScore);
-          if (parsed.equippedTitle !== undefined) setEquippedTitle(parsed.equippedTitle);
-          if (parsed.equippedAura !== undefined) setEquippedAura(parsed.equippedAura);
-          if (parsed.unlockedItems !== undefined) setUnlockedItems(parsed.unlockedItems);
-          if (parsed.ongoingChapters !== undefined) setOngoingChapters(parsed.ongoingChapters);
-          if (parsed.activeBoost !== undefined) setActiveBoost(parsed.activeBoost);
-          if (parsed.appStartDate !== undefined && parsed.appStartDate) setAppStartDate(parsed.appStartDate);
-          if (parsed.playerName !== undefined) setPlayerName(parsed.playerName);
-          if (parsed.class11EndDate !== undefined) setClass11EndDate(parsed.class11EndDate);
-          if (parsed.isClass11SetupDone !== undefined) setIsClass11SetupDone(parsed.isClass11SetupDone);
-          if (parsed.backlogPriorities !== undefined) setBacklogPriorities(parsed.backlogPriorities);
-          if (parsed.backlogPlan !== undefined) setBacklogPlan(parsed.backlogPlan);
-          if (parsed.totalXpGoal !== undefined) setTotalXpGoal(parsed.totalXpGoal);
-          if (parsed.bossDayTargetXp !== undefined) setBossDayTargetXp(parsed.bossDayTargetXp);
-          if (parsed.bossDayCompleted !== undefined) setBossDayCompleted(parsed.bossDayCompleted);
-          if (parsed.lastBossDayDate !== undefined) setLastBossDayDate(parsed.lastBossDayDate);
-          if (parsed.notificationSettings !== undefined) setNotificationSettings(parsed.notificationSettings);
-          if (parsed.hasSeenRules !== undefined) setHasSeenRules(parsed.hasSeenRules);
-          setTimeout(() => {
-            isRemoteSyncingRef.current = false;
-          }, 300);
+          // Protect against another tab pushing empty state over meaningful local data
+          if (!hasMeaningfulUserData(parsed) && hasMeaningfulUserData(latestStateRef.current)) {
+            return;
+          }
+          beginRemoteSyncApply();
+          lastSavedLocalJsonRef.current = e.newValue;
+          applyStateSnapshot(parsed);
         } catch (err) {
           console.error("Storage event parse error", err);
         }
@@ -1616,87 +1848,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+  }, [applyStateSnapshot]);
 
-  const latestStateRef = useRef<any>({});
-  const pendingRolloverSaveRef = useRef<boolean>(false);
-
+  // Flush rollover commit immediately when requested
   useEffect(() => {
-    latestStateRef.current = {
-      appStartDate,
-      xp,
-      xpGainedToday,
-      spentXpToday,
-      totalSpentXp,
-      hoursStudiedToday,
-      level,
-      questionsSolved,
-      dailyTarget,
-      accuracy,
-      speedScore,
-      streakDays,
-      lastStudyDate,
-      focusBadges,
-      syllabus,
-      activeBoost,
-      class11EndDate,
-      isClass11SetupDone,
-      backlogPriorities,
-      backlogPlan,
-      todos,
-      loggedTasksToday,
-      pendingTasks,
-      history,
-      practiceSessions,
-      playerName,
-      hasSeenRules,
-      habits,
-      lifeMetrics,
-      monthlyGoals,
-      lastBossDayDate,
-      bossDayTargetXp,
-      bossDayCompleted,
-      equippedTitle,
-      equippedAura,
-      unlockedItems,
-      notificationSettings,
-      totalXpGoal,
-      ongoingChapters,
-      lastSyncTimestamp: lastSyncTimestampRef.current,
+    if (!pendingRolloverSaveRef.current) return;
+    pendingRolloverSaveRef.current = false;
+    const todayKey = getStandardDateKey(getLogicalDate());
+    const now = Date.now();
+    const stateToSave = {
+      ...latestStateRef.current,
+      lastStudyDate: todayKey,
+      lastSyncTimestamp: now,
+      lastRolloverTimestamp: now,
+      xpGainedToday: 0,
+      spentXpToday: 0,
+      hoursStudiedToday: 0,
+      questionsSolved: 0,
+      loggedTasksToday: [],
     };
-
-    if (pendingRolloverSaveRef.current) {
-      pendingRolloverSaveRef.current = false;
-      const todayKey = getStandardDateKey(getLogicalDate());
-      const now = Date.now();
-      const stateToSave = {
-        ...latestStateRef.current,
-        lastStudyDate: todayKey,
-        lastSyncTimestamp: now,
-        lastRolloverTimestamp: now,
-        xpGainedToday: 0,
-        spentXpToday: 0,
-        hoursStudiedToday: 0,
-        questionsSolved: 0,
-        loggedTasksToday: [],
-      };
-      latestStateRef.current = stateToSave;
-      const jsonString = JSON.stringify(stateToSave);
-      if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
-      }
-      if (firebaseUser?.uid && isCloudSyncComplete) {
-        lastSavedCloudJsonRef.current = jsonString;
-        saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
-          if (ok) {
-            hasUnsavedLocalChangesRef.current = false;
-          }
-        });
-      }
+    latestStateRef.current = stateToSave;
+    const jsonString = JSON.stringify(stateToSave);
+    const persisted = safePersistLocalState(stateToSave, jsonString, { immediateBackup: true });
+    if (persisted) {
+      lastSavedLocalJsonRef.current = persisted;
     }
-  });
+    if (firebaseUser?.uid && isCloudSyncComplete && hasMeaningfulUserData(stateToSave)) {
+      lastSavedCloudJsonRef.current = jsonString;
+      saveUserDataToCloud(firebaseUser.uid, stateToSave, true).then((ok) => {
+        if (ok) {
+          hasUnsavedLocalChangesRef.current = false;
+        }
+      });
+    }
+  }, [lastStudyDate, history, todos, firebaseUser, isCloudSyncComplete]);
 
   // Dedicated immediate backup sync for backlogPlan
   useEffect(() => {
@@ -1714,7 +1899,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const saveStateToCloudNow = useCallback(
     async (overrides?: Partial<Record<string, any>>): Promise<boolean> => {
-      if (!isLoaded || !isCloudSyncComplete) return false;
+      if (!isLoaded) return false;
       const now = Date.now();
       lastSyncTimestampRef.current = now;
       const stateToSave = {
@@ -1724,13 +1909,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       latestStateRef.current = stateToSave;
       const jsonString = JSON.stringify(stateToSave);
-      if (Capacitor.isNativePlatform()) {
-        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      const persisted = safePersistLocalState(stateToSave, jsonString);
+      if (persisted) {
+        lastSavedLocalJsonRef.current = persisted;
       }
 
-      if (firebaseUser?.uid) {
+      if (firebaseUser?.uid && isCloudSyncComplete && hasMeaningfulUserData(stateToSave)) {
         lastSavedCloudJsonRef.current = jsonString;
         const ok = await saveUserDataToCloud(firebaseUser.uid, stateToSave, true);
         if (ok) {
@@ -2422,6 +2606,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logoutUser = useCallback(async () => {
+    // Persist current local state safely BEFORE signing out so local data is NEVER lost
+    try {
+      const currentLocal = getReliableLocalState();
+      if (hasMeaningfulUserData(currentLocal)) {
+        safePersistLocalState(currentLocal, undefined, { immediateBackup: true });
+      }
+    } catch (e) {}
+
     try {
       await logout();
     } catch (e) {}
@@ -2429,65 +2621,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHasToken(false);
     lastSavedCloudJsonRef.current = "";
     hasUnsavedLocalChangesRef.current = false;
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      localStorage.removeItem("jee_tracker_backlog_plan");
-      if (Capacitor.isNativePlatform()) {
-        await Preferences.remove({ key: LOCAL_STORAGE_KEY });
-      }
-    } catch (e) {}
-    const cleanDefault = {
-      xp: 0,
-      xpGainedToday: 0,
-      spentXpToday: 0,
-      totalSpentXp: 0,
-      hoursStudiedToday: 0,
-      level: 1,
-      questionsSolved: 0,
-      streakDays: 0,
-      dailyTarget: 4,
-      accuracy: 0,
-      speedScore: 0,
-      lastStudyDate: null,
-      focusBadges: 0,
-      syllabus: initialSyllabusData,
-      activeBoost: null,
-      class11EndDate: null,
-      isClass11SetupDone: false,
-      backlogPriorities: [],
-      backlogPlan: null,
-      todos: [],
-      loggedTasksToday: [],
-      pendingTasks: [],
-      history: [],
-      practiceSessions: [],
-      playerName: "Student",
-      hasSeenRules: false,
-      habits: [],
-      lifeMetrics: Array.from({ length: 31 }, (_, i) => ({ day: i + 1, sleep: 0, screenTime: 0 })),
-      monthlyGoals: [],
-      lastBossDayDate: null,
-      bossDayTargetXp: null,
-      bossDayCompleted: false,
-      equippedTitle: "",
-      equippedAura: "",
-      unlockedItems: [],
-      notificationSettings: {
-        dailyReminder: true,
-        reminderTime: "20:00",
-        streakAlerts: true,
-        smartNudges: true,
-        weeklyDigest: true,
-        hapticsEnabled: true,
-      },
-      totalXpGoal: 10000,
-      ongoingChapters: {},
-    };
-    isRemoteSyncingRef.current = true;
-    applyStateSnapshot(cleanDefault);
-    latestStateRef.current = cleanDefault;
-    isRemoteSyncingRef.current = false;
-  }, [applyStateSnapshot]);
+    // IMPORTANT: Do NOT delete localStorage or wipe user data on logout!
+    // Local data stays safely preserved as the guaranteed last-resort fallback.
+  }, [getReliableLocalState]);
 
   const submitMissedDayReasons = useCallback((
     reasons: { date: string; reason: string }[],
@@ -2529,13 +2665,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!subj || !["Physics", "Chemistry", "Mathematics"].includes(subj))
       return null;
 
-    const state = latestStateRef.current;
-    const ongoing = state.ongoingChapters || ongoingChapters;
+    const state = latestStateRef.current || {};
+    const ongoing = state.ongoingChapters || {};
     if (ongoing[subj]) {
       return ongoing[subj];
     }
 
-    const curTodos: Todo[] = state.todos || todos;
+    const curTodos: Todo[] = state.todos || [];
     const matchingTodos = curTodos
       .filter((t) => t.subject === subj && t.chapter)
       .sort((a, b) => String(b.id).localeCompare(String(a.id)));
@@ -2544,7 +2680,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return matchingTodos[0].chapter || null;
     }
 
-    const curHistory: PlayHistoryEntry[] = state.history || history;
+    const curHistory: PlayHistoryEntry[] = state.history || [];
     if (curHistory && curHistory.length > 0) {
       const sortedHistory = [...curHistory].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
@@ -2561,13 +2697,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const curSyllabus = state.syllabus || syllabus;
+    const curSyllabus = state.syllabus || initialSyllabusData;
     const chapters = curSyllabus[subj as keyof typeof curSyllabus] || [];
     if (chapters.length > 0) {
       return chapters[0].name;
     }
     return null;
-  }, [ongoingChapters, todos, history, syllabus]);
+  }, []);
 
   const notifyCalendarPreviewClosed = useCallback(() => {
     isCalendarPreviewOpenRef.current = false;
@@ -2601,19 +2737,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       const cloudData = res.data;
-      const currentLocal = latestStateRef.current;
+      const currentLocal = getReliableLocalState();
       const { mergedState } = reconcileState(currentLocal, cloudData);
 
-      isRemoteSyncingRef.current = true;
+      beginRemoteSyncApply();
       applyStateSnapshot(mergedState);
-      isRemoteSyncingRef.current = false;
 
       latestStateRef.current = mergedState;
       const jsonString = JSON.stringify(mergedState);
-      if (Capacitor.isNativePlatform()) {
-        await Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
+      const persisted = safePersistLocalState(mergedState, jsonString, { immediateBackup: true });
+      if (persisted) {
+        lastSavedLocalJsonRef.current = persisted;
       }
 
       lastSavedCloudJsonRef.current = jsonString;
@@ -2640,7 +2774,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         message: `Restore failed: ${err?.message || String(err)}`,
       };
     }
-  }, [firebaseUser, applyStateSnapshot]);
+  }, [firebaseUser, applyStateSnapshot, getReliableLocalState]);
 
   const exportLocalBackup = useCallback(() => {
     try {
@@ -2710,9 +2844,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch (e) {}
       }
 
-      const activeBacklogPlan = backlogPlan || baseState.backlogPlan || storedBacklogPlan || null;
-      const activeScheduleProfile = scheduleProfile || baseState.scheduleProfile || storedScheduleProfile || DEFAULT_SCHEDULE_PROFILE;
-      const activeStartDate = appStartDate || baseState.appStartDate || storedStartDate || getStandardDateKey(getLogicalDate());
+      const activeBacklogPlan = baseState.backlogPlan || storedBacklogPlan || null;
+      const activeScheduleProfile = baseState.scheduleProfile || storedScheduleProfile || DEFAULT_SCHEDULE_PROFILE;
+      const activeStartDate = baseState.appStartDate || storedStartDate || getStandardDateKey(getLogicalDate());
 
       const fullExportBundle = {
         _exportMetadata: {
@@ -2723,47 +2857,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
           sourceDevice: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
         },
         // Core Identity & Game Progression
-        playerName: playerName || baseState.playerName || "Player 1",
-        xp: xp ?? baseState.xp ?? 0,
-        level: level ?? baseState.level ?? 1,
-        questionsSolved: questionsSolved ?? baseState.questionsSolved ?? 0,
-        streakDays: streakDays ?? baseState.streakDays ?? 0,
-        accuracy: accuracy ?? baseState.accuracy ?? 0,
-        speedScore: speedScore ?? baseState.speedScore ?? 0,
-        focusBadges: focusBadges ?? baseState.focusBadges ?? 0,
-        xpGainedToday: xpGainedToday ?? baseState.xpGainedToday ?? 0,
-        spentXpToday: spentXpToday ?? baseState.spentXpToday ?? 0,
-        totalSpentXp: totalSpentXp ?? baseState.totalSpentXp ?? 0,
-        hoursStudiedToday: hoursStudiedToday ?? baseState.hoursStudiedToday ?? 0,
-        lastStudyDate: lastStudyDate || baseState.lastStudyDate || getStandardDateKey(getLogicalDate()),
+        playerName: baseState.playerName || "Player 1",
+        xp: baseState.xp ?? 0,
+        level: baseState.level ?? 1,
+        questionsSolved: baseState.questionsSolved ?? 0,
+        streakDays: baseState.streakDays ?? 0,
+        accuracy: baseState.accuracy ?? 0,
+        speedScore: baseState.speedScore ?? 0,
+        focusBadges: baseState.focusBadges ?? 0,
+        xpGainedToday: baseState.xpGainedToday ?? 0,
+        spentXpToday: baseState.spentXpToday ?? 0,
+        totalSpentXp: baseState.totalSpentXp ?? 0,
+        hoursStudiedToday: baseState.hoursStudiedToday ?? 0,
+        lastStudyDate: baseState.lastStudyDate || getStandardDateKey(getLogicalDate()),
         appStartDate: activeStartDate,
 
         // Goals & Calibration
-        dailyTarget: dailyTarget ?? baseState.dailyTarget ?? 100,
-        totalXpGoal: totalXpGoal ?? baseState.totalXpGoal ?? 800000,
-        class11EndDate: class11EndDate ?? baseState.class11EndDate ?? null,
-        isClass11SetupDone: Boolean(isClass11SetupDone || baseState.isClass11SetupDone),
-        activeBoost: activeBoost ?? baseState.activeBoost ?? null,
+        dailyTarget: baseState.dailyTarget ?? 100,
+        totalXpGoal: baseState.totalXpGoal ?? 800000,
+        class11EndDate: baseState.class11EndDate ?? null,
+        isClass11SetupDone: Boolean(baseState.isClass11SetupDone),
+        activeBoost: baseState.activeBoost ?? null,
 
         // Academic Curriculum & Masteries
-        syllabus: syllabus || baseState.syllabus || initialSyllabusData,
-        ongoingChapters: ongoingChapters || baseState.ongoingChapters || {},
-        backlogPriorities: backlogPriorities || baseState.backlogPriorities || {},
+        syllabus: baseState.syllabus || initialSyllabusData,
+        ongoingChapters: baseState.ongoingChapters || {},
+        backlogPriorities: baseState.backlogPriorities || {},
 
         // Tracker 360 Full Roadmap Plan & Enrolled Lectures
         backlogPlan: activeBacklogPlan,
 
         // Tasks & Mission Lists
-        todos: todos || baseState.todos || [],
-        loggedTasksToday: loggedTasksToday || baseState.loggedTasksToday || [],
-        pendingTasks: pendingTasks || baseState.pendingTasks || [],
+        todos: baseState.todos || [],
+        loggedTasksToday: baseState.loggedTasksToday || [],
+        pendingTasks: baseState.pendingTasks || [],
 
         // Study History & Analytics
-        history: history || baseState.history || [],
-        practiceSessions: practiceSessions || baseState.practiceSessions || [],
-        habits: habits || baseState.habits || [],
-        lifeMetrics: lifeMetrics || baseState.lifeMetrics || [],
-        monthlyGoals: monthlyGoals || baseState.monthlyGoals || [],
+        history: baseState.history || [],
+        practiceSessions: baseState.practiceSessions || [],
+        habits: baseState.habits || [],
+        lifeMetrics: baseState.lifeMetrics || [],
+        monthlyGoals: baseState.monthlyGoals || [],
 
         // Student Schedule Engine Profile
         scheduleProfile: activeScheduleProfile,
@@ -2775,16 +2909,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           deepWorkTime: 50,
           mainGoal: "Crack JEE 2026",
         },
-        notificationSettings: notificationSettings || baseState.notificationSettings || null,
+        notificationSettings: baseState.notificationSettings || null,
 
         // Boss Day & Cosmetics
-        lastBossDayDate: lastBossDayDate ?? baseState.lastBossDayDate ?? null,
-        bossDayTargetXp: bossDayTargetXp ?? baseState.bossDayTargetXp ?? null,
-        bossDayCompleted: Boolean(bossDayCompleted || baseState.bossDayCompleted),
-        equippedTitle: equippedTitle || baseState.equippedTitle || "",
-        equippedAura: equippedAura || baseState.equippedAura || "",
-        unlockedItems: unlockedItems || baseState.unlockedItems || [],
-        hasSeenRules: Boolean(hasSeenRules || baseState.hasSeenRules),
+        lastBossDayDate: baseState.lastBossDayDate ?? null,
+        bossDayTargetXp: baseState.bossDayTargetXp ?? null,
+        bossDayCompleted: Boolean(baseState.bossDayCompleted),
+        equippedTitle: baseState.equippedTitle || "",
+        equippedAura: baseState.equippedAura || "",
+        unlockedItems: baseState.unlockedItems || [],
+        hasSeenRules: Boolean(baseState.hasSeenRules),
 
         // Store & Arcade
         storeItems: storedStoreItems || baseState.storeItems || null,
@@ -2804,7 +2938,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const blob = new Blob([jsonString], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const safeName = (playerName || "student").toLowerCase().replace(/[^a-z0-9]/g, "_");
+      const safeName = (baseState.playerName || "student").toLowerCase().replace(/[^a-z0-9]/g, "_");
       const dateStr = new Date().toISOString().split("T")[0];
       a.href = url;
       a.download = `levelup_tracker360_full_backup_${safeName}_${dateStr}.json`;
@@ -2815,48 +2949,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error("Failed to export complete backup:", e);
     }
-  }, [
-    playerName,
-    xp,
-    level,
-    questionsSolved,
-    streakDays,
-    accuracy,
-    speedScore,
-    focusBadges,
-    xpGainedToday,
-    spentXpToday,
-    totalSpentXp,
-    hoursStudiedToday,
-    lastStudyDate,
-    appStartDate,
-    dailyTarget,
-    totalXpGoal,
-    class11EndDate,
-    isClass11SetupDone,
-    activeBoost,
-    syllabus,
-    ongoingChapters,
-    backlogPriorities,
-    backlogPlan,
-    todos,
-    loggedTasksToday,
-    pendingTasks,
-    history,
-    practiceSessions,
-    habits,
-    lifeMetrics,
-    monthlyGoals,
-    scheduleProfile,
-    notificationSettings,
-    lastBossDayDate,
-    bossDayTargetXp,
-    bossDayCompleted,
-    equippedTitle,
-    equippedAura,
-    unlockedItems,
-    hasSeenRules,
-  ]);
+  }, []);
 
   const importLocalBackup = useCallback((jsonContent: string): { success: boolean; message: string } => {
     try {
@@ -2936,21 +3029,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      isRemoteSyncingRef.current = true;
+      beginRemoteSyncApply();
       applyStateSnapshot(mergedState);
-      isRemoteSyncingRef.current = false;
 
       latestStateRef.current = mergedState;
       const jsonString = JSON.stringify(mergedState);
-      if (Capacitor.isNativePlatform()) {
-        Preferences.set({ key: LOCAL_STORAGE_KEY, value: jsonString });
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, jsonString);
-        localStorage.setItem(`${LOCAL_STORAGE_KEY}_backup`, jsonString);
+      const persisted = safePersistLocalState(mergedState, jsonString, { immediateBackup: true });
+      if (persisted) {
+        lastSavedLocalJsonRef.current = persisted;
       }
 
       // If user is logged into Firebase, immediately push the complete cloned state to Firestore
-      if (firebaseUser?.uid) {
+      if (firebaseUser?.uid && hasMeaningfulUserData(mergedState)) {
         saveUserDataToCloud(firebaseUser.uid, mergedState, true).catch((e) => {
           console.warn("Cloud push after import failed:", e);
         });

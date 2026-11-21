@@ -11,6 +11,50 @@ export function getTimestampMs(val: any): number {
   return 0;
 }
 
+export function hasMeaningfulUserData(state: any): boolean {
+  if (!state || typeof state !== "object") return false;
+  if ((state.xp || 0) > 0) return true;
+  if ((state.level || 1) > 1) return true;
+  if ((state.questionsSolved || 0) > 0) return true;
+  if ((state.streakDays || 0) > 0) return true;
+  if ((state.xpGainedToday || 0) > 0) return true;
+  if ((state.hoursStudiedToday || 0) > 0) return true;
+  if (Array.isArray(state.todos) && state.todos.some((t: any) => t && !t.isDeleted)) return true;
+  if (Array.isArray(state.history) && state.history.length > 0) return true;
+  if (Array.isArray(state.practiceSessions) && state.practiceSessions.length > 0) return true;
+  if (state.backlogPlan && Array.isArray(state.backlogPlan.subjects) && state.backlogPlan.subjects.length > 0) return true;
+  if (Array.isArray(state.habits) && state.habits.length > 0) return true;
+  if (Array.isArray(state.monthlyGoals) && state.monthlyGoals.length > 0) return true;
+  if (Array.isArray(state.unlockedItems) && state.unlockedItems.length > 0) return true;
+  if (
+    typeof state.playerName === "string" &&
+    state.playerName.trim() !== "" &&
+    state.playerName !== "Player 1" &&
+    state.playerName !== "Student"
+  ) {
+    return true;
+  }
+  if (state.syllabus && typeof state.syllabus === "object") {
+    for (const subj of ["Physics", "Chemistry", "Mathematics"]) {
+      const chaps = state.syllabus[subj];
+      if (
+        Array.isArray(chaps) &&
+        chaps.some(
+          (c: any) =>
+            c &&
+            ((c.mastery || 0) > 0 ||
+              (c.lectures || 0) > 0 ||
+              (c.pyq || 0) > 0 ||
+              (c.lastLectureNumber || 0) > 0)
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 const sanitizeTimeValue = (val: any): string | undefined => {
   if (!val) return undefined;
   if (typeof val === "object") {
@@ -93,8 +137,19 @@ export function mergeTaskArrays(
     const local = localMap.get(id);
     const cloud = cloudMap.get(id);
 
-    const isDeleted = Boolean(local?.isDeleted || cloud?.isDeleted);
-    const deletedAt = Math.max(local?.deletedAt || 0, cloud?.deletedAt || 0);
+    const localDeleted = Boolean(local?.isDeleted);
+    const cloudDeleted = Boolean(cloud?.isDeleted);
+    const localUpdatedMs = getTimestampMs((local as any)?.updatedAt || (local as any)?.completedAt || 0);
+    const cloudUpdatedMs = getTimestampMs((cloud as any)?.updatedAt || (cloud as any)?.completedAt || 0);
+    const localDeletedAt = getTimestampMs(local?.deletedAt || 0);
+    const cloudDeletedAt = getTimestampMs(cloud?.deletedAt || 0);
+
+    // Do not let an older cloud tombstone wipe out a newer local edit/restoration
+    const effectiveCloudDeleted = cloudDeleted && !(local && !localDeleted && localUpdatedMs > cloudDeletedAt && cloudDeletedAt > 0);
+    const effectiveLocalDeleted = localDeleted && !(cloud && !cloudDeleted && cloudUpdatedMs > localDeletedAt && localDeletedAt > 0);
+
+    const isDeleted = effectiveLocalDeleted || effectiveCloudDeleted;
+    const deletedAt = Math.max(localDeletedAt, cloudDeletedAt);
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
     if (isDeleted) {
@@ -119,6 +174,8 @@ export function mergeTaskArrays(
       const baseTask = localIsNewer ? { ...cloud, ...local } : { ...local, ...cloud };
       mergedMap.set(id, sanitizeTodoTimestamps({
         ...baseTask,
+        isDeleted: false,
+        deletedAt: undefined,
         updatedAt: Math.max((local as any).updatedAt || 0, (cloud as any).updatedAt || 0, localUpdated, cloudUpdated) || Date.now(),
         // Completion reversibility based on newest mutation timestamp
         completed: (localUpdated > 0 || cloudUpdated > 0)
@@ -439,7 +496,28 @@ export function reconcileState(
     cloudState.lastSyncTimestamp || cloudState.updatedAt
   );
 
-  const localIsNewer = localTs > cloudTs;
+  const localHasData = hasMeaningfulUserData(localState);
+  const cloudHasData = hasMeaningfulUserData(cloudState);
+
+  // CRITICAL LOCAL-FIRST GUARD: Never allow an empty/blank cloud document (even with a newer
+  // server timestamp) to wipe or zero out real local user data. Preserve local and heal cloud.
+  if (localHasData && !cloudHasData) {
+    const preservedTodos = mergeTaskArrays(localState.todos, [], true);
+    const preservedHistory = mergeHistoryEntries(localState.history, []);
+    return {
+      mergedState: {
+        ...localState,
+        todos: preservedTodos,
+        history: preservedHistory,
+        lastSyncTimestamp: Math.max(localTs, cloudTs, Date.now()),
+      },
+      needsCloudUpload: true,
+      localWasNewer: true,
+    };
+  }
+
+  // Symmetrically, if local is completely empty and cloud has real data, trust cloud
+  const localIsNewer = !localHasData && cloudHasData ? false : localTs > cloudTs;
 
   const todos = mergeTaskArrays(
     localState.todos,
@@ -610,9 +688,9 @@ export function reconcileState(
     lastSyncTimestamp: mergedTs,
   };
 
-  const jsonMerged = JSON.stringify(mergedState);
-  const jsonCloud = JSON.stringify(cloudState);
-  const needsCloudUpload = localIsNewer || jsonMerged !== jsonCloud;
+  // Short-circuit expensive full-state JSON.stringify when localIsNewer is already true
+  const needsCloudUpload =
+    localIsNewer || JSON.stringify(mergedState) !== JSON.stringify(cloudState);
 
   return {
     mergedState,

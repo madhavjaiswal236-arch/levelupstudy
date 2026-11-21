@@ -243,6 +243,8 @@ function AppContent() {
   const [isAtTop, setIsAtTop] = useState(true);
   const lastScrollYRef = useRef(0);
   const scrollTickingRef = useRef(false);
+  const isAtTopRef = useRef(true);
+  const scrollDirectionRef = useRef<"up" | "down">("up");
 
   useEffect(() => {
     const handleScroll = () => {
@@ -250,16 +252,19 @@ function AppContent() {
         window.requestAnimationFrame(() => {
           const currentY = window.scrollY || document.documentElement.scrollTop;
           const diff = currentY - lastScrollYRef.current;
-          
+
           const atTop = currentY <= 24;
-          setIsAtTop(atTop);
+          if (atTop !== isAtTopRef.current) {
+            isAtTopRef.current = atTop;
+            setIsAtTop(atTop);
+          }
 
           // Use delta threshold of 6px to avoid micro-jitter on mobile touches
           if (Math.abs(diff) > 6) {
-            if (diff > 0) {
-              setScrollDirection("down");
-            } else {
-              setScrollDirection("up");
+            const nextDir: "up" | "down" = diff > 0 ? "down" : "up";
+            if (nextDir !== scrollDirectionRef.current) {
+              scrollDirectionRef.current = nextDir;
+              setScrollDirection(nextDir);
             }
             lastScrollYRef.current = currentY;
           }
@@ -2592,29 +2597,22 @@ function AppContent() {
         onTouchEnd={handleTouchEnd}
       >
         <div className="flex-1 overflow-visible relative">
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
-              key={activeTab}
-              custom={direction}
-              initial={{ opacity: 0, x: direction * 40, scale: 0.98 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: direction * -40, scale: 0.98 }}
-              transition={{
-                duration: 0.22,
-                type: "spring",
-                stiffness: 350,
-                damping: 30,
-              }}
-              style={{ willChange: "opacity, transform" }}
-              className="max-w-7xl mx-auto w-full relative"
-            >
-              <ErrorBoundary>
-                <Suspense fallback={<PageSkeleton />}>
-                  {renderContent()}
-                </Suspense>
-              </ErrorBoundary>
-            </motion.div>
-          </AnimatePresence>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, x: direction * 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{
+              duration: 0.12,
+              ease: "easeOut",
+            }}
+            className="max-w-7xl mx-auto w-full relative"
+          >
+            <ErrorBoundary>
+              <Suspense fallback={<PageSkeleton />}>
+                {renderContent()}
+              </Suspense>
+            </ErrorBoundary>
+          </motion.div>
         </div>
 
         {/* Footer with Compliance Links */}

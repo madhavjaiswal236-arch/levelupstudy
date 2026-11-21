@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import { StudyCalendar } from "@/components/StudyCalendar";
 
 import { createPortal } from "react-dom";
@@ -40,10 +40,7 @@ import {
   MousePointerClick,
   Lock as LockIcon,
   AlertCircle,
-  Layers,
-  Download,
 } from "lucide-react";
-import { exportRoadmapToPdf } from "@/lib/backlog/exportPdf";
 import { useAppContext, SyllabusData, Todo, getLogicalDate, getStandardDateKey, isSameLogicalDay } from "@/context/AppContext";
 import TimeBar from "@/components/TimeBar";
 import JeeSessionLogger from "@/components/JeeSessionLogger";
@@ -302,7 +299,11 @@ const Dashboard = React.memo(function Dashboard() {
     }),
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const todosRef = useRef(todos);
+  todosRef.current = todos;
+  const todayDateStr = getLocalDateString();
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
       setSortByPriority(false);
@@ -312,7 +313,7 @@ const Dashboard = React.memo(function Dashboard() {
         return arrayMove(items, oldIndex, newIndex);
       });
     }
-  };
+  }, [setTodos]);
 
   const auraStyles: Record<string, string> = {
     aura_flame: "shadow-md border-amber-500/50 ring-2 ring-amber-500/20",
@@ -348,11 +349,13 @@ const Dashboard = React.memo(function Dashboard() {
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("error");
 
-  const showToast = (msg: string, type: "success" | "error" = "error") => {
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((msg: string, type: "success" | "error" = "error") => {
     setToastMessage(msg);
     setToastType(type);
-    setTimeout(() => setToastMessage(""), 5000);
-  };
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(""), 5000);
+  }, []);
 
   // Study Session Timer State
   const [isSessionActive, setIsSessionActive] = useState(false);
@@ -1274,17 +1277,17 @@ const Dashboard = React.memo(function Dashboard() {
     }
   };
 
-  const toggleTodo = (id: number) => {
-    const todo = todos.find((t) => t.id === id);
-    if (todo && !todo.completed) {
+  const toggleTodo = useCallback((id: number | string) => {
+    const task = todosRef.current.find((t) => String(t.id) === String(id));
+    if (!task) return;
+
+    if (!task.completed) {
       vibrate(HAPTIC_PATTERNS.SUCCESS);
       setPulseStreak(true);
       setTimeout(() => setPulseStreak(false), 500);
     } else {
       vibrate(HAPTIC_PATTERNS.TAP);
     }
-    const task = todos.find((t) => t.id === id);
-    if (!task) return;
 
     const isNowCompleted = !task.completed;
 
@@ -1329,34 +1332,41 @@ const Dashboard = React.memo(function Dashboard() {
         task.text,
       ).catch(console.error);
     }
-  };
+  }, [hapticSuccess, updateTask]);
 
-  const deleteTodo = async (id: number) => {
-    const todoToDelete = todos.find((t) => t.id === id);
-    const updatedTodos = todos.map((t) =>
-      t.id === id ? { ...t, isDeleted: true, deletedAt: Date.now() } : t,
-    );
-    setTodos(updatedTodos);
-    saveStateToCloudNow({ todos: updatedTodos });
+  const deleteTodo = useCallback((id: number | string) => {
+    const todoToDelete = todosRef.current.find((t) => String(t.id) === String(id));
+    const nowTs = Date.now();
+    let updatedTodosSnapshot: Todo[] = [];
+    setTodos((prev) => {
+      updatedTodosSnapshot = prev.map((t) =>
+        String(t.id) === String(id) ? { ...t, isDeleted: true, deletedAt: nowTs } : t,
+      );
+      return updatedTodosSnapshot;
+    });
+    queueMicrotask(() => {
+      saveStateToCloudNow({ todos: updatedTodosSnapshot });
+    });
 
-    if (todoToDelete?.calendarEventId) {
-      try {
-        await deleteCalendarEvent(todoToDelete.calendarEventId);
-        if (todoToDelete.calendarTaskId) {
-          await deleteGoogleTask(todoToDelete.calendarTaskId);
-        }
-        showToast("Task removed from App and Calendar", "success");
-      } catch (err: any) {
-        console.error("Failed to remove from calendar:", err);
-        showToast(
-          `Removed from App. (Calendar error: ${err.message || "Unknown"})`,
-          "error",
-        );
-      }
+    if (todoToDelete?.calendarEventId && !String(todoToDelete.calendarEventId).startsWith("local-")) {
+      showToast("Task removed from App and Calendar", "success");
+      deleteCalendarEvent(todoToDelete.calendarEventId)
+        .then(() => {
+          if (todoToDelete.calendarTaskId) {
+            return deleteGoogleTask(todoToDelete.calendarTaskId);
+          }
+        })
+        .catch((err: any) => {
+          console.error("Failed to remove from calendar:", err);
+          showToast(
+            `Removed from App. (Calendar error: ${err?.message || "Unknown"})`,
+            "error",
+          );
+        });
     } else {
       showToast("Task removed from App", "success");
     }
-  };
+  }, [setTodos, saveStateToCloudNow, showToast]);
 
   const handleSetDate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2763,34 +2773,6 @@ const Dashboard = React.memo(function Dashboard() {
                       </span>
                     </div>
                   </div>
-
-                  {backlogPlan && (
-                    <div className="mt-4 pt-3 border-t dark:border-blue-900/40 border-blue-200/50 flex flex-wrap items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.dispatchEvent(new CustomEvent("open-tracker360-goalbox"));
-                        }}
-                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-xs font-mono font-bold hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
-                      >
-                        <Layers className="w-4 h-4 text-amber-500 animate-pulse" />
-                        <span>View Tracker 360 Daily Roadmap</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          exportRoadmapToPdf(backlogPlan, playerName || "Student", todos);
-                        }}
-                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
-                        title="Download complete day-wise checklist PDF"
-                      >
-                        <Download className="w-3.5 h-3.5 text-white" />
-                        <span>Download PDF Roadmap</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -3128,33 +3110,34 @@ const Dashboard = React.memo(function Dashboard() {
                         </Button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                        {syllabus[selectedSubject as keyof SyllabusData].map(
-                          (chap) => {
-                            const isRecommended =
-                              getCurrentChapterForSubject(selectedSubject) ===
-                              chap.name;
-                            return (
-                              <Button
-                                key={chap.name}
-                                variant="outline"
-                                className={`justify-between text-left h-auto py-2.5 px-3 border flex items-center w-full ${isRecommended ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10 hover:border-cyan-500 hover:dark:text-cyan-400 text-cyan-700" : "dark:border-slate-700 border-slate-300 hover:border-cyan-500 dark:text-slate-300 text-slate-900 dark:bg-black bg-white hover:dark:text-cyan-400 text-cyan-700"}`}
-                                onClick={() => {
-                                  setSelectedChapter(chap.name);
-                                  setTaskStep(3);
-                                  setHasEditedLecture(false);
-                                  setLectureNumberInput("");
-                                }}
-                              >
-                                <span className="truncate">{chap.name}</span>
-                                {isRecommended && (
-                                  <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ml-2">
-                                    Current
-                                  </span>
-                                )}
-                              </Button>
-                            );
-                          },
-                        )}
+                        {(() => {
+                          const recommendedChapter = getCurrentChapterForSubject(selectedSubject);
+                          return syllabus[selectedSubject as keyof SyllabusData].map(
+                            (chap) => {
+                              const isRecommended = recommendedChapter === chap.name;
+                              return (
+                                <Button
+                                  key={chap.name}
+                                  variant="outline"
+                                  className={`justify-between text-left h-auto py-2.5 px-3 border flex items-center w-full ${isRecommended ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10 hover:border-cyan-500 hover:dark:text-cyan-400 text-cyan-700" : "dark:border-slate-700 border-slate-300 hover:border-cyan-500 dark:text-slate-300 text-slate-900 dark:bg-black bg-white hover:dark:text-cyan-400 text-cyan-700"}`}
+                                  onClick={() => {
+                                    setSelectedChapter(chap.name);
+                                    setTaskStep(3);
+                                    setHasEditedLecture(false);
+                                    setLectureNumberInput("");
+                                  }}
+                                >
+                                  <span className="truncate">{chap.name}</span>
+                                  {isRecommended && (
+                                    <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ml-2">
+                                      Current
+                                    </span>
+                                  )}
+                                </Button>
+                              );
+                            },
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
@@ -3682,6 +3665,7 @@ const Dashboard = React.memo(function Dashboard() {
                               todo={todo}
                               toggleTodo={toggleTodo}
                               deleteTodo={deleteTodo}
+                              todayStr={todayDateStr}
                             />
                           ))}
                         </div>
